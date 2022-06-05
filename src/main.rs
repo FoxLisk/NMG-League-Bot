@@ -1,7 +1,10 @@
 mod utils;
+mod db;
+mod models;
 
 extern crate serenity;
 extern crate tokio;
+extern crate sqlx;
 
 use serenity::builder::CreateApplicationCommands;
 use serenity::client::{ClientBuilder, Context, EventHandler};
@@ -26,6 +29,9 @@ use serenity::json::Value;
 use serenity::utils::MessageBuilder;
 use utils::send_response;
 use std::fmt::{Display, Formatter};
+use db::get_pool;
+use sqlx::SqlitePool;
+use models::race::NewRace;
 
 const TOKEN_VAR: &str = "DISCORD_TOKEN";
 const APPLICATION_ID_VAR: &str = "APPLICATION_ID";
@@ -169,9 +175,7 @@ impl RaceHandler {
 
         let u1 = racer_1.to_user(&ctx).await.map_err(|e| Error::BadInput(format!("Error looking up user {}: {}", racer_1, e)))?;
         let u2 = racer_2.to_user(&ctx).await.map_err(|e| Error::BadInput(format!("Error looking up user {}: {}", racer_1, e)))?;
-        //
-        // let u1 = ctx.cache.user( racer_1).ok_or(Error::APIError(format!("No known user for id {}", racer_1)))?;
-        // let u2 = ctx.cache.user( racer_2).ok_or(Error::APIError(format!("No known user for id {}", racer_2)))?;
+
         Ok((u1, u2))
     }
 
@@ -217,27 +221,56 @@ impl RaceHandler {
             }
         };
 
-        interaction
-            .create_interaction_response(&ctx.http, |ir| {
-                ir.kind(InteractionResponseType::ChannelMessageWithSource)
-                    .interaction_response_data(|data|
-                        data.content(
-                            MessageBuilder::new()
-                                .push("Race created for users ")
-                                .mention(&r1)
-                                .push(" and ")
-                                .mention(&r2)
-                                .build()
-                        )
-                            .allowed_mentions(|m| m.users(Vec::<UserId>::new()))
-                    )
+        let race_insert = NewRace::new();
+        let runs = {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
 
-            })
-            .await
-            .map_err(|e| {
-                println!("Error creating response: {}", e);
-                e.to_string()
-            })
+            match race_insert.save(&pool).await {
+                Ok(race) => {
+                    match race.select_racers(r1.id, r2.id, &pool).await {
+                        Ok(r) => Some(r),
+                        Err(e) => {
+                            println!("Error selecting racers: {}", e);
+                            None
+                        }
+                    }
+                }
+                Err(e) => {
+                    println!("Error persisting race: {}", e);
+                    None
+
+                }
+            }
+        };
+
+        if let Some((run_1, run_2)) = runs {
+            interaction
+                .create_interaction_response(&ctx.http, |ir| {
+                    ir.kind(InteractionResponseType::ChannelMessageWithSource)
+                        .interaction_response_data(|data|
+                            data.content(
+                                MessageBuilder::new()
+                                    .push("Race created for users ")
+                                    .mention(&r1)
+                                    .push(" and ")
+                                    .mention(&r2)
+                                    .build()
+                            )
+                                .allowed_mentions(|m| m.users(Vec::<UserId>::new()))
+                        )
+
+                })
+                .await
+                .map_err(|e| {
+                    println!("Error creating response: {}", e);
+                    e.to_string()
+                })
+        } else {
+            send_response(&ctx.http, interaction, "Error creating race").await
+        }
+
+
     }
 }
 
@@ -321,6 +354,11 @@ impl EventHandler for RaceHandler {
     }
 }
 
+struct Pool;
+impl TypeMapKey for Pool {
+    type Value = SqlitePool;
+}
+
 #[tokio::main]
 async fn main() {
     // https://discord.com/api/oauth2/authorize?client_id=982863079555600414&permissions=122675080256&scope=bot%20applications.commands
@@ -329,8 +367,8 @@ async fn main() {
         .expect(&*format!("{} not found in environment", APPLICATION_ID_VAR))
         .parse::<u64>()
         .expect("Application ID was not a valid u64");
-    println!("tok: {}", tok);
-    println!("aid: {}", application_id);
+    let pool = get_pool().await.expect("Cannot connect to sqlite database");
+
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_MESSAGE_REACTIONS
@@ -345,6 +383,7 @@ async fn main() {
         .application_id(application_id)
         .event_handler(RaceHandler {})
         .type_map_insert::<AdminRoleMap>(Arc::new(RwLock::new(HashMap::<GuildId, RoleId>::new())))
+        .type_map_insert::<Pool>(pool)
         .await
         .unwrap();
 
