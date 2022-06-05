@@ -38,7 +38,7 @@ pub(crate) mod race {
 
     pub(crate) struct Race {
         id: i32,
-        uuid: String,
+        pub(crate) uuid: String,
         created: u32,
         state: RaceState,
     }
@@ -152,7 +152,7 @@ pub(crate) mod race_run {
     pub(crate) struct RaceRun {
         id: i32,
         race_id: i32,
-        racer_id: String,
+        pub(crate) racer_id: UserId,
         filenames: Filenames,
         created: u32,
         state: RaceRunState,
@@ -160,7 +160,7 @@ pub(crate) mod race_run {
 
     pub(crate) struct NewRaceRun {
         race_id: i32,
-        racer_id: String,
+        racer_id: UserId,
         filenames: Filenames,
         created: u32,
         state: RaceRunState,
@@ -170,7 +170,7 @@ pub(crate) mod race_run {
         pub(crate) fn new(race_id: i32, racer_id: UserId) -> Self {
             Self {
                 race_id,
-                racer_id: racer_id.to_string(),
+                racer_id: racer_id,
                 filenames: Filenames::new_random(),
                 created: epoch_timestamp(),
                 state: RaceRunState::CREATED,
@@ -180,11 +180,12 @@ pub(crate) mod race_run {
 
 
         pub(crate) async fn save(self, pool: &SqlitePool) -> Result<RaceRun, String> {
+            let id_str = self.racer_id.to_string();
             sqlx::query!(
                 "INSERT INTO race_runs (race_id, racer_id, filenames, created, state)
                  VALUES(?, ?, ?, ?, ?);
                 SELECT last_insert_rowid() as rowid;",
-                self.race_id, self.racer_id, self.filenames, self.created, self.state
+                self.race_id, id_str, self.filenames, self.created, self.state
             ).fetch_one(pool)
                 .await
                 .map(|row| RaceRun {

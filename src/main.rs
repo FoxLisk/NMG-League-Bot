@@ -31,10 +31,12 @@ use utils::send_response;
 use std::fmt::{Display, Formatter};
 use db::get_pool;
 use sqlx::SqlitePool;
-use models::race::NewRace;
+use models::race::{NewRace, Race};
+use models::race_run::RaceRun;
 
 const TOKEN_VAR: &str = "DISCORD_TOKEN";
 const APPLICATION_ID_VAR: &str = "APPLICATION_ID";
+const FOXLISK_USER_ID: u64 = 255676979460702210;
 
 struct AdminRoleMap;
 
@@ -179,6 +181,26 @@ impl RaceHandler {
         Ok((u1, u2))
     }
 
+    async fn notify_racer(ctx: &Context, race_run: RaceRun, race: &Race) -> Result<(), String> {
+        if race_run.racer_id != FOXLISK_USER_ID {
+            println!("Not DMing anyone but myself yet!");
+            return Ok(())
+        }
+        let user: User = race_run.racer_id.to_user(ctx).await.map_err(|e| e.to_string())?;
+        user.direct_message(ctx, |m|
+            m.content(
+                format!(
+"Hello, your asynchronous race is now ready.
+When you're ready to begin your race, blah blah blah
+
+If anything goes wrong, tell an admin there was an issue with race `{}`",
+                    race.uuid
+            ))
+        ).await
+            .map(|_|())
+            .map_err(|e| e.to_string())
+    }
+
     async fn handle_create_race(
         &self,
         ctx: &Context,
@@ -229,7 +251,7 @@ impl RaceHandler {
             match race_insert.save(&pool).await {
                 Ok(race) => {
                     match race.select_racers(r1.id, r2.id, &pool).await {
-                        Ok(r) => Some(r),
+                        Ok(r) => Some((race, r)),
                         Err(e) => {
                             println!("Error selecting racers: {}", e);
                             None
@@ -244,33 +266,40 @@ impl RaceHandler {
             }
         };
 
-        if let Some((run_1, run_2)) = runs {
-            interaction
-                .create_interaction_response(&ctx.http, |ir| {
-                    ir.kind(InteractionResponseType::ChannelMessageWithSource)
-                        .interaction_response_data(|data|
-                            data.content(
-                                MessageBuilder::new()
-                                    .push("Race created for users ")
-                                    .mention(&r1)
-                                    .push(" and ")
-                                    .mention(&r2)
-                                    .build()
+        if let Some((race, (run_1, run_2))) = runs {
+            let (first, second) = tokio::join!(
+                Self::notify_racer(&ctx, run_1, &race),
+                Self::notify_racer(&ctx, run_2, &race)
+            );
+            if let Err(err) = first.and(second) {
+                send_response(&ctx.http, interaction, "Internal error creating race").await
+            } else {
+                interaction
+                    .create_interaction_response(&ctx.http, |ir| {
+                        ir.kind(InteractionResponseType::ChannelMessageWithSource)
+                            .interaction_response_data(|data|
+                                data.content(
+                                    MessageBuilder::new()
+                                        .push("Race created for users ")
+                                        .mention(&r1)
+                                        .push(" and ")
+                                        .mention(&r2)
+                                        .build()
+                                )
+                                    .allowed_mentions(|m| m.users(Vec::<UserId>::new()))
                             )
-                                .allowed_mentions(|m| m.users(Vec::<UserId>::new()))
-                        )
 
-                })
-                .await
-                .map_err(|e| {
-                    println!("Error creating response: {}", e);
-                    e.to_string()
-                })
+                    })
+                    .await
+                    .map_err(|e| {
+                        println!("Error creating response: {}", e);
+                        e.to_string()
+                    })
+            }
+
         } else {
             send_response(&ctx.http, interaction, "Error creating race").await
         }
-
-
     }
 }
 
