@@ -265,10 +265,6 @@ impl EventHandler for RaceHandler {
         for role in guild.roles.into_values() {
             maybe_update_admin_role(&ctx, role).await;
         }
-        println!("Member count: {}", guild.member_count);
-        for u in guild.members.keys() {
-            println!("Guild member id {}", u);
-        }
     }
 
     async fn guild_role_create(&self, ctx: Context, new: Role) {
@@ -327,13 +323,14 @@ impl EventHandler for RaceHandler {
 
 #[tokio::main]
 async fn main() {
-
     // https://discord.com/api/oauth2/authorize?client_id=982863079555600414&permissions=122675080256&scope=bot%20applications.commands
-    let tok = std::env::var(TOKEN_VAR).expect("DISCORD_TOKEN not found in environment");
-    let application_id = std::env::var(APPLICATION_ID_VAR)
-        .expect("APPLICATION_ID not found in environment")
+    let tok = dotenv::var(TOKEN_VAR).expect(&*format!("{} not found in environment", TOKEN_VAR));
+    let application_id = dotenv::var(APPLICATION_ID_VAR)
+        .expect(&*format!("{} not found in environment", APPLICATION_ID_VAR))
         .parse::<u64>()
         .expect("Application ID was not a valid u64");
+    println!("tok: {}", tok);
+    println!("aid: {}", application_id);
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MESSAGES
         | GatewayIntents::GUILD_MESSAGE_REACTIONS
@@ -354,5 +351,4 @@ async fn main() {
     if let Err(e) = cb.start().await {
         println!("Error starting bot: {}", e);
     }
-    println!("Hello, world!");
 }
