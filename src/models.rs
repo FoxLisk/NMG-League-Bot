@@ -138,12 +138,12 @@ pub(crate) mod race_run {
     use serenity::model::id::{MessageId, UserId};
 
     use crate::models::epoch_timestamp;
+    use crate::models::uuid_string;
+    use rand::rngs::ThreadRng;
+    use rand::{thread_rng, Rng};
     use sqlx::database::HasArguments;
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
-    use rand::{thread_rng, Rng};
-    use rand::rngs::ThreadRng;
-    use crate::models::uuid_string;
     use std::fmt::Formatter;
 
     pub(crate) struct Filenames {
@@ -163,19 +163,18 @@ pub(crate) mod race_run {
     }
 
     impl Filenames {
-
         // TODO: find a list of words to filter or whatever
         fn _validate_four(&self) -> bool {
             match self.four {
                 ['c', 'u', 'n', 't'] => false,
-                _ => true
+                _ => true,
             }
         }
 
         fn _validate_three(&self) -> bool {
             match self.three {
                 ['f', 'a', 'g'] => false,
-                _ => true
+                _ => true,
             }
         }
 
@@ -186,24 +185,26 @@ pub(crate) mod race_run {
         fn _new_random() -> Self {
             let mut rng = thread_rng();
             let one = random_char(&mut rng);
-            let three = [random_char(&mut rng),
-            random_char(&mut rng),
-            random_char(&mut rng),];
-            let four = [random_char(&mut rng),
+            let three = [
                 random_char(&mut rng),
                 random_char(&mut rng),
-                random_char(&mut rng),];
+                random_char(&mut rng),
+            ];
+            let four = [
+                random_char(&mut rng),
+                random_char(&mut rng),
+                random_char(&mut rng),
+                random_char(&mut rng),
+            ];
 
-            Self {
-                one, three, four
-            }
+            Self { one, three, four }
         }
 
         fn new_random() -> Self {
             loop {
                 let f = Self::_new_random();
                 if f._validate() {
-                    return f
+                    return f;
                 }
             }
         }

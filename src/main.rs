@@ -32,20 +32,20 @@ use constants::{APPLICATION_ID_VAR, FOXLISK_USER_ID, TOKEN_VAR};
 use db::get_pool;
 use models::race::{NewRace, Race};
 use models::race_run::RaceRun;
-use utils::send_response;
 use shutdown::Shutdown;
+use utils::send_response;
 
 mod constants;
 mod db;
 mod models;
 mod race_cron;
-mod utils;
 mod shutdown;
+mod utils;
 
+extern crate rand;
 extern crate serenity;
 extern crate sqlx;
 extern crate tokio;
-extern crate rand;
 
 const CUSTOM_ID_START_RUN: &str = "start_run";
 const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
@@ -766,7 +766,6 @@ async fn main() {
 
     let (shutdown_send, mut shutdown_recv) = tokio::sync::broadcast::channel::<Shutdown>(1);
 
-
     let jh = tokio::spawn(race_cron::cron(pool.clone(), shutdown_send.subscribe()));
 
     let intents = GatewayIntents::GUILDS
@@ -787,11 +786,9 @@ async fn main() {
         .await
         .unwrap();
 
-
     let shard_manager = client.shard_manager.clone();
 
     tokio::spawn(async move {
-
         if let Err(e) = client.start().await {
             println!("Error starting bot: {}", e);
         }

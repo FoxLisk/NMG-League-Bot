@@ -1,13 +1,13 @@
 use crate::constants::{TOKEN_VAR, WEBHOOK_VAR};
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
+use crate::shutdown::Shutdown;
 use serenity::http::Http;
 use serenity::model::webhook::Webhook;
 use serenity::utils::MessageBuilder;
 use sqlx::SqlitePool;
-use tokio::time::Duration;
-use crate::shutdown::Shutdown;
 use tokio::sync::broadcast::Receiver;
+use tokio::time::Duration;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -47,7 +47,9 @@ fn format_finisher(run: &RaceRun) -> String {
                 run.reported_run_time.as_ref().unwrap_or(&"N/A".to_string()),
                 bot_time,
                 run.vod.as_ref().unwrap_or(&"N/A".to_string()),
-                run.filenames().map(|f|f.to_string()).unwrap_or("N/A".to_string())
+                run.filenames()
+                    .map(|f| f.to_string())
+                    .unwrap_or("N/A".to_string())
             ));
             mb.build()
         }
