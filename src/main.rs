@@ -1,48 +1,48 @@
-mod db;
-mod models;
-mod utils;
+use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
 
-extern crate serenity;
-extern crate sqlx;
-extern crate tokio;
-
-use db::get_pool;
-use models::race::{NewRace, Race};
-use models::race_run::RaceRun;
+use serenity::{async_trait, Client};
 use serenity::builder::CreateApplicationCommands;
 use serenity::client::{ClientBuilder, Context, EventHandler};
 use serenity::futures::StreamExt;
 use serenity::http::Http;
 use serenity::json::Value;
-use serenity::model::channel::Message;
 use serenity::model::gateway::Ready;
 use serenity::model::guild::{Guild, PartialGuild, Role};
 use serenity::model::id::{GuildId, RoleId, UserId};
+use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::model::interactions::application_command::{
     ApplicationCommandInteraction, ApplicationCommandOptionType, ApplicationCommandType,
 };
 use serenity::model::interactions::message_component::{
     ActionRow, ButtonStyle, InputTextStyle, MessageComponentInteraction,
 };
-use serenity::model::interactions::modal::{ModalSubmitInteraction, ModalSubmitInteractionData};
-use serenity::model::interactions::{Interaction, InteractionResponseType};
+use serenity::model::interactions::modal::{ModalSubmitInteraction};
+use serenity::model::Permissions;
 use serenity::model::prelude::application_command::ApplicationCommandInteractionDataOption;
 use serenity::model::prelude::message_component::ActionRowComponent;
 use serenity::model::user::User;
-use serenity::model::Permissions;
 use serenity::prelude::{GatewayIntents, TypeMapKey};
 use serenity::utils::MessageBuilder;
-use serenity::{async_trait, Client};
 use sqlx::SqlitePool;
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
 use tokio::sync::RwLock;
-use utils::send_response;
 
-const TOKEN_VAR: &str = "DISCORD_TOKEN";
-const APPLICATION_ID_VAR: &str = "APPLICATION_ID";
-const FOXLISK_USER_ID: u64 = 255676979460702210;
+use db::get_pool;
+use models::race::{NewRace, Race};
+use models::race_run::RaceRun;
+use utils::send_response;
+use constants::{FOXLISK_USER_ID, TOKEN_VAR, APPLICATION_ID_VAR};
+
+mod db;
+mod models;
+mod utils;
+mod race_cron;
+mod constants;
+
+extern crate serenity;
+extern crate sqlx;
+extern crate tokio;
 
 const CUSTOM_ID_START_RUN: &str = "start_run";
 const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
@@ -754,6 +754,8 @@ async fn main() {
         .parse::<u64>()
         .expect("Application ID was not a valid u64");
     let pool = get_pool().await.expect("Cannot connect to sqlite database");
+
+    let jh = tokio::spawn(race_cron::cron(pool.clone()));
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MESSAGES

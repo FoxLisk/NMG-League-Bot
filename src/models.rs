@@ -26,6 +26,7 @@ pub(crate) mod race {
     #[derive(sqlx::Type)]
     pub(crate) enum RaceState {
         CREATED,
+        FINISHED,
     }
 
     pub(crate) struct NewRace {
@@ -41,7 +42,34 @@ pub(crate) mod race {
         state: RaceState,
     }
 
+    // statics
     impl Race {
+        pub(crate) async fn active_races(pool: &SqlitePool) -> Result<Vec<Self>, String> {
+            sqlx::query_as!(
+                Self,
+                r#"SELECT id as "id: _", uuid, created as "created: _", state as "state: _"
+                FROM races
+                WHERE state=?"#,
+                RaceState::CREATED
+            ).fetch_all(pool).await.map_err(|e| e.to_string())
+        }
+    }
+
+    impl Race {
+        pub(crate) fn finish(&mut self) {
+            self.state = RaceState::FINISHED;
+        }
+
+        pub(crate) async fn save(&self, pool: &SqlitePool) -> Result<(), String> {
+            sqlx::query!(
+                "UPDATE races
+                SET state=?
+                WHERE id=?",
+                self.state,
+                self.id
+            ).execute(pool).await.map(|_|()).map_err(|e|e.to_string())
+        }
+
         async fn add_run(&self, racer_id: UserId, pool: &SqlitePool) -> Result<RaceRun, String> {
             let nrr = NewRaceRun::new(self.id, racer_id);
             nrr.save(pool).await
@@ -59,6 +87,10 @@ pub(crate) mod race {
             let r1 = self.add_run(racer_1, pool).await?;
             let r2 = self.add_run(racer_2, pool).await?;
             Ok((r1, r2))
+        }
+
+        pub(crate) async fn get_runs(&self, pool: &SqlitePool) -> Result<(RaceRun, RaceRun), String> {
+            RaceRun::get_runs(self.id, pool).await
         }
     }
 
@@ -93,22 +125,6 @@ pub(crate) mod race {
 }
 
 pub(crate) mod race_run {
-
-    // -- represents a racer's participation in a race
-    // CREATE TABLE IF NOT EXISTS race_runs (
-    // id                INTEGER PRIMARY KEY NOT NULL,
-    // race_id           INTEGER NOT NULL,
-    // racer_id          INTEGER NOT NULL,
-    // filenames         TEXT NOT NULL,
-    // created           INTEGER NOT NULL,
-    // state             TEXT NOT NULL,
-    // run_started       INTEGER NULL,
-    // run_finished      INTEGER NULL,
-    // reported_run_time TEXT NULL,
-    //
-    // FOREIGN KEY(race_id) REFERENCES races(id)
-    // );
-
     use serenity::model::id::{MessageId, UserId};
 
     use crate::models::epoch_timestamp;
@@ -198,7 +214,7 @@ pub(crate) mod race_run {
     }
 
     #[derive(sqlx::Type)]
-    enum RaceRunState {
+    pub(crate) enum RaceRunState {
         CREATED,
         STARTED,
         FINISHED,
@@ -213,18 +229,53 @@ pub(crate) mod race_run {
         racer_id: String,
         filenames: String,
         created: u32,
-        state: RaceRunState,
+        pub(crate) state: RaceRunState,
         message_id: Option<String>,
-        run_started: Option<i64>,
-        run_finished: Option<i64>,
-        reported_run_time: Option<String>,
+        pub(crate) run_started: Option<i64>,
+        pub(crate) run_finished: Option<i64>,
+        pub(crate) reported_run_time: Option<String>,
         reported_at: Option<u32>,
-        vod: Option<String>,
+        pub(crate) vod: Option<String>,
     }
 
     impl RaceRun {
+
+        pub(crate) async fn get_runs(race_id: i32, pool: &SqlitePool) -> Result<(RaceRun, RaceRun), String> {
+            let mut runs = sqlx::query_as!(
+                RaceRun,
+                r#"SELECT id, race_id, racer_id, filenames,
+                created as "created: _",
+                state as "state: _",
+                run_started as "run_started: _",
+                run_finished as "run_finished: _",
+                reported_run_time,
+                reported_at as "reported_at: _",
+                vod,
+                message_id
+                 FROM race_runs WHERE race_id=?"#,
+                race_id,
+            ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            if runs.len() == 2 {
+                Ok((runs.pop().unwrap(), runs.pop().unwrap()))
+            } else {
+                Err("Did not find exactly 2 runs".to_string())
+            }
+        }
+    }
+
+    impl RaceRun {
+
+
         pub(crate) fn racer_id(&self) -> UserId {
             UserId(self.racer_id.parse().unwrap())
+        }
+
+        pub(crate) fn finished(&self) -> bool {
+            match self.state {
+                RaceRunState::VOD_SUBMITTED => true,
+                RaceRunState::FORFEIT => true,
+                _ => false
+            }
         }
 
         pub(crate) fn filenames(&self) -> Result<Filenames, String> {
@@ -298,7 +349,8 @@ pub(crate) mod race_run {
             let mid_str = message_id.to_string();
             sqlx::query_as!(
                 Self,
-                r#"SELECT id, race_id, racer_id, filenames,
+                r#"SELECT
+                id, race_id, racer_id, filenames,
                 created as "created: _",
                 state as "state: _",
                 run_started as "run_started: _",
