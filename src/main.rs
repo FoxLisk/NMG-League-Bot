@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 
-use serenity::{async_trait, Client};
 use serenity::builder::CreateApplicationCommands;
 use serenity::client::{ClientBuilder, Context, EventHandler};
 use serenity::futures::StreamExt;
@@ -11,34 +10,35 @@ use serenity::json::Value;
 use serenity::model::gateway::Ready;
 use serenity::model::guild::{Guild, PartialGuild, Role};
 use serenity::model::id::{GuildId, RoleId, UserId};
-use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::model::interactions::application_command::{
     ApplicationCommandInteraction, ApplicationCommandOptionType, ApplicationCommandType,
 };
 use serenity::model::interactions::message_component::{
     ActionRow, ButtonStyle, InputTextStyle, MessageComponentInteraction,
 };
-use serenity::model::interactions::modal::{ModalSubmitInteraction};
-use serenity::model::Permissions;
+use serenity::model::interactions::modal::ModalSubmitInteraction;
+use serenity::model::interactions::{Interaction, InteractionResponseType};
 use serenity::model::prelude::application_command::ApplicationCommandInteractionDataOption;
 use serenity::model::prelude::message_component::ActionRowComponent;
 use serenity::model::user::User;
+use serenity::model::Permissions;
 use serenity::prelude::{GatewayIntents, TypeMapKey};
 use serenity::utils::MessageBuilder;
+use serenity::{async_trait, Client};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
+use constants::{APPLICATION_ID_VAR, FOXLISK_USER_ID, TOKEN_VAR};
 use db::get_pool;
 use models::race::{NewRace, Race};
 use models::race_run::RaceRun;
 use utils::send_response;
-use constants::{FOXLISK_USER_ID, TOKEN_VAR, APPLICATION_ID_VAR};
 
+mod constants;
 mod db;
 mod models;
-mod utils;
 mod race_cron;
-mod constants;
+mod utils;
 
 extern crate serenity;
 extern crate sqlx;

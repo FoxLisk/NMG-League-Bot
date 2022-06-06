@@ -51,7 +51,10 @@ pub(crate) mod race {
                 FROM races
                 WHERE state=?"#,
                 RaceState::CREATED
-            ).fetch_all(pool).await.map_err(|e| e.to_string())
+            )
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())
         }
     }
 
@@ -67,7 +70,11 @@ pub(crate) mod race {
                 WHERE id=?",
                 self.state,
                 self.id
-            ).execute(pool).await.map(|_|()).map_err(|e|e.to_string())
+            )
+            .execute(pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
         }
 
         async fn add_run(&self, racer_id: UserId, pool: &SqlitePool) -> Result<RaceRun, String> {
@@ -89,7 +96,10 @@ pub(crate) mod race {
             Ok((r1, r2))
         }
 
-        pub(crate) async fn get_runs(&self, pool: &SqlitePool) -> Result<(RaceRun, RaceRun), String> {
+        pub(crate) async fn get_runs(
+            &self,
+            pool: &SqlitePool,
+        ) -> Result<(RaceRun, RaceRun), String> {
             RaceRun::get_runs(self.id, pool).await
         }
     }
@@ -239,8 +249,10 @@ pub(crate) mod race_run {
     }
 
     impl RaceRun {
-
-        pub(crate) async fn get_runs(race_id: i32, pool: &SqlitePool) -> Result<(RaceRun, RaceRun), String> {
+        pub(crate) async fn get_runs(
+            race_id: i32,
+            pool: &SqlitePool,
+        ) -> Result<(RaceRun, RaceRun), String> {
             let mut runs = sqlx::query_as!(
                 RaceRun,
                 r#"SELECT id, race_id, racer_id, filenames,
@@ -254,7 +266,10 @@ pub(crate) mod race_run {
                 message_id
                  FROM race_runs WHERE race_id=?"#,
                 race_id,
-            ).fetch_all(pool).await.map_err(|e| e.to_string())?;
+            )
+            .fetch_all(pool)
+            .await
+            .map_err(|e| e.to_string())?;
             if runs.len() == 2 {
                 Ok((runs.pop().unwrap(), runs.pop().unwrap()))
             } else {
@@ -264,8 +279,6 @@ pub(crate) mod race_run {
     }
 
     impl RaceRun {
-
-
         pub(crate) fn racer_id(&self) -> UserId {
             UserId(self.racer_id.parse().unwrap())
         }
@@ -274,7 +287,7 @@ pub(crate) mod race_run {
             match self.state {
                 RaceRunState::VOD_SUBMITTED => true,
                 RaceRunState::FORFEIT => true,
-                _ => false
+                _ => false,
             }
         }
 
