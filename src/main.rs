@@ -577,7 +577,6 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         }
     }
 
-
     async fn handle_vod_ready(
         ctx: &Context,
         mut interaction: MessageComponentInteraction,
@@ -604,7 +603,6 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
             .map_err(|e| e.to_string())
     }
 
-
     async fn handle_race_run_modal(
         &self,
         ctx: &Context,
@@ -623,7 +621,6 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         mut interaction: MessageComponentInteraction,
     ) -> Result<(), String> {
         let mrr: Option<RaceRun> = {
-
             let d = ctx.data.read().await;
             let pool = d.get::<Pool>().unwrap();
             RaceRun::get_by_message_id(&interaction.message.id, &pool).await?
@@ -633,15 +630,9 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
             println!("Got interaction for race {} - {:?}", rr.id, interaction);
             match interaction.data.custom_id.as_str() {
                 CUSTOM_ID_START_RUN => Self::handle_run_start(ctx, interaction, rr).await,
-                CUSTOM_ID_FINISH_RUN => {
-                    Self::handle_run_finish(ctx, interaction, rr).await
-                }
-                CUSTOM_ID_VOD_READY => {
-                    Self::handle_vod_ready(ctx, interaction).await
-                },
-                CUSTOM_ID_FORFEIT_RUN => {
-                    Self::handle_run_forfeit(ctx, interaction, rr).await
-                }
+                CUSTOM_ID_FINISH_RUN => Self::handle_run_finish(ctx, interaction, rr).await,
+                CUSTOM_ID_VOD_READY => Self::handle_vod_ready(ctx, interaction).await,
+                CUSTOM_ID_FORFEIT_RUN => Self::handle_run_forfeit(ctx, interaction, rr).await,
                 _ => {
                     println!("Unhandled interaction");
                     Err("Unhandled interaction".to_string())
