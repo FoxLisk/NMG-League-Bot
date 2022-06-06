@@ -33,16 +33,19 @@ use db::get_pool;
 use models::race::{NewRace, Race};
 use models::race_run::RaceRun;
 use utils::send_response;
+use shutdown::Shutdown;
 
 mod constants;
 mod db;
 mod models;
 mod race_cron;
 mod utils;
+mod shutdown;
 
 extern crate serenity;
 extern crate sqlx;
 extern crate tokio;
+extern crate rand;
 
 const CUSTOM_ID_START_RUN: &str = "start_run";
 const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
@@ -240,7 +243,8 @@ impl RaceHandler {
                 });
                 m.content(format!(
                     "Hello, your asynchronous race is now ready.
-When you're ready to begin your race, blah blah blah
+When you're ready to begin your race, click \"Start run\" and you will be given
+filenames to enter.
 
 If anything goes wrong, tell an admin there was an issue with race `{}`",
                     race.uuid
@@ -362,7 +366,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
 
     async fn handle_run_forfeit(
         ctx: &Context,
-        mut interaction: MessageComponentInteraction,
+        interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
     ) -> Result<(), String> {
         race_run.forfeit();
@@ -384,7 +388,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
 
     async fn handle_run_finish(
         ctx: &Context,
-        mut interaction: MessageComponentInteraction,
+        interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
     ) -> Result<(), String> {
         race_run.finish();
@@ -402,12 +406,12 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
                     .interaction_response_data(|ird| {
                         ird.content("Please enter finish time in **H:MM:SS** format")
                             .custom_id(CUSTOM_ID_USER_TIME_MODAL)
-                            .title("Finish time")
+                            .title("Enter finish time in **H:MM:SS** format")
                             .components(|cmps| {
                                 cmps.create_action_row(|ar| {
                                     ar.create_input_text(|it| {
                                         it.custom_id(CUSTOM_ID_USER_TIME)
-                                            .label("blah")
+                                            .label("Finish time:")
                                             .style(InputTextStyle::Short)
                                     })
                                 })
@@ -421,7 +425,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
 
     async fn handle_run_start(
         ctx: &Context,
-        mut interaction: MessageComponentInteraction,
+        interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
     ) -> Result<(), String> {
         race_run.start();
@@ -449,7 +453,12 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
                                             .style(ButtonStyle::Danger)
                                     })
                                 })
-                            })
+                            }).content(format!(
+"Good luck! your filenames are: `{}`
+
+If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d23-4198-80bb-40f9994298c9`
+", race_run.filenames().unwrap()
+                            ))
                         })
                 })
                 .await
@@ -579,7 +588,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
 
     async fn handle_vod_ready(
         ctx: &Context,
-        mut interaction: MessageComponentInteraction,
+        interaction: MessageComponentInteraction,
     ) -> Result<(), String> {
         interaction
             .create_interaction_response(&ctx.http, |ir| {
@@ -606,7 +615,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
     async fn handle_race_run_modal(
         &self,
         ctx: &Context,
-        mut interaction: ModalSubmitInteraction,
+        interaction: ModalSubmitInteraction,
     ) -> Result<(), String> {
         match interaction.data.custom_id.as_str() {
             CUSTOM_ID_USER_TIME_MODAL => Self::_handle_user_time_modal(ctx, interaction).await,
@@ -618,7 +627,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
     async fn handle_race_run_button(
         &self,
         ctx: &Context,
-        mut interaction: MessageComponentInteraction,
+        interaction: MessageComponentInteraction,
     ) -> Result<(), String> {
         let mrr: Option<RaceRun> = {
             let d = ctx.data.read().await;
@@ -755,7 +764,10 @@ async fn main() {
         .expect("Application ID was not a valid u64");
     let pool = get_pool().await.expect("Cannot connect to sqlite database");
 
-    let jh = tokio::spawn(race_cron::cron(pool.clone()));
+    let (shutdown_send, mut shutdown_recv) = tokio::sync::broadcast::channel::<Shutdown>(1);
+
+
+    let jh = tokio::spawn(race_cron::cron(pool.clone(), shutdown_send.subscribe()));
 
     let intents = GatewayIntents::GUILDS
         | GatewayIntents::GUILD_MESSAGES
@@ -767,7 +779,7 @@ async fn main() {
         // adding guild presences *solely* to get guild members populated in the cache to avoid
         // subsequent http requests
         | GatewayIntents::GUILD_PRESENCES;
-    let mut cb: Client = ClientBuilder::new(&tok, intents)
+    let mut client: Client = ClientBuilder::new(&tok, intents)
         .application_id(application_id)
         .event_handler(RaceHandler {})
         .type_map_insert::<AdminRoleMap>(Arc::new(RwLock::new(HashMap::<GuildId, RoleId>::new())))
@@ -775,7 +787,27 @@ async fn main() {
         .await
         .unwrap();
 
-    if let Err(e) = cb.start().await {
-        println!("Error starting bot: {}", e);
+
+    let shard_manager = client.shard_manager.clone();
+
+    tokio::spawn(async move {
+
+        if let Err(e) = client.start().await {
+            println!("Error starting bot: {}", e);
+        }
+    });
+
+    tokio::signal::ctrl_c().await.ok();
+    let (shutdown_signal_send, mut shutdown_signal_recv) = tokio::sync::mpsc::channel(1);
+    // send a copy of an mpsc sender to each watcher of the shutdown thread...
+    {
+        shutdown_send
+            .send(Shutdown {
+                _handle: shutdown_signal_send.clone(),
+            })
+            .ok();
     }
+
+    drop(shutdown_signal_send);
+    shutdown_signal_recv.recv().await;
 }

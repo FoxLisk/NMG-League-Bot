@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS races (
 -- represents a racer's participation in a race
 CREATE TABLE IF NOT EXISTS race_runs (
     id                INTEGER PRIMARY KEY NOT NULL,
+    uuid              TEXT UNIQUE NOT NULL,
     race_id           INTEGER NOT NULL,
     racer_id          TEXT NOT NULL,
     filenames         TEXT NOT NULL,

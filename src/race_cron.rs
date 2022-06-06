@@ -6,6 +6,8 @@ use serenity::model::webhook::Webhook;
 use serenity::utils::MessageBuilder;
 use sqlx::SqlitePool;
 use tokio::time::Duration;
+use crate::shutdown::Shutdown;
+use tokio::sync::broadcast::Receiver;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -40,10 +42,12 @@ fn format_finisher(run: &RaceRun) -> String {
                 r#"
     Reported time: {}
     Bot time: {}
-    VoD URL: {}"#,
+    VoD URL: {}
+    Expected filenames: {}"#,
                 run.reported_run_time.as_ref().unwrap_or(&"N/A".to_string()),
                 bot_time,
-                run.vod.as_ref().unwrap_or(&"N/A".to_string())
+                run.vod.as_ref().unwrap_or(&"N/A".to_string()),
+                run.filenames().map(|f|f.to_string()).unwrap_or("N/A".to_string())
             ));
             mb.build()
         }
@@ -112,12 +116,15 @@ async fn sweep(pool: &SqlitePool) {
     }
 }
 
-pub(crate) async fn cron(pool: SqlitePool) {
+pub(crate) async fn cron(pool: SqlitePool, mut sd: Receiver<Shutdown>) {
     let mut intv = tokio::time::interval(Duration::from_secs(60));
     loop {
         tokio::select! {
             _ = intv.tick() => {
                 sweep(&pool).await;
+            }
+            _sd = sd.recv() => {
+                println!("Cron shutting down");
             }
         }
     }

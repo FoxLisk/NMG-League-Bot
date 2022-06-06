@@ -141,6 +141,10 @@ pub(crate) mod race_run {
     use sqlx::database::HasArguments;
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
+    use rand::{thread_rng, Rng};
+    use rand::rngs::ThreadRng;
+    use crate::models::uuid_string;
+    use std::fmt::Formatter;
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -148,20 +152,67 @@ pub(crate) mod race_run {
         pub(crate) four: [char; 4],
     }
 
+    fn random_char(rng: &mut ThreadRng) -> char {
+        rng.gen_range('A'..='Z')
+    }
+
+    impl std::fmt::Display for Filenames {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.to_str())
+        }
+    }
+
     impl Filenames {
-        fn new_random() -> Self {
+
+        // TODO: find a list of words to filter or whatever
+        fn _validate_four(&self) -> bool {
+            match self.four {
+                ['c', 'u', 'n', 't'] => false,
+                _ => true
+            }
+        }
+
+        fn _validate_three(&self) -> bool {
+            match self.three {
+                ['f', 'a', 'g'] => false,
+                _ => true
+            }
+        }
+
+        fn _validate(&self) -> bool {
+            self._validate_three() && self._validate_four()
+        }
+
+        fn _new_random() -> Self {
+            let mut rng = thread_rng();
+            let one = random_char(&mut rng);
+            let three = [random_char(&mut rng),
+            random_char(&mut rng),
+            random_char(&mut rng),];
+            let four = [random_char(&mut rng),
+                random_char(&mut rng),
+                random_char(&mut rng),
+                random_char(&mut rng),];
+
             Self {
-                one: 'a',
-                three: ['a', 'b', 'c'],
-                four: ['d', 'e', 'f', 'g'],
+                one, three, four
+            }
+        }
+
+        fn new_random() -> Self {
+            loop {
+                let f = Self::_new_random();
+                if f._validate() {
+                    return f
+                }
             }
         }
 
         fn from_str(value: &str) -> Result<Self, String> {
-            let re = regex::Regex::new("([a-z]) ([a-z]{3}) ([a-z]{4})").unwrap();
+            let re = regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
             let caps = re
                 .captures(value)
-                .ok_or(format!("Invalid filenames field: {}", value))?;
+                .ok_or(format!("Invalid filenames field: {} - bad format", value))?;
             let one = caps
                 .get(1)
                 .ok_or(format!("Invalid filenames field: {}", value))?;
@@ -235,6 +286,7 @@ pub(crate) mod race_run {
 
     pub(crate) struct RaceRun {
         pub(crate) id: i64,
+        uuid: String,
         race_id: i64,
         racer_id: String,
         filenames: String,
@@ -255,7 +307,7 @@ pub(crate) mod race_run {
         ) -> Result<(RaceRun, RaceRun), String> {
             let mut runs = sqlx::query_as!(
                 RaceRun,
-                r#"SELECT id, race_id, racer_id, filenames,
+                r#"SELECT id, uuid, race_id, racer_id, filenames,
                 created as "created: _",
                 state as "state: _",
                 run_started as "run_started: _",
@@ -363,7 +415,7 @@ pub(crate) mod race_run {
             sqlx::query_as!(
                 Self,
                 r#"SELECT
-                id, race_id, racer_id, filenames,
+                id, uuid, race_id, racer_id, filenames,
                 created as "created: _",
                 state as "state: _",
                 run_started as "run_started: _",
@@ -384,6 +436,7 @@ pub(crate) mod race_run {
 
     pub(crate) struct NewRaceRun {
         race_id: i32,
+        uuid: String,
         racer_id: UserId,
         filenames: Filenames,
         created: u32,
@@ -394,6 +447,7 @@ pub(crate) mod race_run {
         pub(crate) fn new(race_id: i32, racer_id: UserId) -> Self {
             Self {
                 race_id,
+                uuid: uuid_string(),
                 racer_id,
                 filenames: Filenames::new_random(),
                 created: epoch_timestamp(),
@@ -404,9 +458,10 @@ pub(crate) mod race_run {
         pub(crate) async fn save(self, pool: &SqlitePool) -> Result<RaceRun, String> {
             let id_str = self.racer_id.to_string();
             sqlx::query!(
-                "INSERT INTO race_runs (race_id, racer_id, filenames, created, state)
-                 VALUES(?, ?, ?, ?, ?);
+                "INSERT INTO race_runs (uuid, race_id, racer_id, filenames, created, state)
+                 VALUES(?, ?, ?, ?, ?, ?);
                 SELECT last_insert_rowid() as rowid;",
+                self.uuid,
                 self.race_id,
                 id_str,
                 self.filenames,
@@ -417,6 +472,7 @@ pub(crate) mod race_run {
             .await
             .map(|row| RaceRun {
                 id: row.rowid as i64,
+                uuid: self.uuid,
                 race_id: self.race_id as i64,
                 racer_id: self.racer_id.to_string(),
                 filenames: self.filenames.to_str(),
