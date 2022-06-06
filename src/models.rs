@@ -106,11 +106,9 @@ pub(crate) mod race_run {
     use serenity::model::id::{UserId, MessageId};
 
     use crate::models::epoch_timestamp;
-    use sqlx::{SqlitePool, Encode, Sqlite, Type, Database, Decode};
-    use sqlx::database::{HasArguments, HasValueRef};
+    use sqlx::{SqlitePool, Encode, Sqlite, Type, Database};
+    use sqlx::database::{HasArguments};
     use sqlx::encode::IsNull;
-    use sqlx::error::BoxDynError;
-    use std::fmt::Formatter;
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -130,10 +128,10 @@ pub(crate) mod race_run {
         fn from_str(value: &str) -> Result<Self, String> {
             let re = regex::Regex::new("([a-z]) ([a-z]{3}) ([a-z]{4})").unwrap();
             let caps = re.captures(value)
-                .ok_or((format!("Invalid filenames field: {}", value)))?;
-            let one = caps.get(1).ok_or((format!("Invalid filenames field: {}", value)))?;
-            let three_cap = caps.get(2).ok_or((format!("Invalid filenames field: {}", value)))?;
-            let four_cap = caps.get(3).ok_or((format!("Invalid filenames field: {}", value)))?;
+                .ok_or(format!("Invalid filenames field: {}", value))?;
+            let one = caps.get(1).ok_or(format!("Invalid filenames field: {}", value))?;
+            let three_cap = caps.get(2).ok_or(format!("Invalid filenames field: {}", value))?;
+            let four_cap = caps.get(3).ok_or(format!("Invalid filenames field: {}", value))?;
 
             let mut three_chars = three_cap.as_str().chars();
             let three: [char; 3] = [three_chars.next().unwrap(), three_chars.next().unwrap(), three_chars.next().unwrap()];
@@ -182,7 +180,11 @@ pub(crate) mod race_run {
 
     #[derive(sqlx::Type)]
     enum RaceRunState {
-        CREATED
+        CREATED,
+        STARTED,
+        FINISHED,
+        TIME_SUBMITTED,
+        VOD_SUBMITTED,
     }
     
     pub(crate) struct RaceRun {
@@ -197,6 +199,7 @@ pub(crate) mod race_run {
         run_finished: Option<i64>,
         reported_run_time: Option<String>,
         reported_at: Option<u32>,
+        vod: Option<String>
     }
 
     impl RaceRun {
@@ -209,19 +212,27 @@ pub(crate) mod race_run {
         }
 
         pub(crate) fn start(&mut self) {
+            self.state = RaceRunState::STARTED;
             self.run_started = Some(epoch_timestamp() as i64);
         }
 
         /// If the run is already finished this does *not* update it
         pub(crate) fn finish(&mut self) {
+            self.state = RaceRunState::FINISHED;
             if self.run_finished.is_none() {
                 self.run_finished = Some(epoch_timestamp() as i64);
             }
         }
 
         pub(crate) fn report_user_time(&mut self, user_time: String) {
+            self.state = RaceRunState::TIME_SUBMITTED;
             self.reported_at = Some(epoch_timestamp());
             self.reported_run_time = Some(user_time);
+        }
+
+        pub(crate) fn set_vod(&mut self, vod: String) {
+            self.state = RaceRunState::VOD_SUBMITTED;
+            self.vod = Some(vod);
         }
 
         pub(crate) async fn save(&self, pool: &SqlitePool) -> Result<(), String> {
@@ -231,10 +242,12 @@ pub(crate) mod race_run {
                 "UPDATE race_runs
                 SET
                     race_id=?, racer_id=?, filenames=?, state=?, message_id=?,
-                    run_started=?, run_finished=?, reported_at=?, reported_run_time=?
+                    run_started=?, run_finished=?, reported_at=?, reported_run_time=?,
+                    vod=?
                  WHERE id=?;",
                  self.race_id, racer_id_str, self.filenames, self.state, mid_str,
                  self.run_started, self.run_finished, self.reported_at, self.reported_run_time,
+                 self.vod,
                  self.id)
                 .execute(pool)
                 .await
@@ -257,6 +270,7 @@ pub(crate) mod race_run {
                 run_finished as "run_finished: _",
                 reported_run_time,
                 reported_at as "reported_at: _",
+                vod,
                 message_id
                 FROM race_runs
                 WHERE message_id = ?"#,
@@ -309,6 +323,7 @@ pub(crate) mod race_run {
                     run_finished: None,
                     reported_run_time: None,
                     reported_at: None,
+                    vod: None,
                 })
                 .map_err(|e| e.to_string())
         }

@@ -45,6 +45,8 @@ const FOXLISK_USER_ID: u64 = 255676979460702210;
 const CUSTOM_ID_START_RUN: &str = "start_run";
 const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
 const CUSTOM_ID_FORFEIT_RUN: &str = "forfeit_run";
+const CUSTOM_ID_VOD_READY: &str = "vod_ready";
+const CUSTOM_ID_VOD_MODAL: &str = "vod_modal";
 const CUSTOM_ID_VOD: &str = "vod";
 const CUSTOM_ID_USER_TIME: &str = "user_time";
 const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
@@ -413,28 +415,101 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
 
     }
 
-    fn _get_user_input_from_finish_time_modal(mut data: Vec<ActionRow>) -> Result<String, String> {
+
+    fn get_user_input_from_modal_field(mut data: Vec<ActionRow>, custom_id: &str) -> Result<String, String> {
         if let Some(mut row) = data.pop() {
-            if let Some( arc) = row.components.pop() {
+            for arc in row.components {
                 match arc {
                     ActionRowComponent::InputText(it) => {
-                        if it.custom_id != CUSTOM_ID_USER_TIME {
-                            Err(format!("Unexpected custom_id in input text: {}", it.custom_id))
-                        } else {
-                            Ok(it.value)
+                        if it.custom_id == custom_id {
+                            return Ok(it.value);
                         }
-
                     }
                     _ => {
                         println!("Unexpected component");
-                        Err("Unexpected component".to_string())
+                        return Err("Unexpected component".to_string());
                     }
                 }
-            } else {
-                Err("No components in action row".to_string())
             }
+            Err(format!("Field {} not found in modal", custom_id))
         } else {
             Err("No action row?".to_string())
+        }
+    }
+
+
+    async fn _handle_vod_modal(ctx: &Context, mut interaction: ModalSubmitInteraction) -> Result<(), String> {
+        let mrr: Option<RaceRun> = {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            RaceRun::get_by_message_id(&interaction.message.clone().unwrap().id, &pool).await?
+        };
+
+        if let Some(mut rr) = mrr {
+            let user_input = Self::get_user_input_from_modal_field(std::mem::take(&mut interaction.data.components), CUSTOM_ID_VOD)?;
+            rr.set_vod(user_input);
+
+            {
+                let d = ctx.data.read().await;
+                let pool = d.get::<Pool>().unwrap();
+                rr.save(&pool).await?;
+            }
+            interaction.create_interaction_response(&ctx.http, |cir|
+                cir.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|ird|
+                        ird.content(
+                            "Thank you, your race is completed. Please message the admins if there are any issues."
+                        )
+                            .components(|cmp|cmp)
+                    )
+            ).await
+                .map(|_|())
+                .map_err(|e| e.to_string())
+
+        } else {
+            println!("Unknown message id {:?}", interaction.message);
+            Err("I don't know what race to set this vod on".to_string())
+        }
+
+    }
+
+
+    async fn _handle_user_time_modal(ctx: &Context, mut interaction: ModalSubmitInteraction) -> Result<(), String> {
+        let mrr: Option<RaceRun> = {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            RaceRun::get_by_message_id(&interaction.message.clone().unwrap().id, &pool).await?
+        };
+
+        if let Some(mut rr) = mrr {
+            let user_input = Self::get_user_input_from_modal_field(std::mem::take(&mut interaction.data.components), CUSTOM_ID_USER_TIME)?;
+            rr.report_user_time(user_input);
+            {
+                let d = ctx.data.read().await;
+                let pool = d.get::<Pool>().unwrap();
+                rr.save(&pool).await?;
+            }
+            interaction.create_interaction_response(&ctx.http, |cir|
+                cir.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|ird|
+                        ird.content(
+                            "Please click here once your VoD is ready"
+                        )
+                            .components(|cmp|cmp.create_action_row(|ar|
+                                ar.create_button(|btn|
+                                    btn.label("VoD ready")
+                                        .custom_id(CUSTOM_ID_VOD_READY)
+                                        .style(ButtonStyle::Success)
+                                ))
+                            )
+                    )
+            ).await
+                .map(|_|())
+                .map_err(|e| e.to_string())
+
+        } else {
+            println!("Unknown message id {:?}", interaction.message);
+            Err("Unknown whatever I'm exhausted".to_string())
         }
     }
 
@@ -445,40 +520,43 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         mut interaction: ModalSubmitInteraction,
     ) -> Result<(), String> {
 
-        if interaction.data.custom_id != CUSTOM_ID_USER_TIME_MODAL {
-            println!("Unexpected modal");
-            return Err("Unexpected modal".to_string());
-        }
-        let mrr: Option<RaceRun> = {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            RaceRun::get_by_message_id(&interaction.message.clone().unwrap().id, &pool).await?
-        };
+        match interaction.data.custom_id.as_str() {
+            CUSTOM_ID_USER_TIME_MODAL => {
+                Self::_handle_user_time_modal(ctx, interaction).await
+            },
+            CUSTOM_ID_VOD_MODAL => {
+                Self::_handle_vod_modal(ctx, interaction).await
 
-        if let Some(mut rr) = mrr {
-            let user_input = Self::_get_user_input_from_finish_time_modal(std::mem::take(&mut interaction.data.components))?;
-            rr.report_user_time(user_input);
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            rr.save(&pool).await?;
-            interaction.create_interaction_response(&ctx.http, |cir|
-                cir.kind(InteractionResponseType::UpdateMessage)
-                    .interaction_response_data(|ird|
-                    ird.content(
-                        "Race completed. Please let the admins know if anything went wrong."
-                    )
-                        .components(|cmp|cmp)
-                )
-            ).await
-                .map(|_|())
-                .map_err(|e| e.to_string())
-
-        } else {
-            println!("Unknown message id {:?}", interaction.message);
-            Err("Unknown whatever I'm exhausted".to_string())
+            },
+            _ => {
+                Err(format!("Unexpected modal: {}", interaction.data.custom_id))
+            }
         }
 
     }
+
+
+    async fn handle_vod_ready(ctx: &Context, mut interaction: MessageComponentInteraction) -> Result<(), String> {
+        interaction.create_interaction_response(&ctx.http, |ir|
+            ir.kind(InteractionResponseType::Modal)
+                .interaction_response_data(|ird|
+                    ird.title("VoD URL")
+                        .custom_id(CUSTOM_ID_VOD_MODAL)
+                        .components(|cmps|
+                            cmps.create_action_row(|row|
+                                row.create_input_text(|it|
+                                    it.label("Enter VoD here")
+                                        .custom_id(CUSTOM_ID_VOD)
+                                        .style(InputTextStyle::Short)
+                                )
+                            )
+                        )
+                )
+        ).await
+            .map(|_|())
+            .map_err(|e| e.to_string())
+    }
+
 
     async fn handle_race_run_button(
         &self,
@@ -500,6 +578,11 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
                     drop(pool);
                     drop(d);
                     Self::handle_run_finish(ctx, interaction, rr,).await
+                },
+                CUSTOM_ID_VOD_READY => {
+                    drop(pool);
+                    drop(d);
+                    Self::handle_vod_ready(ctx, interaction).await
                 }
                 _ => {
                     println!("Unhandled interaction");

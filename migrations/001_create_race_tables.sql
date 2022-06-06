@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS race_runs (
     reported_run_time TEXT NULL,
     reported_at       INTEGER NULL,
     message_id        TEXT NULL,
+    vod               TEXT NULL,
 
     FOREIGN KEY(race_id) REFERENCES races(id)
 );
