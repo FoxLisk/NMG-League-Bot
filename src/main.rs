@@ -360,6 +360,28 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         }
     }
 
+    async fn handle_run_forfeit(
+        ctx: &Context,
+        mut interaction: MessageComponentInteraction,
+        mut race_run: RaceRun,
+    ) -> Result<(), String> {
+        race_run.forfeit();
+        {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            if let Err(e) = race_run.save(&pool).await {
+                println!("Error saving race: {}", e);
+            }
+        }
+        interaction.create_interaction_response(&ctx.http, |ir|
+        ir.kind(InteractionResponseType::UpdateMessage)
+            .interaction_response_data(|ird|
+                ird.content("You have forfeited this match. Please let the admins know if there are any issues.")
+                    .components(|cmp| cmp)
+            )
+        ).await.map(|_|()).map_err(|e|e.to_string())
+    }
+
     async fn handle_run_finish(
         ctx: &Context,
         mut interaction: MessageComponentInteraction,
@@ -401,10 +423,14 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         ctx: &Context,
         mut interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
-        pool: &SqlitePool,
     ) -> Result<(), String> {
         race_run.start();
-        match race_run.save(pool).await {
+        let res = {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            race_run.save(pool).await
+        };
+        match res {
             Ok(_) => interaction
                 .create_interaction_response(&ctx.http, |ir| {
                     ir.kind(InteractionResponseType::UpdateMessage)
@@ -551,17 +577,6 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         }
     }
 
-    async fn handle_race_run_modal(
-        &self,
-        ctx: &Context,
-        mut interaction: ModalSubmitInteraction,
-    ) -> Result<(), String> {
-        match interaction.data.custom_id.as_str() {
-            CUSTOM_ID_USER_TIME_MODAL => Self::_handle_user_time_modal(ctx, interaction).await,
-            CUSTOM_ID_VOD_MODAL => Self::_handle_vod_modal(ctx, interaction).await,
-            _ => Err(format!("Unexpected modal: {}", interaction.data.custom_id)),
-        }
-    }
 
     async fn handle_vod_ready(
         ctx: &Context,
@@ -589,30 +604,43 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
             .map_err(|e| e.to_string())
     }
 
+
+    async fn handle_race_run_modal(
+        &self,
+        ctx: &Context,
+        mut interaction: ModalSubmitInteraction,
+    ) -> Result<(), String> {
+        match interaction.data.custom_id.as_str() {
+            CUSTOM_ID_USER_TIME_MODAL => Self::_handle_user_time_modal(ctx, interaction).await,
+            CUSTOM_ID_VOD_MODAL => Self::_handle_vod_modal(ctx, interaction).await,
+            _ => Err(format!("Unexpected modal: {}", interaction.data.custom_id)),
+        }
+    }
+
     async fn handle_race_run_button(
         &self,
         ctx: &Context,
         mut interaction: MessageComponentInteraction,
     ) -> Result<(), String> {
-        let d = ctx.data.read().await;
-        let pool = d.get::<Pool>().unwrap();
+        let mrr: Option<RaceRun> = {
 
-        let mrr: Option<RaceRun> =
-            RaceRun::get_by_message_id(&interaction.message.id, &pool).await?;
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            RaceRun::get_by_message_id(&interaction.message.id, &pool).await?
+        };
+
         if let Some(rr) = mrr {
             println!("Got interaction for race {} - {:?}", rr.id, interaction);
             match interaction.data.custom_id.as_str() {
-                CUSTOM_ID_START_RUN => Self::handle_run_start(ctx, interaction, rr, &pool).await,
+                CUSTOM_ID_START_RUN => Self::handle_run_start(ctx, interaction, rr).await,
                 CUSTOM_ID_FINISH_RUN => {
-                    // TODO: these shouldn't be here to begin with really
-                    drop(pool);
-                    drop(d);
                     Self::handle_run_finish(ctx, interaction, rr).await
                 }
                 CUSTOM_ID_VOD_READY => {
-                    drop(pool);
-                    drop(d);
                     Self::handle_vod_ready(ctx, interaction).await
+                },
+                CUSTOM_ID_FORFEIT_RUN => {
+                    Self::handle_run_forfeit(ctx, interaction, rr).await
                 }
                 _ => {
                     println!("Unhandled interaction");

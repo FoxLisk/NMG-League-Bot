@@ -204,6 +204,7 @@ pub(crate) mod race_run {
         FINISHED,
         TIME_SUBMITTED,
         VOD_SUBMITTED,
+        FORFEIT,
     }
 
     pub(crate) struct RaceRun {
@@ -241,6 +242,10 @@ pub(crate) mod race_run {
             if self.run_finished.is_none() {
                 self.run_finished = Some(epoch_timestamp() as i64);
             }
+        }
+
+        pub(crate) fn forfeit(&mut self) {
+            self.state = RaceRunState::FORFEIT;
         }
 
         pub(crate) fn report_user_time(&mut self, user_time: String) {
