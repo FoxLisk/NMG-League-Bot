@@ -1,8 +1,12 @@
-use serenity::model::interactions::{InteractionResponseType};
-use serenity::model::interactions::application_command::ApplicationCommandInteraction;
 use serenity::http::Http;
+use serenity::model::interactions::application_command::ApplicationCommandInteraction;
+use serenity::model::interactions::InteractionResponseType;
 
-pub(crate) async fn send_response<T: Into<String>>(http: impl AsRef<Http>, interaction: ApplicationCommandInteraction, message: T) -> Result<(), String>{
+pub(crate) async fn send_response<T: Into<String>>(
+    http: impl AsRef<Http>,
+    interaction: ApplicationCommandInteraction,
+    message: T,
+) -> Result<(), String> {
     interaction
         .create_interaction_response(&http, |resp| {
             resp.kind(InteractionResponseType::ChannelMessageWithSource)
