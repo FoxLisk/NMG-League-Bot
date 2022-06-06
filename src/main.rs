@@ -33,10 +33,21 @@ use db::get_pool;
 use sqlx::SqlitePool;
 use models::race::{NewRace, Race};
 use models::race_run::RaceRun;
+use serenity::model::interactions::message_component::{ButtonStyle, MessageComponentInteraction, InputTextStyle, ActionRow};
+use serenity::model::interactions::modal::{ModalSubmitInteraction, ModalSubmitInteractionData};
+use serenity::futures::StreamExt;
+use serenity::model::prelude::message_component::ActionRowComponent;
 
 const TOKEN_VAR: &str = "DISCORD_TOKEN";
 const APPLICATION_ID_VAR: &str = "APPLICATION_ID";
 const FOXLISK_USER_ID: u64 = 255676979460702210;
+
+const CUSTOM_ID_START_RUN: &str = "start_run";
+const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
+const CUSTOM_ID_FORFEIT_RUN: &str = "forfeit_run";
+const CUSTOM_ID_VOD: &str = "vod";
+const CUSTOM_ID_USER_TIME: &str = "user_time";
+const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 
 struct AdminRoleMap;
 
@@ -181,24 +192,47 @@ impl RaceHandler {
         Ok((u1, u2))
     }
 
-    async fn notify_racer(ctx: &Context, race_run: RaceRun, race: &Race) -> Result<(), String> {
-        if race_run.racer_id != FOXLISK_USER_ID {
+    async fn notify_racer(ctx: &Context, mut race_run: RaceRun, race: &Race, pool: &SqlitePool) -> Result<(), String> {
+        if race_run.racer_id() != FOXLISK_USER_ID {
             println!("Not DMing anyone but myself yet!");
             return Ok(())
         }
-        let user: User = race_run.racer_id.to_user(ctx).await.map_err(|e| e.to_string())?;
-        user.direct_message(ctx, |m|
-            m.content(
-                format!(
-"Hello, your asynchronous race is now ready.
+        let user: User = race_run.racer_id().to_user(ctx).await.map_err(|e| e.to_string())?;
+        match user.direct_message(ctx, |m|
+            {
+
+                m.components(|cmp|
+                    cmp.create_action_row(|row|
+                        row.create_button(|btn|
+                            btn.label("Start run")
+                                .custom_id(CUSTOM_ID_START_RUN)
+                                .style(ButtonStyle::Primary)
+                        )
+                    )
+                );
+                m.content(
+                    format!(
+                        "Hello, your asynchronous race is now ready.
 When you're ready to begin your race, blah blah blah
 
 If anything goes wrong, tell an admin there was an issue with race `{}`",
-                    race.uuid
-            ))
-        ).await
-            .map(|_|())
-            .map_err(|e| e.to_string())
+                        race.uuid
+                    ));
+                m
+            }
+        ).await {
+            Ok(m) => {
+
+                race_run.set_message_id(m.id);
+                race_run.save(pool).await
+
+            }
+            Err(e) => {
+                println!("Error sending dm: {}", e);
+                Err(e.to_string())
+            }
+        }
+
     }
 
     async fn handle_create_race(
@@ -267,10 +301,15 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         };
 
         if let Some((race, (run_1, run_2))) = runs {
-            let (first, second) = tokio::join!(
-                Self::notify_racer(&ctx, run_1, &race),
-                Self::notify_racer(&ctx, run_2, &race)
-            );
+
+            let (first, second) = {
+                let d = ctx.data.read().await;
+                let pool = d.get::<Pool>().unwrap();
+                tokio::join!(
+                    Self::notify_racer(&ctx, run_1, &race, &pool),
+                    Self::notify_racer(&ctx, run_2, &race, &pool)
+                )
+            };
             if let Err(err) = first.and(second) {
                 send_response(&ctx.http, interaction, "Internal error creating race").await
             } else {
@@ -300,6 +339,179 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         } else {
             send_response(&ctx.http, interaction, "Error creating race").await
         }
+    }
+
+    async fn handle_run_finish(ctx: &Context, mut interaction: MessageComponentInteraction, mut race_run: RaceRun) -> Result<(), String> {
+        race_run.finish();
+        {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            if let Err(e) = race_run.save(&pool).await {
+                println!("Error saving race: {}", e);
+            }
+        }
+
+        interaction.create_interaction_response(&ctx.http, |ir|
+            ir.kind(InteractionResponseType::Modal)
+
+                .interaction_response_data(|ird|
+                ird.content("Please enter finish time in **H:MM:SS** format")
+                    .custom_id(CUSTOM_ID_USER_TIME_MODAL)
+                    .title("Finish time")
+                    .components(|cmps|
+                        cmps.create_action_row(|ar|
+                        ar.create_input_text(|it|
+                        it.custom_id(CUSTOM_ID_USER_TIME)
+                            .label("blah")
+                            .style(InputTextStyle::Short)
+                        )
+                    )
+                )
+            )
+        ).await
+            .map(|_|())
+            .map_err(|e| e.to_string())
+    }
+
+
+    async fn handle_run_start(ctx: &Context, mut interaction: MessageComponentInteraction, mut race_run: RaceRun, pool: &SqlitePool) -> Result<(), String> {
+        race_run.start();
+        match race_run.save(pool).await {
+            Ok(_) =>  {
+                interaction.create_interaction_response(&ctx.http, |ir|
+                    ir.kind(InteractionResponseType::UpdateMessage)
+                        .interaction_response_data(|ird|
+
+                            ird.components(|cmps|
+                                cmps.create_action_row(|r|
+
+                                    r.create_button(|input|
+                                        input.label("Finish run")
+                                            .custom_id(CUSTOM_ID_FINISH_RUN)
+                                            .style(ButtonStyle::Success)
+                                    ).create_button(|btn|
+                                        btn.label("Forfeit")
+                                            .custom_id(CUSTOM_ID_FORFEIT_RUN)
+                                            .style(ButtonStyle::Danger)
+                                    )
+                                )
+                            )
+                        )
+                ).await
+                    .map(|_|())
+                    .map_err(|e| e.to_string())
+            },
+            Err(e) => {
+                println!("Error updating race run: {}", e);
+                interaction.edit_original_interaction_response(&ctx.http, |res|
+                    res.content("There was an error starting your race. Please ping FoxLisk")
+                ).await
+                    .map(|_|())
+                    .map_err(|e| e.to_string())
+            }
+        }
+
+    }
+
+    fn _get_user_input_from_finish_time_modal(mut data: Vec<ActionRow>) -> Result<String, String> {
+        if let Some(mut row) = data.pop() {
+            if let Some( arc) = row.components.pop() {
+                match arc {
+                    ActionRowComponent::InputText(it) => {
+                        if it.custom_id != CUSTOM_ID_USER_TIME {
+                            Err(format!("Unexpected custom_id in input text: {}", it.custom_id))
+                        } else {
+                            Ok(it.value)
+                        }
+
+                    }
+                    _ => {
+                        println!("Unexpected component");
+                        Err("Unexpected component".to_string())
+                    }
+                }
+            } else {
+                Err("No components in action row".to_string())
+            }
+        } else {
+            Err("No action row?".to_string())
+        }
+    }
+
+
+    async fn handle_race_run_modal(
+        &self,
+        ctx: &Context,
+        mut interaction: ModalSubmitInteraction,
+    ) -> Result<(), String> {
+
+        if interaction.data.custom_id != CUSTOM_ID_USER_TIME_MODAL {
+            println!("Unexpected modal");
+            return Err("Unexpected modal".to_string());
+        }
+        let mrr: Option<RaceRun> = {
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            RaceRun::get_by_message_id(&interaction.message.clone().unwrap().id, &pool).await?
+        };
+
+        if let Some(mut rr) = mrr {
+            let user_input = Self::_get_user_input_from_finish_time_modal(std::mem::take(&mut interaction.data.components))?;
+            rr.report_user_time(user_input);
+            let d = ctx.data.read().await;
+            let pool = d.get::<Pool>().unwrap();
+            rr.save(&pool).await?;
+            interaction.create_interaction_response(&ctx.http, |cir|
+                cir.kind(InteractionResponseType::UpdateMessage)
+                    .interaction_response_data(|ird|
+                    ird.content(
+                        "Race completed. Please let the admins know if anything went wrong."
+                    )
+                        .components(|cmp|cmp)
+                )
+            ).await
+                .map(|_|())
+                .map_err(|e| e.to_string())
+
+        } else {
+            println!("Unknown message id {:?}", interaction.message);
+            Err("Unknown whatever I'm exhausted".to_string())
+        }
+
+    }
+
+    async fn handle_race_run_button(
+        &self,
+        ctx: &Context,
+        mut interaction: MessageComponentInteraction,
+    ) -> Result<(), String> {
+        let d = ctx.data.read().await;
+        let pool = d.get::<Pool>().unwrap();
+
+        let mrr: Option<RaceRun> = RaceRun::get_by_message_id(&interaction.message.id, &pool).await?;
+        if let Some(rr) = mrr {
+            println!("Got interaction for race {} - {:?}", rr.id, interaction);
+            match interaction.data.custom_id.as_str() {
+                CUSTOM_ID_START_RUN => {
+                    Self::handle_run_start(ctx, interaction, rr, &pool).await
+                },
+                CUSTOM_ID_FINISH_RUN => {
+                    // TODO: these shouldn't be here to begin with really
+                    drop(pool);
+                    drop(d);
+                    Self::handle_run_finish(ctx, interaction, rr,).await
+                }
+                _ => {
+                    println!("Unhandled interaction");
+                    Err("Unhandled interaction".to_string())
+                }
+            }
+
+        } else {
+            // TODO: Look up based on other fields
+            Err(format!("Unknown message id: {}", interaction.message.id))
+        }
+
     }
 }
 
@@ -348,9 +560,6 @@ impl EventHandler for RaceHandler {
 
     }
 
-    async fn message(&self, _ctx: Context, new_message: Message) {
-        println!("Got message: {:?}", new_message);
-    }
 
     async fn ready(&self, _ctx: Context, data_about_bot: Ready) {
         println!("Ready! {:?}", data_about_bot);
@@ -361,24 +570,46 @@ impl EventHandler for RaceHandler {
 
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         println!("Got interaction: {:?}", interaction);
-        if let Interaction::ApplicationCommand(i) = interaction {
-            println!("interaction name: {}", i.data.name);
-            match i.data.name.as_str() {
-                Self::TEST_CMD => {
-                    self.handle_test(&ctx.http, i).await;
+        match interaction {
+            Interaction::ApplicationCommand(i) => {
+                println!("interaction name: {}", i.data.name);
+                match i.data.name.as_str() {
+                    Self::TEST_CMD => {
+                        self.handle_test(&ctx.http, i).await;
 
-                }
-                Self::CREATE_RACE_CMD => {
-                    if let Err(e) = self.handle_create_race(&ctx, i).await {
-                        println!("Error creating race: {}", e);
+                    }
+                    Self::CREATE_RACE_CMD => {
+                        if let Err(e) = self.handle_create_race(&ctx, i).await {
+                            println!("Error creating race: {}", e);
+                        }
+
+                    }
+                    _ => {
+                        println!("Unknown interaction :( :(");
                     }
                 }
-                _ => {
-                    println!("Unknown interaction :( :(");
+            },
+            Interaction::MessageComponent(mci) => {
+                println!("Message component interaction: {:?}", mci);
+                match self.handle_race_run_button(&ctx, mci).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        println!("Error handling interaction: {}", e);
+                    }
+                }
+            },
+            Interaction::ModalSubmit(msi) => {
+                println!("Modal submit: {:?}", msi);
+                match self.handle_race_run_modal(&ctx, msi).await {
+                    Ok(_) => {},
+                    Err(e) => {
+                        println!("Error handling interaction: {}", e);
+                    }
                 }
             }
-        } else {
-            println!("Unexpected interaction");
+            _ =>  {
+                println!("Unexpected interaction");
+            }
         }
     }
 }

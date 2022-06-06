@@ -6,12 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-serenity = { version = "0.11.2", default-features=false, features=["client", "gateway", "rustls_backend", "model", "cache"]}
 tokio = { version = "1.19.0", features = ["macros", "rt-multi-thread", "sync", "fs", "io-util"]}
 sqlx = {version = "0.5.13", features = [ "runtime-tokio-rustls" , "sqlite"]}
 dotenv = "0.15.0"
 uuid = {version = "1.1.1", features = ["v4"] }
 rand = "0.8"
+regex = "1"
+
+[dependencies.serenity]
+version = "0.11.2"
+default-features=false
+features=["client", "gateway", "rustls_backend", "model", "cache", "collector"]
 
 [build-dependencies]
 sqlx = {version = "0.5.13", features = [ "runtime-tokio-rustls" , "sqlite"]}

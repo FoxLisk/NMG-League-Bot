@@ -103,17 +103,19 @@ pub(crate) mod race_run {
     // FOREIGN KEY(race_id) REFERENCES races(id)
     // );
 
-    use serenity::model::id::UserId;
+    use serenity::model::id::{UserId, MessageId};
 
     use crate::models::epoch_timestamp;
-    use sqlx::{SqlitePool, Encode, Sqlite, Type, Database};
-    use sqlx::database::HasArguments;
+    use sqlx::{SqlitePool, Encode, Sqlite, Type, Database, Decode};
+    use sqlx::database::{HasArguments, HasValueRef};
     use sqlx::encode::IsNull;
+    use sqlx::error::BoxDynError;
+    use std::fmt::Formatter;
 
-    struct Filenames {
-        one: char,
-        three: [char; 3],
-        four: [char; 4]
+    pub(crate) struct Filenames {
+        pub(crate) one: char,
+        pub(crate) three: [char; 3],
+        pub(crate) four: [char; 4]
     }
 
     impl Filenames {
@@ -123,6 +125,39 @@ pub(crate) mod race_run {
                 three: ['a', 'b', 'c'],
                 four: ['d', 'e', 'f', 'g'],
             }
+        }
+
+        fn from_str(value: &str) -> Result<Self, String> {
+            let re = regex::Regex::new("([a-z]) ([a-z]{3}) ([a-z]{4})").unwrap();
+            let caps = re.captures(value)
+                .ok_or((format!("Invalid filenames field: {}", value)))?;
+            let one = caps.get(1).ok_or((format!("Invalid filenames field: {}", value)))?;
+            let three_cap = caps.get(2).ok_or((format!("Invalid filenames field: {}", value)))?;
+            let four_cap = caps.get(3).ok_or((format!("Invalid filenames field: {}", value)))?;
+
+            let mut three_chars = three_cap.as_str().chars();
+            let three: [char; 3] = [three_chars.next().unwrap(), three_chars.next().unwrap(), three_chars.next().unwrap()];
+
+            let mut four_chars = four_cap.as_str().chars();
+            let four: [char; 4] = [four_chars.next().unwrap(), four_chars.next().unwrap(), four_chars.next().unwrap(), four_chars.next().unwrap()];
+
+            Ok(
+                Self   {
+                    one: one.as_str().chars().next().unwrap(),
+                    three,
+                    four
+                }
+            )
+        }
+
+        fn to_str(&self) -> String {
+            let mut s = String::with_capacity(10);
+            s.push(self.one);
+            s.push(' ');
+            s.extend(self.three);
+            s.push(' ');
+            s.extend(self.four);
+            s
         }
     }
 
@@ -144,18 +179,92 @@ pub(crate) mod race_run {
         }
     }
 
+
     #[derive(sqlx::Type)]
     enum RaceRunState {
         CREATED
     }
     
     pub(crate) struct RaceRun {
-        id: i32,
-        race_id: i32,
-        pub(crate) racer_id: UserId,
-        filenames: Filenames,
+        pub(crate) id: i64,
+        race_id: i64,
+        racer_id: String,
+        filenames: String,
         created: u32,
         state: RaceRunState,
+        message_id: Option<String>,
+        run_started: Option<i64>,
+        run_finished: Option<i64>,
+        reported_run_time: Option<String>,
+        reported_at: Option<u32>,
+    }
+
+    impl RaceRun {
+        pub(crate) fn racer_id(&self) -> UserId {
+            UserId(self.racer_id.parse().unwrap())
+        }
+
+        pub(crate) fn filenames(&self) -> Result<Filenames, String> {
+            Filenames::from_str(&self.filenames)
+        }
+
+        pub(crate) fn start(&mut self) {
+            self.run_started = Some(epoch_timestamp() as i64);
+        }
+
+        /// If the run is already finished this does *not* update it
+        pub(crate) fn finish(&mut self) {
+            if self.run_finished.is_none() {
+                self.run_finished = Some(epoch_timestamp() as i64);
+            }
+        }
+
+        pub(crate) fn report_user_time(&mut self, user_time: String) {
+            self.reported_at = Some(epoch_timestamp());
+            self.reported_run_time = Some(user_time);
+        }
+
+        pub(crate) async fn save(&self, pool: &SqlitePool) -> Result<(), String> {
+            let racer_id_str = self.racer_id.to_string();
+            let mid_str = self.message_id.as_ref().map(|m| m.to_string());
+            sqlx::query!(
+                "UPDATE race_runs
+                SET
+                    race_id=?, racer_id=?, filenames=?, state=?, message_id=?,
+                    run_started=?, run_finished=?, reported_at=?, reported_run_time=?
+                 WHERE id=?;",
+                 self.race_id, racer_id_str, self.filenames, self.state, mid_str,
+                 self.run_started, self.run_finished, self.reported_at, self.reported_run_time,
+                 self.id)
+                .execute(pool)
+                .await
+                .map(|_|())
+                .map_err(|e| e.to_string())
+        }
+
+        pub(crate) fn set_message_id(&mut self, message_id: MessageId) {
+            self.message_id = Some(message_id.to_string());
+        }
+
+        pub(crate) async fn get_by_message_id(message_id: &MessageId, pool:&SqlitePool) -> Result<Option<Self>, String> {
+            let mid_str = message_id.to_string();
+            sqlx::query_as!(
+                Self,
+                r#"SELECT id, race_id, racer_id, filenames,
+                created as "created: _",
+                state as "state: _",
+                run_started as "run_started: _",
+                run_finished as "run_finished: _",
+                reported_run_time,
+                reported_at as "reported_at: _",
+                message_id
+                FROM race_runs
+                WHERE message_id = ?"#,
+                mid_str
+            ).fetch_optional(pool)
+                .await
+                .map_err(|e| e.to_string())
+        }
     }
 
     pub(crate) struct NewRaceRun {
@@ -170,7 +279,7 @@ pub(crate) mod race_run {
         pub(crate) fn new(race_id: i32, racer_id: UserId) -> Self {
             Self {
                 race_id,
-                racer_id: racer_id,
+                racer_id,
                 filenames: Filenames::new_random(),
                 created: epoch_timestamp(),
                 state: RaceRunState::CREATED,
@@ -189,12 +298,17 @@ pub(crate) mod race_run {
             ).fetch_one(pool)
                 .await
                 .map(|row| RaceRun {
-                    id: row.rowid,
-                    race_id: self.race_id,
-                    racer_id: self.racer_id,
-                    filenames: self.filenames,
+                    id: row.rowid as i64,
+                    race_id: self.race_id as i64,
+                    racer_id: self.racer_id.to_string(),
+                    filenames: self.filenames.to_str(),
                     created: self.created,
                     state: self.state,
+                    message_id: None,
+                    run_started: None,
+                    run_finished: None,
+                    reported_run_time: None,
+                    reported_at: None,
                 })
                 .map_err(|e| e.to_string())
         }
