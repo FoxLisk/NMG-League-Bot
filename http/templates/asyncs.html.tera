@@ -1,0 +1,5 @@
+{% extends "base" %}
+{% block pagename %}Async Status{% endblock %}
+{% block body %}
+you win
+{% endblock %}

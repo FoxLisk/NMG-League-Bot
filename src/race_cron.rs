@@ -1,15 +1,15 @@
 use crate::constants::{TOKEN_VAR, WEBHOOK_VAR};
+use crate::db::get_pool;
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
 use serenity::http::Http;
+use serenity::model::channel::MessageFlags;
 use serenity::model::webhook::Webhook;
 use serenity::utils::MessageBuilder;
 use sqlx::SqlitePool;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
-use serenity::model::channel::MessageFlags;
-use crate::db::get_pool;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -87,9 +87,8 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhook: &Webhook, http:
                     format_finisher(&r1),
                     format_finisher(&r2)
                 ))
-                    .flags(MessageFlags::SUPPRESS_EMBEDS)
+                .flags(MessageFlags::SUPPRESS_EMBEDS)
             })
-
             .await
         {
             println!("Error executing webhook: {}", e);

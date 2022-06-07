@@ -1,0 +1,5 @@
+{% extends "base" %}
+{% block pagename %}Login{% endblock %}
+{% block body %}
+<a href="{{ url }}">Login here</a>
+{% endblock %}

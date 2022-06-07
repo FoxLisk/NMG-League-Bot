@@ -1,0 +1,15 @@
+<!DOCTYPE HTML>
+{% block templates %}
+{% endblock %}
+<html lang="en">
+	<head>
+	    <title>{% block pagename %}{% endblock %} | NMG Legue</title>
+		<link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
+	    {% block scripts %}
+	    {% endblock %}
+	</head>
+	<body class="bg-sky-400">
+		{% block body %}
+		{% endblock %}
+	</body>
+</html>

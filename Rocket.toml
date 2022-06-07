@@ -1,0 +1,7 @@
+[default]
+template_dir = "http/templates"
+log_level = "critical"
+port = 8005
+
+[default.shutdown]
+ctrlc = false

@@ -17,7 +17,6 @@ pub(crate) async fn get_pool() -> Result<SqlitePool, sqlx::Error> {
         .create_if_missing(true)
         .foreign_keys(true);
 
-
     let _lock = DB_LOCK.lock().await;
 
     SqlitePoolOptions::new()

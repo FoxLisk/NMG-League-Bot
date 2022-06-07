@@ -24,7 +24,7 @@ use serenity::model::user::User;
 use serenity::model::Permissions;
 use serenity::prelude::{GatewayIntents, TypeMapKey};
 use serenity::utils::MessageBuilder;
-use serenity::{async_trait, Client};
+use serenity::{async_trait, CacheAndHttp, Client};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
@@ -192,7 +192,6 @@ impl RaceHandler {
             return Err(Error::BadInput("Those are the same player!".to_string()));
         }
 
-
         let u1 = racer_1
             .to_user(&ctx)
             .await
@@ -341,7 +340,6 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
                                         .mention(&r2)
                                         .build(),
                                 )
-
                             })
                     })
                     .await
@@ -645,11 +643,17 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
     }
 }
 
-async fn maybe_update_admin_role(ctx: &Context, role: Role) {
+async fn maybe_update_admin_role(ctx: &Context, role: Role) -> Option<Role> {
     if role.name.to_lowercase() == "admin" {
         let data = ctx.data.write().await;
         let role_map = data.get::<AdminRoleMap>().unwrap();
-        role_map.write().await.insert(role.guild_id, role.id);
+        role_map
+            .write()
+            .await
+            .insert(role.guild_id.clone(), role.id.clone());
+        Some(role)
+    } else {
+        None
     }
 }
 
@@ -667,7 +671,9 @@ impl EventHandler for RaceHandler {
             .await;
         println!("Set commands: {:?}", set_commands_result);
         for role in guild.roles.into_values() {
-            maybe_update_admin_role(&ctx, role).await;
+            if let Some(_) = maybe_update_admin_role(&ctx, role).await {
+                break;
+            }
         }
     }
 
@@ -745,8 +751,9 @@ impl TypeMapKey for Pool {
     type Value = SqlitePool;
 }
 
-
-pub(crate) async fn launch_discord_bot(mut shutdown_recv: tokio::sync::broadcast::Receiver<Shutdown>) {
+pub(crate) async fn launch_discord_bot(
+    mut shutdown_recv: tokio::sync::broadcast::Receiver<Shutdown>,
+) -> (Arc<CacheAndHttp>, Arc<RwLock<HashMap<GuildId, RoleId>>>) {
     // https://discord.com/api/oauth2/authorize?client_id=982863079555600414&permissions=122675080256&scope=bot%20applications.commands
     let tok = dotenv::var(TOKEN_VAR).expect(&*format!("{} not found in environment", TOKEN_VAR));
     let application_id = dotenv::var(APPLICATION_ID_VAR)
@@ -765,22 +772,28 @@ pub(crate) async fn launch_discord_bot(mut shutdown_recv: tokio::sync::broadcast
         // adding guild presences *solely* to get guild members populated in the cache to avoid
         // subsequent http requests
         | GatewayIntents::GUILD_PRESENCES;
+    let guild_map = Arc::new(RwLock::new(HashMap::<GuildId, RoleId>::new()));
     let mut client: Client = ClientBuilder::new(&tok, intents)
         .application_id(application_id)
         .event_handler(RaceHandler {})
-        .type_map_insert::<AdminRoleMap>(Arc::new(RwLock::new(HashMap::<GuildId, RoleId>::new())))
+        .type_map_insert::<AdminRoleMap>(guild_map.clone())
         .type_map_insert::<Pool>(pool)
         .await
         .unwrap();
 
     let shard_manager = client.shard_manager.clone();
+    let cache_and_http = client.cache_and_http.clone();
 
     tokio::spawn(async move {
         shutdown_recv.recv().await.ok();
         shard_manager.lock().await.shutdown_all().await;
         println!("Discord shutting down gracefully");
     });
-    if let Err(e) = client.start().await {
-        println!("Error starting bot: {}", e);
-    }
+    tokio::spawn(async move {
+        if let Err(e) = client.start().await {
+            println!("Error starting bot: {}", e);
+        }
+    });
+
+    (cache_and_http, guild_map)
 }

@@ -1,0 +1,8 @@
+{% extends "base" %}
+{% block scripts %}
+    <script defer type="text/javascript" src="static/js/login_redirect.js"></script>
+{% endblock %}
+{% block pagename %}Redirect...{% endblock %}
+{% block body %}
+Redirecting you, one moment
+{% endblock %}
