@@ -8,6 +8,8 @@ use serenity::utils::MessageBuilder;
 use sqlx::SqlitePool;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
+use serenity::model::channel::MessageFlags;
+use crate::db::get_pool;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -85,7 +87,9 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhook: &Webhook, http:
                     format_finisher(&r1),
                     format_finisher(&r2)
                 ))
+                    .flags(MessageFlags::SUPPRESS_EMBEDS)
             })
+
             .await
         {
             println!("Error executing webhook: {}", e);
@@ -118,7 +122,8 @@ async fn sweep(pool: &SqlitePool) {
     }
 }
 
-pub(crate) async fn cron(pool: SqlitePool, mut sd: Receiver<Shutdown>) {
+pub(crate) async fn cron(mut sd: Receiver<Shutdown>) {
+    let pool = get_pool().await.unwrap();
     let mut intv = tokio::time::interval(Duration::from_secs(60));
     loop {
         tokio::select! {
@@ -127,6 +132,7 @@ pub(crate) async fn cron(pool: SqlitePool, mut sd: Receiver<Shutdown>) {
             }
             _sd = sd.recv() => {
                 println!("Cron shutting down");
+                break;
             }
         }
     }
