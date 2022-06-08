@@ -23,10 +23,9 @@ use tokio_stream::StreamExt;
 
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
-    NMG_LEAGUE_GUILD_ID, TOKEN_VAR,
-};
+    NMG_LEAGUE_GUILD_ID,};
 use crate::db::get_pool;
-use crate::models::{race::RaceState, race_run::RaceRunState};
+use crate::models::{race_run::RaceRunState};
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager;
 use crate::web::session_manager::SessionToken;
@@ -222,7 +221,7 @@ impl<'r> FromRequest<'r> for StaticAsset {
 
 #[get("/<file..>")]
 async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<NamedFile> {
-    let mut p = Path::new("http/static/").join(file);
+    let p = Path::new("http/static/").join(file);
     if !p.exists() {
         println!("{:?} does not exist", p);
         return None;
