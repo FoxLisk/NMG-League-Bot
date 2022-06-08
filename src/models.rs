@@ -20,9 +20,9 @@ pub(crate) fn epoch_timestamp() -> u32 {
 pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun};
     use crate::models::{epoch_timestamp, uuid_string};
+    use serde::Serialize;
     use serenity::model::id::UserId;
     use sqlx::SqlitePool;
-    use serde::Serialize;
 
     #[derive(sqlx::Type, Debug, Serialize)]
     pub(crate) enum RaceState {
@@ -142,12 +142,11 @@ pub(crate) mod race_run {
     use crate::models::uuid_string;
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
+    use serde::Serialize;
     use sqlx::database::HasArguments;
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
-    use serde::Serialize;
-
 
     pub(crate) struct Filenames {
         pub(crate) one: char,

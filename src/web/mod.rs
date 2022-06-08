@@ -26,17 +26,17 @@ use crate::constants::{
     NMG_LEAGUE_GUILD_ID, TOKEN_VAR,
 };
 use crate::db::get_pool;
+use crate::models::{race::RaceState, race_run::RaceRunState};
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager;
 use crate::web::session_manager::SessionToken;
+use serde::Serialize;
 use serenity::http::Http;
 use serenity::model::id::{GuildId, RoleId, UserId};
 use serenity::model::user::{CurrentUser, User};
 use serenity::CacheAndHttp;
 use sqlx::SqlitePool;
-use crate::models::{race_run::RaceRunState, race::RaceState};
 use std::str::FromStr;
-use serde::Serialize;
 
 mod session_manager;
 
@@ -312,7 +312,11 @@ async fn discord_login(
 }
 
 #[get("/asyncs")]
-async fn async_view(_a: Admin, pool: &State<SqlitePool>, discord_state: &State<DiscordStateRepository>) -> Template {
+async fn async_view(
+    _a: Admin,
+    pool: &State<SqlitePool>,
+    discord_state: &State<DiscordStateRepository>,
+) -> Template {
     let mut qr = sqlx::query!(
         r#"SELECT
             race_id,
@@ -326,7 +330,8 @@ async fn async_view(_a: Admin, pool: &State<SqlitePool>, discord_state: &State<D
         LEFT JOIN races r
         ON rr.race_id = r.id
         ORDER BY r.created DESC;"#
-        ).fetch(pool.inner());
+    )
+    .fetch(pool.inner());
 
     #[derive(Serialize)]
     struct Row {
@@ -354,17 +359,15 @@ async fn async_view(_a: Admin, pool: &State<SqlitePool>, discord_state: &State<D
                 continue;
             }
         };
-        let username = match  discord_state.cache_and_http.cache.user(uid) {
+        let username = match discord_state.cache_and_http.cache.user(uid) {
             Some(user) => user.name,
-            None => {
-                match discord_state.get_user(uid).await {
-                    Some(user) => user.name,
-                    None => {
-                        println!("Cannot find racer with user id {}", uid);
-                        continue
-                    }
+            None => match discord_state.get_user(uid).await {
+                Some(user) => user.name,
+                None => {
+                    println!("Cannot find racer with user id {}", uid);
+                    continue;
                 }
-            }
+            },
         };
         let output_row = Row {
             run_uuid: row.rr_uuid,
@@ -373,18 +376,19 @@ async fn async_view(_a: Admin, pool: &State<SqlitePool>, discord_state: &State<D
             vod: row.vod,
             run_state: row.rr_state,
         };
-        races.entry(row.race_state).or_insert(vec![]).push(output_row);
+        races
+            .entry(row.race_state)
+            .or_insert(vec![])
+            .push(output_row);
     }
 
     #[derive(Serialize)]
     struct Context {
-        races: HashMap<String, Vec<Row>>
+        races: HashMap<String, Vec<Row>>,
     }
 
     Template::render("asyncs", Context { races })
 }
-
-
 
 struct DiscordStateRepository {
     cache_and_http: Arc<CacheAndHttp>,
@@ -427,9 +431,7 @@ impl DiscordStateRepository {
     async fn get_user(&self, uid: UserId) -> Option<User> {
         match self.cache_and_http.cache.user(&uid) {
             Some(u) => Some(u),
-            None => {
-                self.cache_and_http.http.get_user(uid.0).await.ok()
-            }
+            None => self.cache_and_http.http.get_user(uid.0).await.ok(),
         }
     }
 }
