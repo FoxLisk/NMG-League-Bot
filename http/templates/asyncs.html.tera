@@ -1,5 +1,65 @@
 {% extends "base" %}
 {% block pagename %}Async Status{% endblock %}
 {% block body %}
-you win
+<div>
+    {% for state, rows in races %}
+    <table class="border border-slate-500
+        {% if state == "FINISHED" %}
+            bg-emerald-400
+        {% else %}
+            bg-slate-200
+        {% endif %}
+        my-3
+        ">
+        <thead>
+            <tr>
+                <th class="border-x border-slate-500">
+                    Run state
+                </th>
+                <th class="border-x border-slate-500">
+                    Racer
+                </th>
+                <th class="border-x border-slate-500">
+                    Filenames
+                </th>
+                <th class="border-x border-slate-500">
+                    Run state
+                </th>
+                <th class="border-x border-slate-500">
+                    VoD link
+                </th>
+                <th class="border-x border-slate-500">
+                    Run UUID
+                </th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for row in rows %}
+            <tr>
+                {% if loop.first %}
+                <th rowspan=2>
+                    {{ state }}
+                </th>
+                {% endif %}
+                <td class="border-x border-slate-500">
+                    {{ row.racer_name }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ row.filenames }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ row.run_state }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ row.vod }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ row.run_uuid }}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endfor %}
+</div>
 {% endblock %}

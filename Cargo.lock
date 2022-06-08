@@ -104,9 +104,11 @@ dependencies = [
  "regex",
  "rocket",
  "rocket_dyn_templates",
+ "serde",
  "serenity",
  "sqlx",
  "tokio",
+ "tokio-stream",
  "uuid",
 ]
 

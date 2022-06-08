@@ -22,8 +22,9 @@ pub(crate) mod race {
     use crate::models::{epoch_timestamp, uuid_string};
     use serenity::model::id::UserId;
     use sqlx::SqlitePool;
+    use serde::Serialize;
 
-    #[derive(sqlx::Type)]
+    #[derive(sqlx::Type, Debug, Serialize)]
     pub(crate) enum RaceState {
         CREATED,
         FINISHED,
@@ -145,6 +146,8 @@ pub(crate) mod race_run {
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
+    use serde::Serialize;
+
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -275,7 +278,7 @@ pub(crate) mod race_run {
         }
     }
 
-    #[derive(sqlx::Type)]
+    #[derive(sqlx::Type, Debug, Serialize)]
     pub(crate) enum RaceRunState {
         CREATED,
         STARTED,

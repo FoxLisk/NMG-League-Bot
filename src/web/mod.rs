@@ -19,6 +19,7 @@ use rocket::{get, Request, State};
 use rocket_dyn_templates::Template;
 use tokio::sync::{Mutex as AsyncMutex, RwLock};
 use tokio::time::{Duration, Instant};
+use tokio_stream::StreamExt;
 
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
@@ -32,6 +33,10 @@ use serenity::http::Http;
 use serenity::model::id::{GuildId, RoleId, UserId};
 use serenity::model::user::{CurrentUser, User};
 use serenity::CacheAndHttp;
+use sqlx::SqlitePool;
+use crate::models::{race_run::RaceRunState, race::RaceState};
+use std::str::FromStr;
+use serde::Serialize;
 
 mod session_manager;
 
@@ -179,7 +184,7 @@ impl<'r> FromRequest<'r> for Admin {
             }
         };
 
-        let role_checker = match request.guard::<&State<RoleChecker>>().await {
+        let role_checker = match request.guard::<&State<DiscordStateRepository>>().await {
             Outcome::Success(s) => s,
             _ => {
                 return Outcome::Forward(());
@@ -230,7 +235,7 @@ async fn index_logged_in(_a: Admin) -> Redirect {
     Redirect::to(uri!(async_view))
 }
 
-#[get("/", rank = 2)]
+#[get("/<_..>", rank = 2)]
 async fn index_logged_out() -> Redirect {
     Redirect::to(uri!(login_page))
 }
@@ -250,7 +255,7 @@ async fn discord_login(
     error_description: Option<String>,
     client: &State<OauthClient>,
     session_manager: &State<Arc<AsyncMutex<SessionManager>>>,
-    role_checker: &State<RoleChecker>,
+    role_checker: &State<DiscordStateRepository>,
     cookies: &CookieJar<'_>,
 ) -> Result<Template, Redirect> {
     println!("code: {:?}", code);
@@ -307,17 +312,86 @@ async fn discord_login(
 }
 
 #[get("/asyncs")]
-async fn async_view(_a: Admin) -> Template {
-    let ctx: HashMap<String, String> = Default::default();
-    Template::render("asyncs", ctx)
+async fn async_view(_a: Admin, pool: &State<SqlitePool>, discord_state: &State<DiscordStateRepository>) -> Template {
+    let mut qr = sqlx::query!(
+        r#"SELECT
+            race_id,
+            rr.uuid as rr_uuid,
+            racer_id,
+            filenames,
+            rr.state as "rr_state: RaceRunState",
+            vod,
+            r.state as "race_state!"
+        FROM race_runs rr
+        LEFT JOIN races r
+        ON rr.race_id = r.id
+        ORDER BY r.created DESC;"#
+        ).fetch(pool.inner());
+
+    #[derive(Serialize)]
+    struct Row {
+        run_uuid: String,
+        racer_name: String,
+        filenames: String,
+        run_state: RaceRunState,
+        vod: Option<String>,
+    }
+
+    let mut races = HashMap::<String, Vec<Row>>::new();
+
+    while let Some(row_res) = qr.next().await {
+        let row = match row_res {
+            Ok(r) => r,
+            Err(e) => {
+                println!("Async view: error fetching row: {}", e);
+                continue;
+            }
+        };
+        let uid = match UserId::from_str(&row.racer_id) {
+            Ok(u) => u,
+            Err(e) => {
+                println!("Error parsing racer id {}", row.racer_id);
+                continue;
+            }
+        };
+        let username = match  discord_state.cache_and_http.cache.user(uid) {
+            Some(user) => user.name,
+            None => {
+                match discord_state.get_user(uid).await {
+                    Some(user) => user.name,
+                    None => {
+                        println!("Cannot find racer with user id {}", uid);
+                        continue
+                    }
+                }
+            }
+        };
+        let output_row = Row {
+            run_uuid: row.rr_uuid,
+            racer_name: username,
+            filenames: row.filenames,
+            vod: row.vod,
+            run_state: row.rr_state,
+        };
+        races.entry(row.race_state).or_insert(vec![]).push(output_row);
+    }
+
+    #[derive(Serialize)]
+    struct Context {
+        races: HashMap<String, Vec<Row>>
+    }
+
+    Template::render("asyncs", Context { races })
 }
 
-struct RoleChecker {
+
+
+struct DiscordStateRepository {
     cache_and_http: Arc<CacheAndHttp>,
     guild_role_map: Arc<RwLock<HashMap<GuildId, RoleId>>>,
 }
 
-impl RoleChecker {
+impl DiscordStateRepository {
     async fn has_nmg_league_admin_role(&self, uid: &UserId) -> bool {
         let u = match self.cache_and_http.cache.user(uid) {
             Some(user) => user,
@@ -349,6 +423,15 @@ impl RoleChecker {
             }
         }
     }
+
+    async fn get_user(&self, uid: UserId) -> Option<User> {
+        match self.cache_and_http.cache.user(&uid) {
+            Some(u) => Some(u),
+            None => {
+                self.cache_and_http.http.get_user(uid.0).await.ok()
+            }
+        }
+    }
 }
 
 pub(crate) async fn launch_website(
@@ -375,7 +458,7 @@ pub(crate) async fn launch_website(
             ],
         )
         .attach(Template::fairing())
-        .manage(RoleChecker {
+        .manage(DiscordStateRepository {
             cache_and_http,
             guild_role_map,
         })
