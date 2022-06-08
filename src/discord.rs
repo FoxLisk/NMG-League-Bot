@@ -28,7 +28,7 @@ use serenity::{async_trait, CacheAndHttp, Client};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
-use crate::constants::{APPLICATION_ID_VAR, FOXLISK_USER_ID, TOKEN_VAR};
+use crate::constants::{APPLICATION_ID_VAR,  TOKEN_VAR};
 use crate::db::get_pool;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;

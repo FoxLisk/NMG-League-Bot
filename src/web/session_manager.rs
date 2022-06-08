@@ -1,12 +1,9 @@
 use crate::models::uuid_string;
 use crate::oauth2::TokenResponse as OTR;
-use crate::web::TokenResponse;
 use aliri_braid::braid;
 use serenity::model::id::UserId;
 use std::collections::HashMap;
 use tokio::time::Instant;
-
-pub(crate) const SESSION_COOKIE_NAME: &str = "session_token";
 
 #[braid]
 pub(crate) struct SessionToken;
@@ -21,7 +18,6 @@ impl SessionToken {
 pub(crate) enum UserNotAuthenticated {
     SessionTokenNotFound,
     TokenExpired,
-    TokenRefreshFailed,
 }
 
 pub(crate) struct SessionManager {

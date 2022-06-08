@@ -355,7 +355,7 @@ async fn async_view(
         let uid = match UserId::from_str(&row.racer_id) {
             Ok(u) => u,
             Err(e) => {
-                println!("Error parsing racer id {}", row.racer_id);
+                println!("Error parsing racer id {}: {}", row.racer_id, e);
                 continue;
             }
         };
@@ -365,7 +365,7 @@ async fn async_view(
                 Some(user) => user.name,
                 None => {
                     println!("Cannot find racer with user id {}", uid);
-                    continue;
+                    "Unknown".to_string()
                 }
             },
         };
@@ -447,7 +447,7 @@ pub(crate) async fn launch_website(
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
 
-    let mut rocket = rocket::build()
+    let rocket = rocket::build()
         .mount("/static", rocket::routes![statics])
         .mount(
             "/",
