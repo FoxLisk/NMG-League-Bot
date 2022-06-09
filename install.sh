@@ -1,5 +1,5 @@
 set -e
-SERVICE_NAME="nmg_league"
+SERVICE_NAME="nmg-league-bot"
 SERVICE_PATH="/lib/systemd/system/$SERVICE_NAME.service"
 NGINX_TARGET_PATH="/etc/nginx/conf.d/$SERVICE_NAME.conf"
 cargo build
