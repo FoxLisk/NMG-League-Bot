@@ -1,5 +1,5 @@
 [Unit]
-Description=Botlisk
+Description=NMG League Bot
 
 [Service]
 StandardOutput=append:/var/log/nmg-league-bot.log
