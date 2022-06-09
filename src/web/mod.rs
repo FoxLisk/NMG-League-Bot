@@ -23,9 +23,10 @@ use tokio_stream::StreamExt;
 
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
-    NMG_LEAGUE_GUILD_ID,};
+    NMG_LEAGUE_GUILD_ID,
+};
 use crate::db::get_pool;
-use crate::models::{race_run::RaceRunState};
+use crate::models::race_run::RaceRunState;
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager;
 use crate::web::session_manager::SessionToken;

@@ -1,3 +1,7 @@
+mod webhooks;
+
+pub(crate) use webhooks::Webhooks;
+
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
@@ -28,7 +32,7 @@ use serenity::{async_trait, CacheAndHttp, Client};
 use sqlx::SqlitePool;
 use tokio::sync::RwLock;
 
-use crate::constants::{APPLICATION_ID_VAR,  TOKEN_VAR};
+use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
@@ -326,7 +330,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
             };
             if let Err(err) = first.and(second) {
                 println!("Error creating race: {}", err);
-                send_response(&ctx.http, interaction, "Internal error creating race").await
+                send_response(&ctx.http, interaction, format!("Internal error creating race: {}", err)).await
             } else {
                 interaction
                     .create_interaction_response(&ctx.http, |ir| {
