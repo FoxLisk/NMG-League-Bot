@@ -25,7 +25,6 @@ impl TypeMapKey for Webhooks {
 }
 
 pub fn parse_webhook(url: &str) -> Option<(u64, String)> {
-    // https://discord.com/api/webhooks/983193713075449937/ZH4A70mJHr1e6So1MVc-Ksh7Fott_-miU0i20b3-ibPg7_UAwrLYb3eAVAh3nMQ2-LJB
     let re = Regex::new(r#"https?://discord.com/api/webhooks/(\d+)/([\w_-]+)/?"#).unwrap();
     let groups = re.captures(url)?;
     let id = groups.get(1)?.as_str().parse::<u64>().ok()?;
