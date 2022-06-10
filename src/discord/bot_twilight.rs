@@ -132,29 +132,25 @@ pub(crate) async fn launch(mut shutdown: tokio::sync::broadcast::Receiver<Shutdo
     let cluster = Arc::new(cluster);
 
     // Start up the cluster
-    let cluster_spawn = cluster.clone();
-
+    let cluster_start = cluster.clone();
+    let cluster_stop = cluster.clone();
     tokio::spawn(async move {
-        cluster_spawn.up().await;
+        cluster_start.up().await;
     });
 
     let http = Client::new(token);
-
     let cache = InMemoryCache::builder().build();
-
     let state = Arc::new(State::new(cache, http, aid, pool));
 
     loop {
         tokio::select! {
             Some((_shard_id, event)) = events.next() => {
-                 // Update the cache.
                 state.cache.update(&event);
-
-                // Spawn a new task to handle the event
                 tokio::spawn(handle_event(event, state.clone()));
             },
             _sd = shutdown.recv() => {
                 println!("Twilight bot shutting down...");
+                cluster_stop.down();
                 break;
             }
         }
