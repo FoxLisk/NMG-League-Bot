@@ -38,6 +38,8 @@ async fn main() {
         shutdown_send.subscribe(),
     ));
 
+    tokio::spawn(discord::bot_twilight::launch(shutdown_send.subscribe()));
+
     tokio::signal::ctrl_c().await.ok();
     let (shutdown_signal_send, mut shutdown_signal_recv) = tokio::sync::mpsc::channel(1);
     // send a copy of an mpsc sender to each watcher of the shutdown thread...

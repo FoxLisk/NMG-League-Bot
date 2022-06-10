@@ -1,3 +1,7 @@
+use serenity::model::id::UserId;
+use twilight_model::id::Id;
+use twilight_model::id::marker::UserMarker;
+
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -17,9 +21,24 @@ pub(crate) fn epoch_timestamp() -> u32 {
     t_u32
 }
 
+/// HOPEFULLY temporary struct used to switch between serenity & twilight
+pub(crate) struct InternalUserId(u64);
+
+impl From<Id<UserMarker>> for InternalUserId {
+    fn from(id: Id<UserMarker>) -> Self {
+        Self(id.get())
+    }
+}
+
+impl From<UserId> for InternalUserId {
+    fn from(id: UserId) -> Self {
+        Self(id.0)
+    }
+}
+
 pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun};
-    use crate::models::{epoch_timestamp, uuid_string};
+    use crate::models::{epoch_timestamp, InternalUserId, uuid_string};
     use serde::Serialize;
     use serenity::model::id::UserId;
     use sqlx::SqlitePool;
@@ -78,22 +97,26 @@ pub(crate) mod race {
             .map_err(|e| e.to_string())
         }
 
-        async fn add_run(&self, racer_id: UserId, pool: &SqlitePool) -> Result<RaceRun, String> {
+        async fn add_run<U: Into<InternalUserId>>(&self, racer_id: U, pool: &SqlitePool) -> Result<RaceRun, String> {
             let nrr = NewRaceRun::new(self.id, racer_id);
             nrr.save(pool).await
         }
 
-        pub(crate) async fn select_racers(
+        pub(crate) async fn select_racers<U: Into<InternalUserId>>(
             &self,
-            racer_1: UserId,
-            racer_2: UserId,
+            racer_1: U,
+            racer_2: U,
             pool: &SqlitePool,
         ) -> Result<(RaceRun, RaceRun), String> {
-            if racer_1 == racer_2 {
+            let r1 = racer_1.into();
+            let r2 = racer_2.into();
+
+
+            if r1.0 == r2.0 {
                 return Err("Racers must be different users!".to_string());
             }
-            let r1 = self.add_run(racer_1, pool).await?;
-            let r2 = self.add_run(racer_2, pool).await?;
+            let r1 = self.add_run(r1, pool).await?;
+            let r2 = self.add_run(r2, pool).await?;
             Ok((r1, r2))
         }
 
@@ -138,7 +161,7 @@ pub(crate) mod race {
 pub(crate) mod race_run {
     use serenity::model::id::{MessageId, UserId};
 
-    use crate::models::epoch_timestamp;
+    use crate::models::{epoch_timestamp, InternalUserId};
     use crate::models::uuid_string;
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
@@ -419,7 +442,7 @@ pub(crate) mod race_run {
             .map_err(|e| e.to_string())
         }
 
-        pub(crate) fn set_message_id(&mut self, message_id: MessageId) {
+        pub(crate) fn set_message_id(&mut self, message_id: u64) {
             self.message_id = Some(message_id.to_string());
         }
 
@@ -453,18 +476,18 @@ pub(crate) mod race_run {
     pub(crate) struct NewRaceRun {
         race_id: i32,
         uuid: String,
-        racer_id: UserId,
+        racer_id: InternalUserId,
         filenames: Filenames,
         created: u32,
         state: RaceRunState,
     }
 
     impl NewRaceRun {
-        pub(crate) fn new(race_id: i32, racer_id: UserId) -> Self {
+        pub(crate) fn new<U: Into<InternalUserId>>(race_id: i32, racer_id: U) -> Self {
             Self {
                 race_id,
                 uuid: uuid_string(),
-                racer_id,
+                racer_id: racer_id.into(),
                 filenames: Filenames::new_random(),
                 created: epoch_timestamp(),
                 state: RaceRunState::CREATED,
@@ -472,7 +495,7 @@ pub(crate) mod race_run {
         }
 
         pub(crate) async fn save(self, pool: &SqlitePool) -> Result<RaceRun, String> {
-            let id_str = self.racer_id.to_string();
+            let id_str = self.racer_id.0.to_string();
             sqlx::query!(
                 "INSERT INTO race_runs (uuid, race_id, racer_id, filenames, created, state)
                  VALUES(?, ?, ?, ?, ?, ?);
@@ -490,7 +513,7 @@ pub(crate) mod race_run {
                 id: row.rowid as i64,
                 uuid: self.uuid,
                 race_id: self.race_id as i64,
-                racer_id: self.racer_id.to_string(),
+                racer_id: self.racer_id.0.to_string(),
                 filenames: self.filenames.to_str(),
                 created: self.created,
                 state: self.state,

@@ -1,4 +1,5 @@
 mod webhooks;
+pub(crate) mod bot_twilight;
 
 pub(crate) use webhooks::Webhooks;
 
@@ -53,6 +54,10 @@ const CUSTOM_ID_VOD: &str = "vod";
 const CUSTOM_ID_USER_TIME: &str = "user_time";
 const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 
+const CREATE_RACE_CMD: &str = "create_race";
+const ADMIN_ROLE_NAME: &'static str = "Admin";
+
+
 struct AdminRoleMap;
 
 impl TypeMapKey for AdminRoleMap {
@@ -61,27 +66,8 @@ impl TypeMapKey for AdminRoleMap {
 
 struct RaceHandler;
 
-enum Error {
-    BadInput(String),
-    APIError(String),
-}
-
-impl Display for Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Error::BadInput(s) => {
-                write!(f, "Bad input: {}", s)
-            }
-            Error::APIError(s) => {
-                write!(f, "Internal error: {}", s)
-            }
-        }
-    }
-}
-
 impl RaceHandler {
     const TEST_CMD: &'static str = "test";
-    const CREATE_RACE_CMD: &'static str = "create_race";
 
     fn application_commands(
         commands: &mut CreateApplicationCommands,
@@ -96,7 +82,7 @@ impl RaceHandler {
             })
             .create_application_command(|command| {
                 command
-                    .name(Self::CREATE_RACE_CMD)
+                    .name(CREATE_RACE_CMD)
                     .description("Create an asynchronous race for two players")
                     .kind(ApplicationCommandType::ChatInput)
                     // N.B. this is imperfect; the Serenity library does not yet support
@@ -133,228 +119,13 @@ impl RaceHandler {
         }
     }
 
-    fn option_to_user_id(opt: ApplicationCommandInteractionDataOption) -> Result<UserId, Error> {
-        if ApplicationCommandOptionType::User != opt.kind {
-            return Err(Error::APIError("Bad parameter: Expected user".to_string()));
-        }
-
-        if let Value::String(s) = opt
-            .value
-            .ok_or(Error::APIError("Missing user Id".to_string()))?
-        {
-            Ok(UserId(s.parse::<u64>().map_err(|_e| {
-                Error::APIError("Invalid user Id format".to_string())
-            })?))
-        } else {
-            Err(Error::APIError(
-                "Bad parameter: Expected valid user id".to_string(),
-            ))
-        }
-    }
-
-    async fn can_create_race(
-        &self,
-        ctx: &Context,
-        guild_id: Option<GuildId>,
-        user: User,
-    ) -> Result<bool, String> {
-        if let Some(gid) = guild_id {
-            let needed_role: RoleId = ctx
-                .data
-                .read()
-                .await
-                .get::<AdminRoleMap>()
-                .unwrap()
-                .read()
-                .await
-                .get(&gid)
-                .ok_or(format!("I don't know what role is needed in guild {}", gid))?
-                .clone();
-            user.has_role(&ctx, gid, needed_role)
-                .await
-                .map_err(|e| format!("Error checking if user has role: {}", e))
-        } else {
-            println!("Command called outside of a guild context");
-            Ok(false)
-        }
-    }
-
-    async fn get_racers(
-        ctx: &Context,
-        mut options: HashMap<String, ApplicationCommandInteractionDataOption>,
-    ) -> Result<(User, User), Error> {
-        let p1 = options
-            .remove("p1")
-            .ok_or(Error::APIError("Missing racer 1 parameter".to_string()))?;
-        let p2 = options
-            .remove("p2")
-            .ok_or(Error::APIError("Missing racer 2 parameter".to_string()))?;
-
-        let racer_1 = Self::option_to_user_id(p1)?;
-        let racer_2 = Self::option_to_user_id(p2)?;
-        if racer_1 == racer_2 {
-            return Err(Error::BadInput("Those are the same player!".to_string()));
-        }
-
-        let u1 = racer_1
-            .to_user(&ctx)
-            .await
-            .map_err(|e| Error::BadInput(format!("Error looking up user {}: {}", racer_1, e)))?;
-        let u2 = racer_2
-            .to_user(&ctx)
-            .await
-            .map_err(|e| Error::BadInput(format!("Error looking up user {}: {}", racer_1, e)))?;
-
-        Ok((u1, u2))
-    }
-
-    async fn notify_racer(
-        ctx: &Context,
-        mut race_run: RaceRun,
-        race: &Race,
-        pool: &SqlitePool,
-    ) -> Result<(), String> {
-        // if race_run.racer_id() != FOXLISK_USER_ID {
-        //     println!("Not DMing anyone but myself yet!");
-        //     return Ok(());
-        // }
-        let user: User = race_run
-            .racer_id()
-            .to_user(ctx)
-            .await
-            .map_err(|e| e.to_string())?;
-        match user
-            .direct_message(ctx, |m| {
-                m.components(|cmp| {
-                    cmp.create_action_row(|row| {
-                        row.create_button(|btn| {
-                            btn.label("Start run")
-                                .custom_id(CUSTOM_ID_START_RUN)
-                                .style(ButtonStyle::Primary)
-                        })
-                    })
-                });
-                m.content(format!(
-                    "Hello, your asynchronous race is now ready.
-When you're ready to begin your race, click \"Start run\" and you will be given
-filenames to enter.
-
-If anything goes wrong, tell an admin there was an issue with race `{}`",
-                    race.uuid
-                ));
-                m
-            })
-            .await
-        {
-            Ok(m) => {
-                race_run.set_message_id(m.id);
-                race_run.save(pool).await
-            }
-            Err(e) => {
-                println!("Error sending dm: {}", e);
-                Err(e.to_string())
-            }
-        }
-    }
-
     async fn handle_create_race(
         &self,
         ctx: &Context,
         mut interaction: ApplicationCommandInteraction,
     ) -> Result<(), String> {
-        let merr = match self
-            .can_create_race(
-                &ctx,
-                std::mem::take(&mut interaction.guild_id),
-                std::mem::take(&mut interaction.user),
-            )
-            .await
-        {
-            Ok(true) => None,
-            Ok(false) => Some("You are not authorized to create races"),
-            Err(e) => {
-                println!("Error checking if user can create a race: {}", e);
-                Some("Internal error")
-            }
-        };
-        if let Some(err) = merr {
-            return send_response(&ctx.http, interaction, err).await;
-        }
-
-        let options = interaction
-            .data
-            .options
-            .drain(0..)
-            .map(|o| (o.name.clone(), o))
-            .collect::<HashMap<String, ApplicationCommandInteractionDataOption>>();
-        let (r1, r2) = match Self::get_racers(&ctx, options).await {
-            Ok(rs) => rs,
-            Err(Error::APIError(e)) => {
-                println!("Error finding out racer info: {}", e);
-                return send_response(&ctx.http, interaction, "Internal error finding racers")
-                    .await;
-            }
-            Err(Error::BadInput(e)) => {
-                return send_response(&ctx.http, interaction, e).await;
-            }
-        };
-
-        let race_insert = NewRace::new();
-        let runs = {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-
-            match race_insert.save(&pool).await {
-                Ok(race) => match race.select_racers(r1.id, r2.id, &pool).await {
-                    Ok(r) => Some((race, r)),
-                    Err(e) => {
-                        println!("Error selecting racers: {}", e);
-                        None
-                    }
-                },
-                Err(e) => {
-                    println!("Error persisting race: {}", e);
-                    None
-                }
-            }
-        };
-
-        if let Some((race, (run_1, run_2))) = runs {
-            let (first, second) = {
-                let d = ctx.data.read().await;
-                let pool = d.get::<Pool>().unwrap();
-                tokio::join!(
-                    Self::notify_racer(&ctx, run_1, &race, &pool),
-                    Self::notify_racer(&ctx, run_2, &race, &pool)
-                )
-            };
-            if let Err(err) = first.and(second) {
-                println!("Error creating race: {}", err);
-                send_response(&ctx.http, interaction, format!("Internal error creating race: {}", err)).await
-            } else {
-                interaction
-                    .create_interaction_response(&ctx.http, |ir| {
-                        ir.kind(InteractionResponseType::ChannelMessageWithSource)
-                            .interaction_response_data(|data| {
-                                data.content(
-                                    MessageBuilder::new()
-                                        .push("Race created for users ")
-                                        .mention(&r1)
-                                        .push(" and ")
-                                        .mention(&r2)
-                                        .build(),
-                                )
-                            })
-                    })
-                    .await
-                    .map_err(|e| {
-                        println!("Error creating response: {}", e);
-                        e.to_string()
-                    })
-            }
-        } else {
-            send_response(&ctx.http, interaction, "Error creating race").await
-        }
+        println!("// serenity bot sundowning");
+        Ok(())
     }
 
     async fn handle_run_forfeit(
@@ -647,8 +418,9 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
     }
 }
 
+
 async fn maybe_update_admin_role(ctx: &Context, role: Role) -> Option<Role> {
-    if role.name.to_lowercase() == "admin" {
+    if role.name.to_lowercase() == ADMIN_ROLE_NAME {
         let data = ctx.data.write().await;
         let role_map = data.get::<AdminRoleMap>().unwrap();
         role_map
@@ -715,7 +487,7 @@ impl EventHandler for RaceHandler {
                     Self::TEST_CMD => {
                         self.handle_test(&ctx.http, i).await;
                     }
-                    Self::CREATE_RACE_CMD => {
+                    CREATE_RACE_CMD => {
                         if let Err(e) = self.handle_create_race(&ctx, i).await {
                             println!("Error creating race: {}", e);
                         }
