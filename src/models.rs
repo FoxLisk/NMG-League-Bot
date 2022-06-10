@@ -147,6 +147,8 @@ pub(crate) mod race_run {
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
+    use twilight_model::id::Id;
+    use twilight_model::id::marker::UserMarker;
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -336,6 +338,17 @@ pub(crate) mod race_run {
     impl RaceRun {
         pub(crate) fn racer_id(&self) -> UserId {
             UserId(self.racer_id.parse().unwrap())
+        }
+
+        pub(crate) fn racer_id_tw(&self) -> Result<Id<UserMarker>, String> {
+
+            self.racer_id.parse::<u64>().map_err(|e| e.to_string())
+                .map(Id::<UserMarker>::new)
+                .map_err(|e| e.to_string())
+        }
+
+        pub(crate) fn racer_id_raw(&self) -> Result<u64, String> {
+            self.racer_id.parse::<u64>().map_err(|e| e.to_string())
         }
 
         pub(crate) fn finished(&self) -> bool {

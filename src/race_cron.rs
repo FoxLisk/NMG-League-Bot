@@ -4,12 +4,14 @@ use crate::discord::Webhooks;
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
-use serenity::http::Http;
-use serenity::model::channel::MessageFlags;
-use serenity::utils::MessageBuilder;
 use sqlx::SqlitePool;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
+use twilight_http::request::channel::webhook::ExecuteWebhook;
+use twilight_mention::Mention;
+use twilight_model::channel::message::MessageFlags;
+use twilight_model::id::Id;
+use twilight_model::id::marker::UserMarker;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -37,30 +39,27 @@ fn format_finisher(run: &RaceRun) -> String {
                 (Some(start), Some(finish)) => format_secs((finish - start) as u64),
                 _ => "N/A".to_string(),
             };
-            let mut mb = MessageBuilder::new();
-            mb.push("Player: ");
-            mb.mention(&run.racer_id());
-            mb.push(format!(
-                r#"
+            let id = Id::<UserMarker>::new(run.racer_id_raw().unwrap());
+            format!(
+                r#"Player: {}
     Reported time: {}
     Bot time: {}
     VoD URL: {}
     Expected filenames: {}"#,
+                id.mention(),
                 run.reported_run_time.as_ref().unwrap_or(&"N/A".to_string()),
                 bot_time,
                 run.vod.as_ref().unwrap_or(&"N/A".to_string()),
                 run.filenames()
                     .map(|f| f.to_string())
                     .unwrap_or("N/A".to_string())
-            ));
-            mb.build()
+            )
         }
         RaceRunState::FORFEIT => {
-            let mut mb = MessageBuilder::new();
-            mb.push("Player: ");
-            mb.mention(&run.racer_id());
-            mb.push("    Forfeit");
-            mb.build()
+            format!("Player: {}
+    Forfeit",
+                run.racer_id_tw().unwrap().mention()
+            )
         }
         _ => {
             format!("Error: this race wasn't... actually finished... or something")
@@ -68,7 +67,8 @@ fn format_finisher(run: &RaceRun) -> String {
     }
 }
 
-async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks, http: &Http) {
+
+async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
     let (r1, r2) = match race.get_runs(pool).await {
         Ok(r) => r,
         Err(e) => {
@@ -78,20 +78,30 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks, htt
         }
     };
     if r1.finished() && r2.finished() {
-        if let Err(e) = webhooks
-            .message_async(&format!(
-                r#"Race finished:
+        let e = webhooks.prepare_execute_async();
+
+        let s = format!(
+            r#"Race finished:
 {}
 
 {}"#,
-                format_finisher(&r1),
-                format_finisher(&r2)
-            ))
-            // .flags(MessageFlags::SUPPRESS_EMBEDS)
-            .await
-        {
+            format_finisher(&r1),
+            format_finisher(&r2)
+        );
+        let c = match twilight_validate::message::content(&s) {
+            Ok(()) => s,
+            Err(e) => {
+                format!(
+                    "Race finished: {} vs {}",
+                    r1.racer_id_tw().unwrap().mention(),
+                    r2.racer_id_tw().unwrap().mention(),
+                )
+            }
+        };
+        if let Err(e) = webhooks.execute_webhook(
+        e.content(&c).unwrap().flags(MessageFlags::SUPPRESS_EMBEDS)
+        ).await {
             println!("Error executing webhook: {}", e);
-            return;
         }
         race.finish();
         if let Err(e) = race.save(pool).await {
@@ -100,7 +110,7 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks, htt
     }
 }
 
-async fn sweep(pool: &SqlitePool, http_client: &Http, webhooks: &Webhooks) {
+async fn sweep(pool: &SqlitePool, webhooks: &Webhooks) {
     println!("Sweep...");
     let active_races = match Race::active_races(pool).await {
         Ok(rs) => rs,
@@ -111,18 +121,17 @@ async fn sweep(pool: &SqlitePool, http_client: &Http, webhooks: &Webhooks) {
     };
     println!("Handling {} races", active_races.len());
     for race in active_races {
-        handle_race(race, pool, &webhooks, http_client).await;
+        handle_race(race, pool, &webhooks).await;
     }
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks) {
     let pool = get_pool().await.unwrap();
     let mut intv = tokio::time::interval(Duration::from_secs(60));
-    let http_client = Http::new(&dotenv::var(TOKEN_VAR).unwrap());
     loop {
         tokio::select! {
             _ = intv.tick() => {
-                sweep(&pool, &http_client, &webhooks).await;
+                sweep(&pool, &webhooks).await;
             }
             _sd = sd.recv() => {
                 println!("Cron shutting down");

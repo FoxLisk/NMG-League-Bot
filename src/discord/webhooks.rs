@@ -11,6 +11,7 @@ use regex::Regex;
 use serenity::prelude::TypeMapKey;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
 use std::fmt::Display;
+use sqlx::Execute;
 use twilight_http::response::marker::EmptyBody;
 
 #[derive(Clone)]
@@ -63,10 +64,22 @@ impl Webhooks {
         })
     }
 
-    async fn execute_webhook(&self, content: &str, ew: ExecuteWebhook<'_>) -> Result<(), String> {
+    async fn execute_webhook_with_content(&self, content: &str, ew: ExecuteWebhook<'_>) -> Result<(), String> {
         let resp: Response<EmptyBody> = ew
             .content(content)
             .map_err(|e| e.to_string())?
+            .exec()
+            .await
+            .map_err(|e| e.to_string())?;
+        if ! resp.status().is_success() {
+            Err(format!("Error executing webhook: {:?}", resp.text().await))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
+        let resp: Response<EmptyBody> = ew
             .exec()
             .await
             .map_err(|e| e.to_string())?;
@@ -81,28 +94,19 @@ impl Webhooks {
         self.http_client.execute_webhook(webhook.id, webhook.token.as_ref().unwrap())
     }
 
-    pub(crate) fn execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {
+    pub(crate) fn prepare_execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {
         self._execute_webhook(&self.async_channel)
     }
 
-    pub(crate) fn execute_admin<'a>(&'a self) -> ExecuteWebhook<'a> {
+    pub(crate) fn prepare_execute_admin<'a>(&'a self) -> ExecuteWebhook<'a> {
         self._execute_webhook(&self.admin_channel)
     }
 
+
     pub(crate) async fn message_async(&self, content: &str) -> Result<(), String> {
         self.execute_webhook(
-            content,
-            self.execute_async()
+            self.prepare_execute_async()
+                .content(content).map_err(|e| e.to_string())?
         ).await
     }
-    //
-    //
-    // pub(crate) async fn execute_async(&self, content: &str) -> Result<(), String> {
-    //     self.execute_webhook(content, &self.async_channel).await
-    // }
-    //
-    // pub(crate) async fn execute_admin(&self, content: &str) -> Result<(), String> {
-    //     self.execute_webhook(content, &self.admin_channel).await
-    // }
-
 }

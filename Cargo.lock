@@ -1357,6 +1357,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "twilight-http",
+ "twilight-mention",
  "twilight-model",
  "twilight-validate",
  "uuid",
@@ -2809,6 +2810,15 @@ dependencies = [
  "http",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "twilight-mention"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "538a66387d06ad56f05e21934d81dd1ca794b26f3eef919ba6ebd903d5118c6d"
+dependencies = [
+ "twilight-model",
 ]
 
 [[package]]
