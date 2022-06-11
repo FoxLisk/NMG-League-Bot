@@ -38,7 +38,6 @@ use crate::db::get_pool;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::shutdown::Shutdown;
-use crate::utils::send_response;
 
 extern crate rand;
 extern crate serenity;
@@ -67,66 +66,6 @@ impl TypeMapKey for AdminRoleMap {
 struct RaceHandler;
 
 impl RaceHandler {
-    const TEST_CMD: &'static str = "test";
-
-    fn application_commands(
-        commands: &mut CreateApplicationCommands,
-    ) -> &mut CreateApplicationCommands {
-        commands
-            .create_application_command(|command| {
-                command
-                    .name(Self::TEST_CMD)
-                    .description("Test that the bot is alive")
-                    .kind(ApplicationCommandType::ChatInput)
-                    .default_member_permissions(Permissions::ADMINISTRATOR)
-            })
-            .create_application_command(|command| {
-                command
-                    .name(CREATE_RACE_CMD)
-                    .description("Create an asynchronous race for two players")
-                    .kind(ApplicationCommandType::ChatInput)
-                    // N.B. this is imperfect; the Serenity library does not yet support
-                    // setting role-based permissions on slash commands, so this is a stand-in
-                    .default_member_permissions(Permissions::MANAGE_GUILD)
-                    .create_option(|opt| {
-                        opt.name("p1")
-                            .description("First racer")
-                            .kind(ApplicationCommandOptionType::User)
-                            .required(true)
-                    })
-                    .create_option(|opt| {
-                        opt.name("p2")
-                            .description("Second racer")
-                            .kind(ApplicationCommandOptionType::User)
-                            .required(true)
-                    })
-            })
-    }
-
-    async fn handle_test(
-        &self,
-        http: impl AsRef<Http>,
-        interaction: ApplicationCommandInteraction,
-    ) {
-        if let Err(e) = interaction
-            .create_interaction_response(http, |ir| {
-                ir.kind(InteractionResponseType::ChannelMessageWithSource)
-                    .interaction_response_data(|data| data.content("Help, I'm alive!"))
-            })
-            .await
-        {
-            println!("Error sending test pong, lol: {}", e);
-        }
-    }
-
-    async fn handle_create_race(
-        &self,
-        ctx: &Context,
-        mut interaction: ApplicationCommandInteraction,
-    ) -> Result<(), String> {
-        println!("// serenity bot sundowning");
-        Ok(())
-    }
 
     async fn handle_run_forfeit(
         ctx: &Context,
@@ -440,17 +379,7 @@ impl EventHandler for RaceHandler {
     }
 
     async fn guild_create(&self, ctx: Context, guild: Guild, is_new: bool) {
-        println!("Guild create for guild {:?} (is new? {}", guild, is_new);
-
-        let set_commands_result = guild
-            .set_application_commands(&ctx.http, Self::application_commands)
-            .await;
-        println!("Set commands: {:?}", set_commands_result);
-        for role in guild.roles.into_values() {
-            if let Some(_) = maybe_update_admin_role(&ctx, role).await {
-                break;
-            }
-        }
+        println!("Serenity guild create sundowning...");
     }
 
     async fn guild_role_create(&self, ctx: Context, new: Role) {
@@ -484,16 +413,8 @@ impl EventHandler for RaceHandler {
             Interaction::ApplicationCommand(i) => {
                 println!("interaction name: {}", i.data.name);
                 match i.data.name.as_str() {
-                    Self::TEST_CMD => {
-                        self.handle_test(&ctx.http, i).await;
-                    }
-                    CREATE_RACE_CMD => {
-                        if let Err(e) = self.handle_create_race(&ctx, i).await {
-                            println!("Error creating race: {}", e);
-                        }
-                    }
                     _ => {
-                        println!("Unknown interaction :( :(");
+                        println!("Unhandled ApplicationCommand interaction :( :(");
                     }
                 }
             }

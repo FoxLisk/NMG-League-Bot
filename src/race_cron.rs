@@ -1,4 +1,3 @@
-use crate::constants::TOKEN_VAR;
 use crate::db::get_pool;
 use crate::discord::Webhooks;
 use crate::models::race::Race;
@@ -7,7 +6,6 @@ use crate::shutdown::Shutdown;
 use sqlx::SqlitePool;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
-use twilight_http::request::channel::webhook::ExecuteWebhook;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
 use twilight_model::id::Id;
@@ -90,7 +88,7 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
         );
         let c = match twilight_validate::message::content(&s) {
             Ok(()) => s,
-            Err(e) => {
+            Err(_e) => {
                 format!(
                     "Race finished: {} vs {}",
                     r1.racer_id_tw().unwrap().mention(),

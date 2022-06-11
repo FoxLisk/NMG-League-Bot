@@ -10,6 +10,7 @@ use core::default::Default;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -19,6 +20,7 @@ use twilight_http::client::InteractionClient;
 use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_mention::Mention;
+use twilight_model::application::command::{BaseCommandOptionData, Command, CommandOption, CommandType};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{ActionRow, Button, Component};
 use twilight_model::application::interaction::application_command::{
@@ -28,15 +30,16 @@ use twilight_model::application::interaction::{ApplicationCommand, Interaction};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::channel::Message;
 use twilight_model::gateway::event::Event;
-use twilight_model::gateway::payload::incoming::InteractionCreate;
+use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
-use twilight_model::guild::Role;
+use twilight_model::guild::{Guild, Permissions, Role};
 use twilight_model::http::interaction::InteractionResponseType::DeferredChannelMessageWithSource;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
 use twilight_model::id::Id;
+use twilight_util::builder::command::CommandBuilder;
 use twilight_validate::component::button;
 
 use super::CREATE_RACE_CMD;
@@ -56,7 +59,7 @@ mod state {
         pub pool: SqlitePool,
         // this isn't handled by the cache b/c it is not updated via Gateway events
         private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
-        aid: Id<ApplicationMarker>,
+        application_id: Id<ApplicationMarker>,
     }
 
     impl State {
@@ -70,13 +73,14 @@ mod state {
                 cache,
                 client,
                 pool,
-                aid,
+                application_id: aid,
                 private_channels: Default::default(),
             }
         }
 
+
         pub(super) fn interaction_client<'a>(&'a self) -> InteractionClient<'a> {
-            self.client.interaction(self.aid.clone())
+            self.client.interaction(self.application_id.clone())
         }
 
         pub(super) async fn get_private_channel(
@@ -366,10 +370,69 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
     }
 }
 
+async fn set_application_commands(gc: &Box<GuildCreate>, state: Arc<State>) -> Result<(), String> {
+    let cb = CommandBuilder::new(
+        CREATE_RACE_CMD.to_string(),
+        "Create an asynchronous race for two players".to_string(),
+        CommandType::ChatInput
+    ).default_member_permissions(
+        Permissions::MANAGE_GUILD
+    ).option(
+        CommandOption::User(
+            BaseCommandOptionData {
+                description: "First racer".to_string(),
+                description_localizations: None,
+                name: "p1".to_string(),
+                name_localizations: None,
+                required: true
+            }
+        )
+    ).option(
+        CommandOption::User(
+            BaseCommandOptionData {
+                description: "Second racer".to_string(),
+                description_localizations: None,
+                name: "p2".to_string(),
+                name_localizations: None,
+                required: true
+            }
+        )
+    ).build();
+
+    let resp = state.interaction_client()
+        .set_guild_commands(
+            gc.id.clone(),
+            &[cb]
+        )
+        .exec().await.map_err(|e| e.to_string())?;
+
+    if ! resp.status().is_success() {
+        return Err(format!("Error response setting guild commands: {}", resp.status()));
+    }
+
+    match resp.model().await {
+        Ok(cmds) => {
+            println!("Got commands for guild {}:", gc.id);
+
+            for cmd in cmds {
+                // TODO: role-based permissions
+                println!("{:?}", cmd);
+            }
+            Ok(())
+        }
+        Err(e) => {
+            println!("Error inspecting list of returned commands: {}", e);
+            Ok(())
+        }
+    }
+}
+
 async fn handle_event(event: Event, state: Arc<State>) {
     match event {
         Event::GuildCreate(gc) => {
-            println!("Guild create event: {:?}", gc);
+            if let Err(e) = set_application_commands(&gc, state).await {
+                println!("Error setting application commands for guild {:?}: {}", gc.id, e);
+            }
         }
         Event::GuildDelete(gd) => {
             println!("Guild deleted?? event: {:?}", gd);

@@ -13,6 +13,7 @@ use twilight_http::request::channel::webhook::ExecuteWebhook;
 use std::fmt::Display;
 use sqlx::Execute;
 use twilight_http::response::marker::EmptyBody;
+use twilight_util::link::webhook::parse;
 
 #[derive(Clone)]
 pub(crate) struct Webhooks {
@@ -25,17 +26,13 @@ impl TypeMapKey for Webhooks {
     type Value = Self;
 }
 
-pub fn parse_webhook(url: &str) -> Option<(u64, String)> {
-    let re = Regex::new(r#"https?://discord.com/api/webhooks/(\d+)/([\w_-]+)/?"#).unwrap();
-    let groups = re.captures(url)?;
-    let id = groups.get(1)?.as_str().parse::<u64>().ok()?;
-    let token = groups.get(2)?.as_str().to_string();
-    Some((id, token))
-}
-
 async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook, String> {
-    let (id, token) = parse_webhook(&url).ok_or("Error parsing webhook url".to_string())?;
-    let resp: Response<Webhook> = match client.webhook(Id::new(id)).token(&token).exec().await {
+    let (id, tokeno) = parse(&url).map_err(|e| e.to_string())?;
+    let token= match tokeno {
+        Some(t) => t,
+        None => {return Err(format!("No token found for webhook {}", id));}
+    };
+    let resp: Response<Webhook> = match client.webhook(id).token(&token).exec().await {
         Ok(r) => r,
         Err(e) => {
             let er = format!("Error fetching webhook {}: {}", id, e);

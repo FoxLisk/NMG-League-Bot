@@ -21,6 +21,7 @@ extern crate tokio;
 extern crate twilight_http;
 extern crate twilight_model;
 extern crate twilight_validate;
+extern crate twilight_util;
 
 use discord::Webhooks;
 

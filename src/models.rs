@@ -359,9 +359,6 @@ pub(crate) mod race_run {
     }
 
     impl RaceRun {
-        pub(crate) fn racer_id(&self) -> UserId {
-            UserId(self.racer_id.parse().unwrap())
-        }
 
         pub(crate) fn racer_id_tw(&self) -> Result<Id<UserMarker>, String> {
 
