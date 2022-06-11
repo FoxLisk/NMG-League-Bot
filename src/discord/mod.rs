@@ -129,6 +129,8 @@ impl RaceHandler {
         interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
     ) -> Result<(), String> {
+        println!("Serenity bot: handle run sundowning");
+        return Ok(());
         race_run.start();
         let res = {
             let d = ctx.data.read().await;

@@ -1,7 +1,7 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::bot_twilight::state::State;
-use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_START_RUN};
+use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN};
 use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
@@ -10,8 +10,10 @@ use core::default::Default;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
+use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
+use serenity::model::interactions::message_component::ComponentType;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::cluster::ShardScheme;
@@ -28,7 +30,7 @@ use twilight_model::application::component::{ActionRow, Button, Component};
 use twilight_model::application::interaction::application_command::{
     CommandDataOption, CommandOptionValue,
 };
-use twilight_model::application::interaction::{ApplicationCommand, Interaction};
+use twilight_model::application::interaction::{ApplicationCommand, Interaction, MessageComponentInteraction};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::channel::Message;
 use twilight_model::gateway::event::Event;
@@ -42,6 +44,7 @@ use twilight_model::http::interaction::{
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
+use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::component::button;
 
 use super::CREATE_RACE_CMD;
@@ -331,6 +334,67 @@ async fn handle_create_race(
     )))
 }
 
+async fn handle_run_start(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    let mut rr = RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await?
+        .ok_or(format!("No RaceRun found for message id {}", interaction.message.id))?;
+    rr.start();
+    match rr.save(&state.pool).await {
+        Ok(_) => {
+            let buttons = vec![Component::ActionRow(ActionRow {
+                components: vec![button_component(
+                    "Finish run",
+                    CUSTOM_ID_FINISH_RUN,
+                    ButtonStyle::Success,
+                ), button_component(
+                    "Forfeit",
+                    CUSTOM_ID_FORFEIT_RUN,
+                    ButtonStyle::Danger
+                )],
+            })];
+            let content = format!("Good luck! your filenames are: `{}`
+
+If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d23-4198-80bb-40f9994298c9`
+", rr.filenames().unwrap());
+            let resp = InteractionResponse {
+                kind: InteractionResponseType::UpdateMessage,
+                data: Some(InteractionResponseDataBuilder::new()
+                    .components(buttons)
+                    .content(content)
+                    .build())
+            };
+            state.interaction_client().create_response(
+                interaction.id,
+                &interaction.token,
+                &resp
+            ).exec()
+                .await
+                .map_err(|e| e.to_string())
+                .map(|_|())
+        }
+        Err(e) => {
+            println!("Error updating race run: {}", e);
+            state.interaction_client().update_response(
+                &interaction.token,
+            ).content(Some("There was an error starting your race. Please ping FoxLisk"))
+                .map_err(|e| e.to_string())?
+                .exec()
+                .await
+                .map_err(|e| e.to_string())
+                .map(|_|())
+        }
+    }
+}
+
+async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    match interaction.data.custom_id.as_str() {
+        CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
+        _ => {
+            println!("Unhandled button: {:?}", interaction);
+            Ok(())
+        }
+    }
+}
+
 async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
     let interaction_id = interaction.id();
     let token = interaction.token().to_string();
@@ -367,6 +431,11 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
                 );
             }
         },
+        Interaction::MessageComponent(mc) => {
+            if let Err(e) = handle_button_interaction(mc, &state).await {
+                println!("Error handling button: {}", e);
+            }
+        }
         _ => {}
     }
 }

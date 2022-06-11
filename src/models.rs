@@ -173,7 +173,7 @@ pub(crate) mod race_run {
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
-    use twilight_model::id::marker::UserMarker;
+    use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
 
     pub(crate) struct Filenames {
@@ -444,6 +444,14 @@ pub(crate) mod race_run {
 
         pub(crate) fn set_message_id(&mut self, message_id: u64) {
             self.message_id = Some(message_id.to_string());
+        }
+
+
+        pub(crate) async fn get_by_message_id_tw(
+            message_id: &Id<MessageMarker>,
+            pool: &SqlitePool,
+        ) -> Result<Option<Self>, String> {
+            Self::get_by_message_id(&MessageId(message_id.get()), pool).await
         }
 
         pub(crate) async fn get_by_message_id(
