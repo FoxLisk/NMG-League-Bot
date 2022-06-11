@@ -1,6 +1,6 @@
 use serenity::model::id::UserId;
-use twilight_model::id::Id;
 use twilight_model::id::marker::UserMarker;
+use twilight_model::id::Id;
 
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -38,7 +38,7 @@ impl From<UserId> for InternalUserId {
 
 pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun};
-    use crate::models::{epoch_timestamp, InternalUserId, uuid_string};
+    use crate::models::{epoch_timestamp, uuid_string, InternalUserId};
     use serde::Serialize;
     use serenity::model::id::UserId;
     use sqlx::SqlitePool;
@@ -97,7 +97,11 @@ pub(crate) mod race {
             .map_err(|e| e.to_string())
         }
 
-        async fn add_run<U: Into<InternalUserId>>(&self, racer_id: U, pool: &SqlitePool) -> Result<RaceRun, String> {
+        async fn add_run<U: Into<InternalUserId>>(
+            &self,
+            racer_id: U,
+            pool: &SqlitePool,
+        ) -> Result<RaceRun, String> {
             let nrr = NewRaceRun::new(self.id, racer_id);
             nrr.save(pool).await
         }
@@ -110,7 +114,6 @@ pub(crate) mod race {
         ) -> Result<(RaceRun, RaceRun), String> {
             let r1 = racer_1.into();
             let r2 = racer_2.into();
-
 
             if r1.0 == r2.0 {
                 return Err("Racers must be different users!".to_string());
@@ -161,8 +164,8 @@ pub(crate) mod race {
 pub(crate) mod race_run {
     use serenity::model::id::{MessageId, UserId};
 
-    use crate::models::{epoch_timestamp, InternalUserId};
     use crate::models::uuid_string;
+    use crate::models::{epoch_timestamp, InternalUserId};
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
     use serde::Serialize;
@@ -170,8 +173,8 @@ pub(crate) mod race_run {
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
-    use twilight_model::id::Id;
     use twilight_model::id::marker::UserMarker;
+    use twilight_model::id::Id;
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -359,10 +362,10 @@ pub(crate) mod race_run {
     }
 
     impl RaceRun {
-
         pub(crate) fn racer_id_tw(&self) -> Result<Id<UserMarker>, String> {
-
-            self.racer_id.parse::<u64>().map_err(|e| e.to_string())
+            self.racer_id
+                .parse::<u64>()
+                .map_err(|e| e.to_string())
                 .map(Id::<UserMarker>::new)
                 .map_err(|e| e.to_string())
         }

@@ -20,7 +20,9 @@ use twilight_http::client::InteractionClient;
 use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_mention::Mention;
-use twilight_model::application::command::{BaseCommandOptionData, Command, CommandOption, CommandType};
+use twilight_model::application::command::{
+    BaseCommandOptionData, Command, CommandOption, CommandType,
+};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{ActionRow, Button, Component};
 use twilight_model::application::interaction::application_command::{
@@ -77,7 +79,6 @@ mod state {
                 private_channels: Default::default(),
             }
         }
-
 
         pub(super) fn interaction_client<'a>(&'a self) -> InteractionClient<'a> {
             self.client.interaction(self.application_id.clone())
@@ -374,40 +375,37 @@ async fn set_application_commands(gc: &Box<GuildCreate>, state: Arc<State>) -> R
     let cb = CommandBuilder::new(
         CREATE_RACE_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
-        CommandType::ChatInput
-    ).default_member_permissions(
-        Permissions::MANAGE_GUILD
-    ).option(
-        CommandOption::User(
-            BaseCommandOptionData {
-                description: "First racer".to_string(),
-                description_localizations: None,
-                name: "p1".to_string(),
-                name_localizations: None,
-                required: true
-            }
-        )
-    ).option(
-        CommandOption::User(
-            BaseCommandOptionData {
-                description: "Second racer".to_string(),
-                description_localizations: None,
-                name: "p2".to_string(),
-                name_localizations: None,
-                required: true
-            }
-        )
-    ).build();
+        CommandType::ChatInput,
+    )
+    .default_member_permissions(Permissions::MANAGE_GUILD)
+    .option(CommandOption::User(BaseCommandOptionData {
+        description: "First racer".to_string(),
+        description_localizations: None,
+        name: "p1".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
+    .option(CommandOption::User(BaseCommandOptionData {
+        description: "Second racer".to_string(),
+        description_localizations: None,
+        name: "p2".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
+    .build();
 
-    let resp = state.interaction_client()
-        .set_guild_commands(
-            gc.id.clone(),
-            &[cb]
-        )
-        .exec().await.map_err(|e| e.to_string())?;
+    let resp = state
+        .interaction_client()
+        .set_guild_commands(gc.id.clone(), &[cb])
+        .exec()
+        .await
+        .map_err(|e| e.to_string())?;
 
-    if ! resp.status().is_success() {
-        return Err(format!("Error response setting guild commands: {}", resp.status()));
+    if !resp.status().is_success() {
+        return Err(format!(
+            "Error response setting guild commands: {}",
+            resp.status()
+        ));
     }
 
     match resp.model().await {
@@ -431,7 +429,10 @@ async fn handle_event(event: Event, state: Arc<State>) {
     match event {
         Event::GuildCreate(gc) => {
             if let Err(e) = set_application_commands(&gc, state).await {
-                println!("Error setting application commands for guild {:?}: {}", gc.id, e);
+                println!(
+                    "Error setting application commands for guild {:?}: {}",
+                    gc.id, e
+                );
             }
         }
         Event::GuildDelete(gd) => {

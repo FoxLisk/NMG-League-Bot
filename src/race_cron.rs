@@ -8,8 +8,8 @@ use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-use twilight_model::id::Id;
 use twilight_model::id::marker::UserMarker;
+use twilight_model::id::Id;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -54,7 +54,8 @@ fn format_finisher(run: &RaceRun) -> String {
             )
         }
         RaceRunState::FORFEIT => {
-            format!("Player: {}
+            format!(
+                "Player: {}
     Forfeit",
                 run.racer_id_tw().unwrap().mention()
             )
@@ -64,7 +65,6 @@ fn format_finisher(run: &RaceRun) -> String {
         }
     }
 }
-
 
 async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
     let (r1, r2) = match race.get_runs(pool).await {
@@ -96,9 +96,10 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
                 )
             }
         };
-        if let Err(e) = webhooks.execute_webhook(
-        e.content(&c).unwrap().flags(MessageFlags::SUPPRESS_EMBEDS)
-        ).await {
+        if let Err(e) = webhooks
+            .execute_webhook(e.content(&c).unwrap().flags(MessageFlags::SUPPRESS_EMBEDS))
+            .await
+        {
             println!("Error executing webhook: {}", e);
         }
         race.finish();

@@ -1,5 +1,5 @@
-mod webhooks;
 pub(crate) mod bot_twilight;
+mod webhooks;
 
 pub(crate) use webhooks::Webhooks;
 
@@ -56,7 +56,6 @@ const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 const CREATE_RACE_CMD: &str = "create_race";
 const ADMIN_ROLE_NAME: &'static str = "Admin";
 
-
 struct AdminRoleMap;
 
 impl TypeMapKey for AdminRoleMap {
@@ -66,7 +65,6 @@ impl TypeMapKey for AdminRoleMap {
 struct RaceHandler;
 
 impl RaceHandler {
-
     async fn handle_run_forfeit(
         ctx: &Context,
         interaction: MessageComponentInteraction,
@@ -356,7 +354,6 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
         }
     }
 }
-
 
 async fn maybe_update_admin_role(ctx: &Context, role: Role) -> Option<Role> {
     if role.name.to_lowercase() == ADMIN_ROLE_NAME {

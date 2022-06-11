@@ -7,7 +7,6 @@ mod discord;
 mod models;
 mod race_cron;
 mod shutdown;
-mod utils;
 mod web;
 
 extern crate oauth2;
@@ -20,8 +19,8 @@ extern crate sqlx;
 extern crate tokio;
 extern crate twilight_http;
 extern crate twilight_model;
-extern crate twilight_validate;
 extern crate twilight_util;
+extern crate twilight_validate;
 
 use discord::Webhooks;
 
