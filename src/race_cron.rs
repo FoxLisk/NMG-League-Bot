@@ -10,6 +10,7 @@ use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
+use crate::constants::CRON_TICKS_VAR;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -124,9 +125,18 @@ async fn sweep(pool: &SqlitePool, webhooks: &Webhooks) {
     }
 }
 
+fn get_tick_duration() -> Duration {
+    Duration::from_secs(std::env::var(CRON_TICKS_VAR).ok().and_then(
+        |s| s.parse::<u64>().ok()
+    ).unwrap_or(60))
+}
+
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks) {
     let pool = get_pool().await.unwrap();
-    let mut intv = tokio::time::interval(Duration::from_secs(60));
+
+    let tick_duration = get_tick_duration();
+    println!("Starting cron: running every {} seconds", tick_duration.as_secs());
+    let mut intv = tokio::time::interval(tick_duration);
     loop {
         tokio::select! {
             _ = intv.tick() => {
