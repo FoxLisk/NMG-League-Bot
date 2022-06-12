@@ -10,6 +10,7 @@ use core::default::Default;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -195,17 +196,34 @@ fn can_create_race(
     Ok(member.roles().contains(&role.id))
 }
 
-/// Creates a basic interaction response: plain content with no allowed mentions.
+/// InteractionResponseData with just content + no allowed mentions
+fn plain_interaction_data<S: Into<String>>(content: S) -> InteractionResponseData {
+    InteractionResponseData {
+        content: Some(content.into()),
+        allowed_mentions: Some(AllowedMentionsBuilder::new().build()),
+        ..Default::default()
+    }
+}
+
+/// Creates a basic interaction response: new message, plain content with no allowed mentions.
 fn plain_interaction_response<S: Into<String>>(content: S) -> InteractionResponse {
     InteractionResponse {
         kind: InteractionResponseType::ChannelMessageWithSource,
-        data: Some(InteractionResponseData {
-            content: Some(content.into()),
-            allowed_mentions: Some(AllowedMentionsBuilder::new().build()),
-            ..Default::default()
-        }),
+        data: Some(plain_interaction_data(content)),
     }
 }
+
+fn update_resp_to_plain_content<S: Into<String>>(content: S) -> InteractionResponse {
+    InteractionResponse {
+        kind: InteractionResponseType::UpdateMessage,
+        data: Some(InteractionResponseData {
+            components: Some(vec![]),
+            content: Some(content.into()),
+            ..Default::default()
+        })
+    }
+}
+
 
 fn button_component<S1: Into<String>, S2: Into<String>>(
     label: S1,
@@ -362,6 +380,7 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
                     .content(content)
                     .build())
             };
+            // TODO: why is this creating a new response instead of updating the response?
             state.interaction_client().create_response(
                 interaction.id,
                 &interaction.token,
@@ -373,21 +392,39 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
         }
         Err(e) => {
             println!("Error updating race run: {}", e);
-            state.interaction_client().update_response(
+            let ir = update_resp_to_plain_content("There was an error starting your race. Please ping FoxLisk.");
+
+            state.interaction_client().create_response(
+                interaction.id,
                 &interaction.token,
-            ).content(Some("There was an error starting your race. Please ping FoxLisk"))
-                .map_err(|e| e.to_string())?
-                .exec()
-                .await
-                .map_err(|e| e.to_string())
-                .map(|_|())
+                &ir
+            ).exec().await.map_err(|e| e.to_string()).map(|_|())
         }
     }
+}
+async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    let mut race_run = RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await?.ok_or("No such race".to_string())?;
+    race_run.forfeit();
+    {
+        if let Err(e) = race_run.save(&state.pool).await {
+            println!("Error saving race: {}", e);
+            // TODO: Send message to let me know that this went wrong
+        }
+    }
+    let ir = update_resp_to_plain_content(
+        "You have forfeited this match. Please let the admins know if there are any issues.");
+
+    state.interaction_client().create_response(
+        interaction.id,
+        &interaction.token,
+        &ir
+    ).exec().await.map_err(|e| e.to_string()).map(|_|())
 }
 
 async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
+        CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit(interaction, state).await,
         _ => {
             println!("Unhandled button: {:?}", interaction);
             Ok(())

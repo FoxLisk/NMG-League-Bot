@@ -70,21 +70,9 @@ impl RaceHandler {
         interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
     ) -> Result<(), String> {
-        race_run.forfeit();
-        {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            if let Err(e) = race_run.save(&pool).await {
-                println!("Error saving race: {}", e);
-            }
-        }
-        interaction.create_interaction_response(&ctx.http, |ir|
-            ir.kind(InteractionResponseType::UpdateMessage)
-                .interaction_response_data(|ird|
-                    ird.content("You have forfeited this match. Please let the admins know if there are any issues.")
-                        .components(|cmp| cmp)
-                )
-        ).await.map(|_|()).map_err(|e|e.to_string())
+        println!("Serenity bot: forfeit: sundown...");
+        return Ok(());
+
     }
 
     async fn handle_run_finish(
@@ -131,53 +119,6 @@ impl RaceHandler {
     ) -> Result<(), String> {
         println!("Serenity bot: handle run sundowning");
         return Ok(());
-        race_run.start();
-        let res = {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            race_run.save(pool).await
-        };
-        match res {
-            Ok(_) => interaction
-                .create_interaction_response(&ctx.http, |ir| {
-                    ir.kind(InteractionResponseType::UpdateMessage)
-                        .interaction_response_data(|ird| {
-                            ird.components(|cmps| {
-                                cmps.create_action_row(|r| {
-                                    r.create_button(|input| {
-                                        input
-                                            .label("Finish run")
-                                            .custom_id(CUSTOM_ID_FINISH_RUN)
-                                            .style(ButtonStyle::Success)
-                                    })
-                                        .create_button(|btn| {
-                                            btn.label("Forfeit")
-                                                .custom_id(CUSTOM_ID_FORFEIT_RUN)
-                                                .style(ButtonStyle::Danger)
-                                        })
-                                })
-                            }).content(format!(
-                                "Good luck! your filenames are: `{}`
-
-If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d23-4198-80bb-40f9994298c9`
-", race_run.filenames().unwrap()
-                            ))
-                        })
-                })
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string()),
-            Err(e) => {
-                println!("Error updating race run: {}", e);
-                interaction
-                    .edit_original_interaction_response(&ctx.http, |res| {
-                        res.content("There was an error starting your race. Please ping FoxLisk")
-                    })
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| e.to_string())
-            }
-        }
     }
 
     fn get_user_input_from_modal_field(
