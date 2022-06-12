@@ -1,7 +1,7 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::bot_twilight::state::State;
-use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN};
+use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL};
 use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
@@ -27,7 +27,8 @@ use twilight_model::application::command::{
     BaseCommandOptionData, Command, CommandOption, CommandType,
 };
 use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::component::{ActionRow, Button, Component};
+use twilight_model::application::component::{ActionRow, Button, Component, TextInput};
+use twilight_model::application::component::text_input::TextInputStyle;
 use twilight_model::application::interaction::application_command::{
     CommandDataOption, CommandOptionValue,
 };
@@ -409,14 +410,23 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
     }
 }
 
-async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let ir: InteractionResponse;
-    if let Some(e) = match RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await? {
+async fn update_race_run<T, F>(interaction: &T, f: F, state: &Arc<State>) -> Option<String>
+    where
+        T: Deref<Target=MessageComponentInteraction>,
+        F: FnOnce(&mut RaceRun) -> ()
+{
+    let rro = match RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await {
+        Ok(r) => {r}
+        Err(e) => {
+            return Some(e);
+        }
+    };
+    match rro {
         Some(mut rr) => {
-            rr.forfeit();
+            f(&mut rr);
             {
                 if let Err(e) = rr.save(&state.pool).await {
-                    Some(format!("Error saving forfeited race {}: {}", rr.id, e))
+                    Some(format!("Error saving race {}: {}", rr.id, e))
                 } else {
                     None
                 }
@@ -425,21 +435,22 @@ async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state
         None => {
             Some(format!("Forfeit for unknown race with message id {}", interaction.message.id))
         }
-    } {
-        println!("Error forfeiting race: {}", e);
+    }
+}
 
+async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    let content = if let Some(e) = update_race_run(&interaction, |rr| {rr.forfeit();}, state ).await {
+        println!("Error forfeiting race: {}", e);
         state.webhooks.message_async(&format!(
             "{} tried to forfeit a race but encountered an internal error: {}",
             interaction.author_id().map(|m| m.mention().to_string())
                 .unwrap_or("Unknown user".to_string()),
             e)).await.ok();
-        // TODO: Send message to let me know that this went wrong
-        ir = update_resp_to_plain_content(
-            "Something went wrong forfeiting this match. Please ping FoxLisk.");
+            "Something went wrong forfeiting this match. Please ping FoxLisk."
     } else{
-        ir = update_resp_to_plain_content(
-            "You have forfeited this match. Please let the admins know if there are any issues.");
-    }
+            "You have forfeited this match. Please let the admins know if there are any issues."
+    };
+    let ir = update_resp_to_plain_content(content);
 
     state.interaction_client().create_response(
         interaction.id,
@@ -450,7 +461,52 @@ async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state
 
 
 async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    Ok(())
+    if let Some(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
+        println!("Error finishing race: {}", e);
+        state.webhooks.message_async(&format!(
+            "{} tried to finish a race but encountered an internal error: {}",
+            interaction.author_id().map(|m| m.mention().to_string())
+                .unwrap_or("Unknown user".to_string()),
+            e)).await.ok();
+
+        let ir = update_resp_to_plain_content(
+            "Something went wrong finishing this match. Please ping FoxLisk.");
+
+        return state.interaction_client().create_response(
+            interaction.id,
+            &interaction.token,
+            &ir
+        ).exec().await.map_err(|e| e.to_string()).map(|_|());
+    }
+    let ir = InteractionResponse {
+        kind: InteractionResponseType::Modal,
+        data: Some(InteractionResponseData {
+            components: Some(vec![
+                Component::ActionRow(ActionRow {
+                    components: vec![Component::TextInput(TextInput{
+                            custom_id: CUSTOM_ID_USER_TIME.to_string(),
+                            label: "Finish time:".to_string(),
+                            max_length: Some(100),
+                            min_length: Some(5),
+                            placeholder: None,
+                            required: Some(true),
+                            style: TextInputStyle::Short,
+                            value: None
+                        })],
+                })
+            ]),
+            content: Some("Please enter finish time in **H:MM:SS** format".to_string()),
+            custom_id: Some(CUSTOM_ID_USER_TIME_MODAL.to_string()),
+            title: Some("Enter finish time in **H:MM:SS** format".to_string()),
+            ..Default::default()
+        })
+    };
+
+    state.interaction_client().create_response(
+        interaction.id,
+        &interaction.token,
+        &ir
+    ).exec().await.map_err(|e| e.to_string()).map(|_|())
 }
 
 async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {

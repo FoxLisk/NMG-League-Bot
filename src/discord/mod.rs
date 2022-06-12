@@ -80,6 +80,8 @@ impl RaceHandler {
         interaction: MessageComponentInteraction,
         mut race_run: RaceRun,
     ) -> Result<(), String> {
+        println!("Serenity: sundowning run finishes...");
+        return Ok(());
         race_run.finish();
         {
             let d = ctx.data.read().await;
