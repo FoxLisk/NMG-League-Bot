@@ -5,7 +5,7 @@ use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RU
 use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
-use crate::Shutdown;
+use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
@@ -58,14 +58,17 @@ mod state {
     use twilight_http::Client;
     use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, UserMarker};
     use twilight_model::id::Id;
+    use crate::Webhooks;
 
     pub(super) struct State {
         pub cache: InMemoryCache,
         pub client: Client,
         pub pool: SqlitePool,
+        pub webhooks: Webhooks,
         // this isn't handled by the cache b/c it is not updated via Gateway events
         private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
         application_id: Id<ApplicationMarker>,
+
     }
 
     impl State {
@@ -74,11 +77,13 @@ mod state {
             client: Client,
             aid: Id<ApplicationMarker>,
             pool: SqlitePool,
+            webhooks: Webhooks,
         ) -> Self {
             Self {
                 cache,
                 client,
                 pool,
+                webhooks,
                 application_id: aid,
                 private_channels: Default::default(),
             }
@@ -116,11 +121,12 @@ mod state {
     }
 }
 
-pub(crate) async fn launch(mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>) {
+pub(crate) async fn launch(webhooks: Webhooks, mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>) {
     let token = std::env::var(TOKEN_VAR).unwrap();
     let aid_str = std::env::var(APPLICATION_ID_VAR).unwrap();
     let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
     let pool = get_pool().await.unwrap();
+
 
     let intents = Intents::GUILDS
         | Intents::GUILD_MESSAGES
@@ -149,7 +155,7 @@ pub(crate) async fn launch(mut shutdown: tokio::sync::broadcast::Receiver<Shutdo
 
     let http = Client::new(token);
     let cache = InMemoryCache::builder().build();
-    let state = Arc::new(State::new(cache, http, aid, pool));
+    let state = Arc::new(State::new(cache, http, aid, pool, webhooks));
 
     loop {
         tokio::select! {
@@ -402,17 +408,38 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
         }
     }
 }
+
 async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let mut race_run = RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await?.ok_or("No such race".to_string())?;
-    race_run.forfeit();
-    {
-        if let Err(e) = race_run.save(&state.pool).await {
-            println!("Error saving race: {}", e);
-            // TODO: Send message to let me know that this went wrong
+    let ir: InteractionResponse;
+    if let Some(e) = match RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await? {
+        Some(mut rr) => {
+            rr.forfeit();
+            {
+                if let Err(e) = rr.save(&state.pool).await {
+                    Some(format!("Error saving forfeited race {}: {}", rr.id, e))
+                } else {
+                    None
+                }
+            }
         }
+        None => {
+            Some(format!("Forfeit for unknown race with message id {}", interaction.message.id))
+        }
+    } {
+        println!("Error forfeiting race: {}", e);
+
+        state.webhooks.message_async(&format!(
+            "{} tried to forfeit a race but encountered an internal error: {}",
+            interaction.author_id().map(|m| m.mention().to_string())
+                .unwrap_or("Unknown user".to_string()),
+            e)).await.ok();
+        // TODO: Send message to let me know that this went wrong
+        ir = update_resp_to_plain_content(
+            "Something went wrong forfeiting this match. Please ping FoxLisk.");
+    } else{
+        ir = update_resp_to_plain_content(
+            "You have forfeited this match. Please let the admins know if there are any issues.");
     }
-    let ir = update_resp_to_plain_content(
-        "You have forfeited this match. Please let the admins know if there are any issues.");
 
     state.interaction_client().create_response(
         interaction.id,
@@ -421,10 +448,16 @@ async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state
     ).exec().await.map_err(|e| e.to_string()).map(|_|())
 }
 
+
+async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    Ok(())
+}
+
 async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
         CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit(interaction, state).await,
+        CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
         _ => {
             println!("Unhandled button: {:?}", interaction);
             Ok(())
