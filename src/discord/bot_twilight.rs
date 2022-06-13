@@ -561,7 +561,6 @@ fn get_field_from_modal_components(rows: Vec<ModalInteractionDataActionRow>, cus
             // modal interaction components can be ActionRows, but they can't have sub-components?
             // I don't really get what's going on here, but I think a modal is basically just
             // an action row + some text inputs. that's all I'm doing, anyway, so it's fine
-            println!("component custom id: {} looking for {}", cmp.custom_id, custom_id);
             if cmp.custom_id == custom_id {
                 return Some(cmp.value);
             }
@@ -576,13 +575,6 @@ struct ErrorResponse {
 }
 
 impl ErrorResponse {
-    fn new_user_facing_only(err: String) -> Self {
-        Self {
-            user_facing_error: err,
-            internal_error: None
-        }
-    }
-
     fn new<S1: Into<String>, S2: Into<String>>(user_facing_error: S1, internal_error: S2) -> Self {
         Self {
             user_facing_error: user_facing_error.into(),
@@ -602,12 +594,9 @@ async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, st
                 e))?;
 
 
-    let ut = match get_field_from_modal_components(std::mem::take(&mut interaction.data.components), CUSTOM_ID_USER_TIME) {
-        Some(s) => s,
-        None => {
-            return Err(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "Error getting user time forom modal."));
-        }
-    };
+    let ut = get_field_from_modal_components(
+        std::mem::take(&mut interaction.data.components), CUSTOM_ID_USER_TIME
+    ).ok_or(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "Error getting user time form modal."))?;
     update_race_run(&interaction, |rr| rr.report_user_time(ut), state).await
         .map_err(|e| ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", e))?;
 
@@ -654,11 +643,38 @@ async fn handle_vod_ready(interaction: Box<MessageComponentInteraction>, state: 
         .map(|_|())
 }
 
+
+async fn handle_vod_modal(mut interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), ErrorResponse> {
+    let mid = interaction.get_message_id().ok_or(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "No message found for interaction???"))?;
+    let rr = RaceRun::get_by_message_id_tw(&mid, &state.pool)
+        .await
+        .map_err(|e|
+            ErrorResponse::new(
+                "Something went wrong reporting your VoD. Please ping FoxLisk.",
+                e))?;
+    let user_input = get_field_from_modal_components(
+        std::mem::take(&mut interaction.data.components),
+        CUSTOM_ID_VOD
+    ).ok_or(ErrorResponse::new("Something went wrong reporting your VoD. Please ping FoxLisk.", "Error getting vod from modal."))?;
+    update_race_run(&interaction, |rr| rr.set_vod(user_input), state).await.map_err(|e|
+        ErrorResponse::new("Something went wrong reporting your VoD. Please ping FoxLisk.", e))?;
+    let ir = plain_interaction_response("Thank you, your race is completed. Please message the admins if there are any issues.");
+
+    state.interaction_client().create_response(interaction.id.clone(), &interaction.token, &ir)
+        .exec()
+        .await
+        .map_err(|e| ErrorResponse::new(
+            "Something went wrong reporting your VoD. Please ping FoxLisk.", e.to_string()
+        ))
+        .map(|_|())
+}
+
 async fn handle_modal_submission(interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
     let id = interaction.id.clone();
     let token = interaction.token.clone();
     let resp = match interaction.data.custom_id.as_str() {
         CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction, state).await,
+        CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction, state).await,
         _ => {
             println!("Unhandled modal: {:?}", interaction);
             Ok(())

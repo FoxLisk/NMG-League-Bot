@@ -94,67 +94,12 @@ impl RaceHandler {
         return Ok(());
     }
 
-    fn get_user_input_from_modal_field(
-        mut data: Vec<ActionRow>,
-        custom_id: &str,
-    ) -> Result<String, String> {
-        if let Some(row) = data.pop() {
-            for arc in row.components {
-                match arc {
-                    ActionRowComponent::InputText(it) => {
-                        if it.custom_id == custom_id {
-                            return Ok(it.value);
-                        }
-                    }
-                    _ => {
-                        println!("Unexpected component");
-                        return Err("Unexpected component".to_string());
-                    }
-                }
-            }
-            Err(format!("Field {} not found in modal", custom_id))
-        } else {
-            Err("No action row?".to_string())
-        }
-    }
-
     async fn _handle_vod_modal(
         ctx: &Context,
         mut interaction: ModalSubmitInteraction,
     ) -> Result<(), String> {
-        let mrr: Option<RaceRun> = {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            RaceRun::get_by_message_id(&interaction.message.clone().unwrap().id, &pool).await?
-        };
-
-        if let Some(mut rr) = mrr {
-            let user_input = Self::get_user_input_from_modal_field(
-                std::mem::take(&mut interaction.data.components),
-                CUSTOM_ID_VOD,
-            )?;
-            rr.set_vod(user_input);
-
-            {
-                let d = ctx.data.read().await;
-                let pool = d.get::<Pool>().unwrap();
-                rr.save(&pool).await?;
-            }
-            interaction.create_interaction_response(&ctx.http, |cir|
-                cir.kind(InteractionResponseType::UpdateMessage)
-                    .interaction_response_data(|ird|
-                        ird.content(
-                            "Thank you, your race is completed. Please message the admins if there are any issues."
-                        )
-                            .components(|cmp|cmp)
-                    )
-            ).await
-                .map(|_|())
-                .map_err(|e| e.to_string())
-        } else {
-            println!("Unknown message id {:?}", interaction.message);
-            Err("I don't know what race to set this vod on".to_string())
-        }
+        println!("Handle vod modal: serenity sundown...");
+        return Ok(());
     }
 
     async fn _handle_user_time_modal(
@@ -227,77 +172,6 @@ async fn maybe_update_admin_role(ctx: &Context, role: Role) -> Option<Role> {
         Some(role)
     } else {
         None
-    }
-}
-
-#[async_trait]
-impl EventHandler for RaceHandler {
-    async fn cache_ready(&self, _ctx: Context, _guilds: Vec<GuildId>) {
-        println!("Cache ready");
-    }
-
-    async fn guild_create(&self, ctx: Context, guild: Guild, is_new: bool) {
-        println!("Serenity guild create sundowning...");
-    }
-
-    async fn guild_role_create(&self, ctx: Context, new: Role) {
-        println!("Guild role created: {:?}", new);
-        maybe_update_admin_role(&ctx, new).await;
-    }
-
-    async fn guild_unavailable(&self, _ctx: Context, guild_id: GuildId) {
-        println!("guild unavailable: {}", guild_id);
-    }
-
-    async fn guild_update(
-        &self,
-        _ctx: Context,
-        _old_data_if_available: Option<Guild>,
-        new_but_incomplete: PartialGuild,
-    ) {
-        println!("Guild update: {:?}", new_but_incomplete);
-    }
-
-    async fn ready(&self, _ctx: Context, data_about_bot: Ready) {
-        println!("Ready! {:?}", data_about_bot);
-        for guild in &data_about_bot.guilds {
-            println!("Guild {:?}", guild);
-        }
-    }
-
-    async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
-        println!("Got interaction: {:?}", interaction);
-        match interaction {
-            Interaction::ApplicationCommand(i) => {
-                println!("interaction name: {}", i.data.name);
-                match i.data.name.as_str() {
-                    _ => {
-                        println!("Unhandled ApplicationCommand interaction :( :(");
-                    }
-                }
-            }
-            Interaction::MessageComponent(mci) => {
-                println!("Message component interaction: {:?}", mci);
-                match self.handle_race_run_button(&ctx, mci).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("Error handling interaction: {}", e);
-                    }
-                }
-            }
-            Interaction::ModalSubmit(msi) => {
-                println!("Modal submit: {:?}", msi);
-                match self.handle_race_run_modal(&ctx, msi).await {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("Error handling interaction: {}", e);
-                    }
-                }
-            }
-            _ => {
-                println!("Unexpected interaction");
-            }
-        }
     }
 }
 
