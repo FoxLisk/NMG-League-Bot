@@ -21,8 +21,9 @@ pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun};
     use crate::models::{epoch_timestamp, uuid_string};
     use serde::Serialize;
-    use serenity::model::id::UserId;
     use sqlx::SqlitePool;
+    use twilight_model::id::marker::UserMarker;
+    use twilight_model::id::Id;
 
     #[derive(sqlx::Type, Debug, Serialize)]
     pub(crate) enum RaceState {
@@ -78,15 +79,19 @@ pub(crate) mod race {
             .map_err(|e| e.to_string())
         }
 
-        async fn add_run(&self, racer_id: UserId, pool: &SqlitePool) -> Result<RaceRun, String> {
+        async fn add_run(
+            &self,
+            racer_id: Id<UserMarker>,
+            pool: &SqlitePool,
+        ) -> Result<RaceRun, String> {
             let nrr = NewRaceRun::new(self.id, racer_id);
             nrr.save(pool).await
         }
 
         pub(crate) async fn select_racers(
             &self,
-            racer_1: UserId,
-            racer_2: UserId,
+            racer_1: Id<UserMarker>,
+            racer_2: Id<UserMarker>,
             pool: &SqlitePool,
         ) -> Result<(RaceRun, RaceRun), String> {
             if racer_1 == racer_2 {
@@ -136,8 +141,6 @@ pub(crate) mod race {
 }
 
 pub(crate) mod race_run {
-    use serenity::model::id::{MessageId, UserId};
-
     use crate::models::epoch_timestamp;
     use crate::models::uuid_string;
     use rand::rngs::ThreadRng;
@@ -147,6 +150,8 @@ pub(crate) mod race_run {
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
+    use twilight_model::id::marker::{MessageMarker, UserMarker};
+    use twilight_model::id::Id;
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -334,8 +339,16 @@ pub(crate) mod race_run {
     }
 
     impl RaceRun {
-        pub(crate) fn racer_id(&self) -> UserId {
-            UserId(self.racer_id.parse().unwrap())
+        pub(crate) fn racer_id(&self) -> Result<Id<UserMarker>, String> {
+            self.racer_id
+                .parse::<u64>()
+                .map_err(|e| e.to_string())
+                .map(Id::<UserMarker>::new)
+                .map_err(|e| e.to_string())
+        }
+
+        pub(crate) fn racer_id_raw(&self) -> Result<u64, String> {
+            self.racer_id.parse::<u64>().map_err(|e| e.to_string())
         }
 
         pub(crate) fn finished(&self) -> bool {
@@ -406,12 +419,21 @@ pub(crate) mod race_run {
             .map_err(|e| e.to_string())
         }
 
-        pub(crate) fn set_message_id(&mut self, message_id: MessageId) {
+        pub(crate) fn set_message_id(&mut self, message_id: u64) {
             self.message_id = Some(message_id.to_string());
         }
 
         pub(crate) async fn get_by_message_id(
-            message_id: &MessageId,
+            message_id: Id<MessageMarker>,
+            pool: &SqlitePool,
+        ) -> Result<Self, String> {
+            Self::search_by_message_id(message_id.clone(), pool)
+                .await
+                .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
+        }
+
+        pub(crate) async fn search_by_message_id(
+            message_id: Id<MessageMarker>,
             pool: &SqlitePool,
         ) -> Result<Option<Self>, String> {
             let mid_str = message_id.to_string();
@@ -440,14 +462,14 @@ pub(crate) mod race_run {
     pub(crate) struct NewRaceRun {
         race_id: i32,
         uuid: String,
-        racer_id: UserId,
+        racer_id: Id<UserMarker>,
         filenames: Filenames,
         created: u32,
         state: RaceRunState,
     }
 
     impl NewRaceRun {
-        pub(crate) fn new(race_id: i32, racer_id: UserId) -> Self {
+        pub(crate) fn new(race_id: i32, racer_id: Id<UserMarker>) -> Self {
             Self {
                 race_id,
                 uuid: uuid_string(),

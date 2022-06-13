@@ -2,7 +2,7 @@
 {% block pagename %}Async Status{% endblock %}
 {% block body %}
 <div>
-    {% for state, rows in races %}
+    {% for state, races in races_by_state %}
     <table class="border border-slate-500
         {% if state == "FINISHED" %}
             bg-emerald-400
@@ -34,27 +34,43 @@
             </tr>
         </thead>
         <tbody>
-        {% for row in rows %}
+        {% for race in races %}
             <tr>
-                {% if loop.first %}
                 <th rowspan=2>
                     {{ state }}
                 </th>
-                {% endif %}
                 <td class="border-x border-slate-500">
-                    {{ row.racer_name }}
+                    {{ race.p1.racer_name }}
                 </td>
                 <td class="border-x border-slate-500">
-                    {{ row.filenames }}
+                    {{ race.p1.filenames }}
                 </td>
                 <td class="border-x border-slate-500">
-                    {{ row.run_state }}
+                    {{ race.p1.run_state }}
                 </td>
                 <td class="border-x border-slate-500">
-                    {{ row.vod }}
+                    {{ race.p1.vod }}
                 </td>
                 <td class="border-x border-slate-500">
-                    {{ row.run_uuid }}
+                    {{ race.p1.run_uuid }}
+                </td>
+            </tr>
+            <tr class="border-b border-slate-500">
+                {# state is taken by the rowspan=2 thing #}
+                <td class="border-x border-slate-500">
+                    {{ race.p2.racer_name }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ race.p2.filenames }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ race.p2.run_state }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ race.p2.vod }}
+                </td>
+                <td class="border-x border-slate-500">
+                    {{ race.p2.run_uuid }}
                 </td>
             </tr>
         {% endfor %}
