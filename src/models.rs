@@ -447,12 +447,23 @@ pub(crate) mod race_run {
         }
 
 
-        pub(crate) async fn get_by_message_id_tw(
+        pub(crate) async fn search_by_message_id_tw(
             message_id: &Id<MessageMarker>,
             pool: &SqlitePool,
         ) -> Result<Option<Self>, String> {
             Self::get_by_message_id(&MessageId(message_id.get()), pool).await
         }
+
+
+        pub(crate) async fn get_by_message_id_tw(
+            message_id: &Id<MessageMarker>,
+            pool: &SqlitePool,
+        ) -> Result<Self, String> {
+            Self::get_by_message_id(&MessageId(message_id.get()), pool).await
+                .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
+
+        }
+
 
         pub(crate) async fn get_by_message_id(
             message_id: &MessageId,

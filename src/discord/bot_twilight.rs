@@ -1,7 +1,7 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::bot_twilight::state::State;
-use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL};
+use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_READY};
 use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
@@ -10,7 +10,7 @@ use core::default::Default;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
 use std::collections::HashMap;
-use std::fmt::Display;
+use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -33,6 +33,7 @@ use twilight_model::application::interaction::application_command::{
     CommandDataOption, CommandOptionValue,
 };
 use twilight_model::application::interaction::{ApplicationCommand, Interaction, MessageComponentInteraction};
+use twilight_model::application::interaction::modal::{ModalInteractionDataActionRow, ModalInteractionDataComponent, ModalSubmitInteraction};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::channel::Message;
 use twilight_model::gateway::event::Event;
@@ -43,7 +44,7 @@ use twilight_model::http::interaction::InteractionResponseType::DeferredChannelM
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
+use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
@@ -360,7 +361,7 @@ async fn handle_create_race(
 }
 
 async fn handle_run_start(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let mut rr = RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await?
+    let mut rr = RaceRun::search_by_message_id_tw(&interaction.message.id, &state.pool).await?
         .ok_or(format!("No RaceRun found for message id {}", interaction.message.id))?;
     rr.start();
     match rr.save(&state.pool).await {
@@ -410,12 +411,35 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
     }
 }
 
-async fn update_race_run<T, F>(interaction: &T, f: F, state: &Arc<State>) -> Option<String>
+
+trait GetMessageId {
+    fn get_message_id(&self) -> Option<Id<MessageMarker>>;
+}
+
+impl GetMessageId for MessageComponentInteraction {
+    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
+        Some(self.message.id)
+    }
+}
+
+impl GetMessageId for ModalSubmitInteraction {
+    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
+        self.message.as_ref().map(|m| m.id.clone())
+    }
+}
+
+async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> Option<String>
     where
-        T: Deref<Target=MessageComponentInteraction>,
+        M: GetMessageId,
+        T: Deref<Target=M> + Debug,
         F: FnOnce(&mut RaceRun) -> ()
 {
-    let rro = match RaceRun::get_by_message_id_tw(&interaction.message.id, &state.pool).await {
+    let mid = match interaction.get_message_id() {
+        Some(id) => id,
+        None => { return Some(format!("Interaction {:?} has no message id", interaction)); }
+    };
+
+    let rro = match RaceRun::search_by_message_id_tw(&mid, &state.pool).await {
         Ok(r) => {r}
         Err(e) => {
             return Some(e);
@@ -433,7 +457,7 @@ async fn update_race_run<T, F>(interaction: &T, f: F, state: &Arc<State>) -> Opt
             }
         }
         None => {
-            Some(format!("Forfeit for unknown race with message id {}", interaction.message.id))
+            Some(format!("Update for unknown race with message id {}", mid))
         }
     }
 }
@@ -521,6 +545,96 @@ async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>
     }
 }
 
+fn get_field_from_modal_components(rows: Vec<ModalInteractionDataActionRow>, custom_id: &str) -> Option<String> {
+    for row in rows {
+        for cmp in row.components {
+            // modal interaction components can be ActionRows, but they can't have sub-components?
+            // I don't really get what's going on here, but I think a modal is basically just
+            // an action row + some text inputs. that's all I'm doing, anyway, so it's fine
+            println!("component custom id: {} looking for {}", cmp.custom_id, custom_id);
+            if cmp.custom_id == custom_id {
+                return Some(cmp.value);
+            }
+        }
+    }
+    None
+}
+
+async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
+    let mid = interaction.get_message_id().ok_or("No message found for interaction???".to_string())?;
+    let rr = match RaceRun::get_by_message_id_tw(&mid, &state.pool).await {
+        Ok(r) => {
+            r
+        }
+        Err(e) => {
+            println!("Error finding race run: {}", e);
+            let ir = update_resp_to_plain_content(
+                "Something went wrong reporting your time. Please ping FoxLisk.");
+            return state.interaction_client().create_response(
+                interaction.id,
+                &interaction.token,
+                &ir
+            ).exec().await.map_err(|e| e.to_string()).map(|_|());
+        }
+    };
+
+    let ut = match get_field_from_modal_components(std::mem::take(&mut interaction.data.components), CUSTOM_ID_USER_TIME) {
+        Some(s) => s,
+        None => {
+            println!("Error getting user time from modal");
+            let ir = update_resp_to_plain_content(
+                "Something went wrong reporting your time. Please ping FoxLisk.");
+            return state.interaction_client().create_response(
+                interaction.id,
+                &interaction.token,
+                &ir
+            ).exec().await.map_err(|e| e.to_string()).map(|_|());
+        }
+    };
+    if let Some(e) = update_race_run(&interaction, |rr| rr.report_user_time(ut), state).await {
+        println!("Error updating race run: {}", e);
+        let ir = update_resp_to_plain_content(
+            "Something went wrong reporting your time. Please ping FoxLisk.");
+        return state.interaction_client().create_response(
+            interaction.id,
+            &interaction.token,
+            &ir
+        ).exec().await.map_err(|e| e.to_string()).map(|_|());
+    }
+    let ir = InteractionResponse {
+        kind: InteractionResponseType::UpdateMessage,
+        data: Some(InteractionResponseData {
+            components: Some(vec![Component::ActionRow(
+                    ActionRow {
+                        components: vec![
+                            button_component("VoD ready", CUSTOM_ID_VOD_READY, ButtonStyle::Success)
+                        ]
+                    }
+                )]),
+            content: Some("Please click here once your VoD is ready".to_string()),
+            ..Default::default()
+        })
+    };
+    state.interaction_client().create_response(interaction.id, &interaction.token, &ir)
+        .exec()
+        .await
+        .map_err(|e| e.to_string())
+        .map(|_|())
+}
+
+
+
+async fn handle_modal_submission(interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
+    match interaction.data.custom_id.as_str() {
+        CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction, state).await,
+        _ => {
+            println!("Unhandled modal: {:?}", interaction);
+            Ok(())
+        }
+    }
+
+}
+
 async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
     let interaction_id = interaction.id();
     let token = interaction.token().to_string();
@@ -560,6 +674,11 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
         Interaction::MessageComponent(mc) => {
             if let Err(e) = handle_button_interaction(mc, &state).await {
                 println!("Error handling button: {}", e);
+            }
+        },
+        Interaction::ModalSubmit(ms) => {
+            if let Err(e) = handle_modal_submission(ms, &state).await {
+                println!("Error handling modal submission: {}", e);
             }
         }
         _ => {}

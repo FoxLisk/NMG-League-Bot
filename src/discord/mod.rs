@@ -161,6 +161,8 @@ impl RaceHandler {
         ctx: &Context,
         mut interaction: ModalSubmitInteraction,
     ) -> Result<(), String> {
+        println!("Handle user time modal: Serenity sundown...");
+        return Ok(());
         let mrr: Option<RaceRun> = {
             let d = ctx.data.read().await;
             let pool = d.get::<Pool>().unwrap();
