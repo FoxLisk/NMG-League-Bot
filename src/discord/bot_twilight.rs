@@ -8,12 +8,13 @@ use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use dashmap::DashMap;
-use sqlx::SqlitePool;
+use sqlx::{Error, SqlitePool};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
+use rocket::outcome::IntoOutcome;
 use serenity::model::interactions::message_component::ComponentType;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -428,7 +429,7 @@ impl GetMessageId for ModalSubmitInteraction {
     }
 }
 
-async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> Option<String>
+async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> Result<(), String>
     where
         M: GetMessageId,
         T: Deref<Target=M> + Debug,
@@ -436,13 +437,13 @@ async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> 
 {
     let mid = match interaction.get_message_id() {
         Some(id) => id,
-        None => { return Some(format!("Interaction {:?} has no message id", interaction)); }
+        None => { return Err(format!("Interaction {:?} has no message id", interaction)); }
     };
 
     let rro = match RaceRun::search_by_message_id_tw(&mid, &state.pool).await {
         Ok(r) => {r}
         Err(e) => {
-            return Some(e);
+            return Err(e);
         }
     };
     match rro {
@@ -450,20 +451,20 @@ async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> 
             f(&mut rr);
             {
                 if let Err(e) = rr.save(&state.pool).await {
-                    Some(format!("Error saving race {}: {}", rr.id, e))
+                    Err(format!("Error saving race {}: {}", rr.id, e))
                 } else {
-                    None
+                    Ok(())
                 }
             }
         }
         None => {
-            Some(format!("Update for unknown race with message id {}", mid))
+            Err(format!("Update for unknown race with message id {}", mid))
         }
     }
 }
 
 async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let content = if let Some(e) = update_race_run(&interaction, |rr| {rr.forfeit();}, state ).await {
+    let content = if let Err(e) = update_race_run(&interaction, |rr| {rr.forfeit();}, state ).await {
         println!("Error forfeiting race: {}", e);
         state.webhooks.message_async(&format!(
             "{} tried to forfeit a race but encountered an internal error: {}",
@@ -501,7 +502,7 @@ fn create_modal(custom_id: &str, content: &str, title: &str, components: Vec<Com
 }
 
 async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    if let Some(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
+    if let Err(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
         println!("Error finishing race: {}", e);
         state.webhooks.message_async(&format!(
             "{} tried to finish a race but encountered an internal error: {}",
@@ -569,47 +570,47 @@ fn get_field_from_modal_components(rows: Vec<ModalInteractionDataActionRow>, cus
     None
 }
 
-async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let mid = interaction.get_message_id().ok_or("No message found for interaction???".to_string())?;
-    let rr = match RaceRun::get_by_message_id_tw(&mid, &state.pool).await {
-        Ok(r) => {
-            r
+struct ErrorResponse {
+    user_facing_error: String,
+    internal_error: Option<String>,
+}
+
+impl ErrorResponse {
+    fn new_user_facing_only(err: String) -> Self {
+        Self {
+            user_facing_error: err,
+            internal_error: None
         }
-        Err(e) => {
-            println!("Error finding race run: {}", e);
-            let ir = update_resp_to_plain_content(
-                "Something went wrong reporting your time. Please ping FoxLisk.");
-            return state.interaction_client().create_response(
-                interaction.id,
-                &interaction.token,
-                &ir
-            ).exec().await.map_err(|e| e.to_string()).map(|_|());
+    }
+
+    fn new<S1: Into<String>, S2: Into<String>>(user_facing_error: S1, internal_error: S2) -> Self {
+        Self {
+            user_facing_error: user_facing_error.into(),
+            internal_error: Some(internal_error.into())
         }
-    };
+    }
+}
+
+async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), ErrorResponse> {
+
+    let mid = interaction.get_message_id().ok_or(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "No message found for interaction???"))?;
+    let rr = RaceRun::get_by_message_id_tw(&mid, &state.pool)
+        .await
+        .map_err(|e|
+            ErrorResponse::new(
+                "Something went wrong reporting your time. Please ping FoxLisk.",
+                e))?;
+
 
     let ut = match get_field_from_modal_components(std::mem::take(&mut interaction.data.components), CUSTOM_ID_USER_TIME) {
         Some(s) => s,
         None => {
-            println!("Error getting user time from modal");
-            let ir = update_resp_to_plain_content(
-                "Something went wrong reporting your time. Please ping FoxLisk.");
-            return state.interaction_client().create_response(
-                interaction.id,
-                &interaction.token,
-                &ir
-            ).exec().await.map_err(|e| e.to_string()).map(|_|());
+            return Err(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "Error getting user time forom modal."));
         }
     };
-    if let Some(e) = update_race_run(&interaction, |rr| rr.report_user_time(ut), state).await {
-        println!("Error updating race run: {}", e);
-        let ir = update_resp_to_plain_content(
-            "Something went wrong reporting your time. Please ping FoxLisk.");
-        return state.interaction_client().create_response(
-            interaction.id,
-            &interaction.token,
-            &ir
-        ).exec().await.map_err(|e| e.to_string()).map(|_|());
-    }
+    update_race_run(&interaction, |rr| rr.report_user_time(ut), state).await
+        .map_err(|e| ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", e))?;
+
     let ir = InteractionResponse {
         kind: InteractionResponseType::UpdateMessage,
         data: Some(InteractionResponseData {
@@ -627,60 +628,10 @@ async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, st
     state.interaction_client().create_response(interaction.id, &interaction.token, &ir)
         .exec()
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", e.to_string()))
         .map(|_|())
 }
-/*
 
-async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    if let Some(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
-        println!("Error finishing race: {}", e);
-        state.webhooks.message_async(&format!(
-            "{} tried to finish a race but encountered an internal error: {}",
-            interaction.author_id().map(|m| m.mention().to_string())
-                .unwrap_or("Unknown user".to_string()),
-            e)).await.ok();
-
-        let ir = update_resp_to_plain_content(
-            "Something went wrong finishing this match. Please ping FoxLisk.");
-
-        return state.interaction_client().create_response(
-            interaction.id,
-            &interaction.token,
-            &ir
-        ).exec().await.map_err(|e| e.to_string()).map(|_|());
-    }
-    let ir = InteractionResponse {
-        kind: InteractionResponseType::Modal,
-        data: Some(InteractionResponseData {
-            components: Some(vec![
-                Component::ActionRow(ActionRow {
-                    components: vec![Component::TextInput(TextInput{
-                            custom_id: CUSTOM_ID_USER_TIME.to_string(),
-                            label: "Finish time:".to_string(),
-                            max_length: Some(100),
-                            min_length: Some(5),
-                            placeholder: None,
-                            required: Some(true),
-                            style: TextInputStyle::Short,
-                            value: None
-                        })],
-                })
-            ]),
-            content: Some("Please enter finish time in **H:MM:SS** format".to_string()),
-            custom_id: Some(CUSTOM_ID_USER_TIME_MODAL.to_string()),
-            title: Some("Enter finish time in **H:MM:SS** format".to_string()),
-            ..Default::default()
-        })
-    };
-
-    state.interaction_client().create_response(
-        interaction.id,
-        &interaction.token,
-        &ir
-    ).exec().await.map_err(|e| e.to_string()).map(|_|())
-}
- */
 async fn handle_vod_ready(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
     let ir = create_modal(
         CUSTOM_ID_VOD_MODAL,
@@ -704,14 +655,37 @@ async fn handle_vod_ready(interaction: Box<MessageComponentInteraction>, state: 
 }
 
 async fn handle_modal_submission(interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
-    match interaction.data.custom_id.as_str() {
+    let id = interaction.id.clone();
+    let token = interaction.token.clone();
+    let resp = match interaction.data.custom_id.as_str() {
         CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction, state).await,
         _ => {
             println!("Unhandled modal: {:?}", interaction);
             Ok(())
         }
-    }
+    };
+    if let Err(e) = resp {
+        // inform user about the error
+        let ir = update_resp_to_plain_content(
+            e.user_facing_error);
 
+        let err_ext = state.interaction_client().create_response(
+            id,
+            &token,
+            &ir
+        ).exec().await.map_err(|e| e.to_string()).map(|_| ()).err();
+        if e.internal_error.is_some() || err_ext.is_some() {
+            // inform admins about the error
+            let final_internal_error = format!("Error: {:?} | Error communicating with user: {:?}", e.internal_error, err_ext);
+            println!("{}", final_internal_error);
+            if let Err(e) = state.webhooks.message_async(&final_internal_error).await {
+                // at some point you just have to give up
+                println!("Error reporting internal error");
+            }
+        }
+    }
+    // this error handling stuff should all be pulled up a layer when i get to it
+    Ok(())
 }
 
 async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {

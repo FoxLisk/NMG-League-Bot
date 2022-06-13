@@ -171,7 +171,7 @@ impl RaceHandler {
     ) -> Result<(), String> {
         println!("VOD ready: Serenity sundown...");
         return Ok(());
-        
+
     }
 
     async fn handle_race_run_modal(
