@@ -153,7 +153,7 @@ async fn notify_racer(
     race: &Race,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
-    let uid = race_run.racer_id_tw()?;
+    let uid = race_run.racer_id()?;
     if Some(uid) == state.cache.current_user().map(|cu| cu.id) {
         println!("Not sending messages to myself");
         return Ok(());

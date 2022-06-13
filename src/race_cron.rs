@@ -58,7 +58,7 @@ fn format_finisher(run: &RaceRun) -> String {
             format!(
                 "Player: {}
     Forfeit",
-                run.racer_id_tw().unwrap().mention()
+                run.racer_id().unwrap().mention()
             )
         }
         _ => {
@@ -92,8 +92,8 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
             Err(_e) => {
                 format!(
                     "Race finished: {} vs {}",
-                    r1.racer_id_tw().unwrap().mention(),
-                    r2.racer_id_tw().unwrap().mention(),
+                    r1.racer_id().unwrap().mention(),
+                    r2.racer_id().unwrap().mention(),
                 )
             }
         };

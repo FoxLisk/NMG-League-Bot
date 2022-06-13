@@ -16,12 +16,7 @@ pub(crate) struct Webhooks {
 
 async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook, String> {
     let (id, tokeno) = parse(&url).map_err(|e| e.to_string())?;
-    let token = match tokeno {
-        Some(t) => t,
-        None => {
-            return Err(format!("No token found for webhook {}", id));
-        }
-    };
+    let token = tokeno.ok_or(format!("No token found for webhook {}", id))?;
     let resp: Response<Webhook> = match client.webhook(id).token(&token).exec().await {
         Ok(r) => r,
         Err(e) => {
