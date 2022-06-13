@@ -14,7 +14,6 @@ extern crate rand;
 extern crate regex;
 extern crate rocket;
 extern crate rocket_dyn_templates;
-extern crate serenity;
 extern crate sqlx;
 extern crate tokio;
 extern crate twilight_http;

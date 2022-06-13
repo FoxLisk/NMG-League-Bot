@@ -1,7 +1,6 @@
 use crate::models::uuid_string;
 use crate::oauth2::TokenResponse as OTR;
 use aliri_braid::braid;
-use serenity::model::id::UserId;
 use std::collections::HashMap;
 use tokio::time::Instant;
 

@@ -1,4 +1,3 @@
-use serenity::model::id::UserId;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 
@@ -30,17 +29,11 @@ impl From<Id<UserMarker>> for InternalUserId {
     }
 }
 
-impl From<UserId> for InternalUserId {
-    fn from(id: UserId) -> Self {
-        Self(id.0)
-    }
-}
 
 pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun};
     use crate::models::{epoch_timestamp, uuid_string, InternalUserId};
     use serde::Serialize;
-    use serenity::model::id::UserId;
     use sqlx::SqlitePool;
 
     #[derive(sqlx::Type, Debug, Serialize)]
@@ -162,8 +155,6 @@ pub(crate) mod race {
 }
 
 pub(crate) mod race_run {
-    use serenity::model::id::{MessageId, UserId};
-
     use crate::models::uuid_string;
     use crate::models::{epoch_timestamp, InternalUserId};
     use rand::rngs::ThreadRng;
@@ -446,27 +437,17 @@ pub(crate) mod race_run {
             self.message_id = Some(message_id.to_string());
         }
 
-
-        pub(crate) async fn search_by_message_id_tw(
-            message_id: &Id<MessageMarker>,
-            pool: &SqlitePool,
-        ) -> Result<Option<Self>, String> {
-            Self::get_by_message_id(&MessageId(message_id.get()), pool).await
-        }
-
-
-        pub(crate) async fn get_by_message_id_tw(
-            message_id: &Id<MessageMarker>,
+        pub(crate) async fn get_by_message_id(
+            message_id: Id<MessageMarker>,
             pool: &SqlitePool,
         ) -> Result<Self, String> {
-            Self::get_by_message_id(&MessageId(message_id.get()), pool).await
+            Self::search_by_message_id(message_id.clone(), pool).await
                 .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
 
         }
 
-
-        pub(crate) async fn get_by_message_id(
-            message_id: &MessageId,
+        pub(crate) async fn search_by_message_id(
+            message_id: Id<MessageMarker>,
             pool: &SqlitePool,
         ) -> Result<Option<Self>, String> {
             let mid_str = message_id.to_string();

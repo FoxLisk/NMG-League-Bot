@@ -32,10 +32,6 @@ use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
 use crate::discord::bot_twilight::state::DiscordState;
 use serde::Serialize;
-use serenity::http::Http;
-use serenity::model::id::{GuildId, RoleId, UserId};
-use serenity::model::user::{CurrentUser, User};
-use serenity::CacheAndHttp;
 use sqlx::SqlitePool;
 use std::str::FromStr;
 use twilight_model::id::Id;
@@ -94,7 +90,7 @@ impl OauthClient {
             .authorize_url(CsrfToken::new_random)
             // Set the desired scopes.
             .add_scope(Scope::new(
-                serenity::model::oauth2::OAuth2Scope::Identify.to_string(),
+                "identify".to_string()
             ))
             .url();
         let thing = self.states.lock();

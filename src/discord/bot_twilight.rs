@@ -13,7 +13,6 @@ use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use dashmap::DashMap;
 use rocket::outcome::IntoOutcome;
-use serenity::model::interactions::message_component::ComponentType;
 use sqlx::{Error, SqlitePool};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
@@ -391,12 +390,8 @@ async fn handle_run_start(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
-    let mut rr = RaceRun::search_by_message_id_tw(&interaction.message.id, &state.pool)
-        .await?
-        .ok_or(format!(
-            "No RaceRun found for message id {}",
-            interaction.message.id
-        ))?;
+    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool)
+        .await?;
     rr.start();
     match rr.save(&state.pool).await {
         Ok(_) => {
@@ -474,7 +469,7 @@ where
         }
     };
 
-    let rro = match RaceRun::search_by_message_id_tw(&mid, &state.pool).await {
+    let rro = match RaceRun::search_by_message_id(mid.clone(), &state.pool).await {
         Ok(r) => r,
         Err(e) => {
             return Err(e);
@@ -673,7 +668,7 @@ async fn handle_user_time_modal(
         "Something went wrong reporting your time. Please ping FoxLisk.",
         "No message found for interaction???",
     ))?;
-    let rr = RaceRun::get_by_message_id_tw(&mid, &state.pool)
+    let rr = RaceRun::get_by_message_id(mid, &state.pool)
         .await
         .map_err(|e| {
             ErrorResponse::new(
@@ -763,7 +758,7 @@ async fn handle_vod_modal(
         "Something went wrong reporting your time. Please ping FoxLisk.",
         "No message found for interaction???",
     ))?;
-    let rr = RaceRun::get_by_message_id_tw(&mid, &state.pool)
+    let rr = RaceRun::get_by_message_id(mid, &state.pool)
         .await
         .map_err(|e| {
             ErrorResponse::new(

@@ -1,6 +1,5 @@
 use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, TOKEN_VAR};
 use regex::Regex;
-use serenity::prelude::TypeMapKey;
 use sqlx::Execute;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -18,10 +17,6 @@ pub(crate) struct Webhooks {
     http_client: Arc<Client>,
     async_channel: Webhook,
     admin_channel: Webhook,
-}
-
-impl TypeMapKey for Webhooks {
-    type Value = Self;
 }
 
 async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook, String> {

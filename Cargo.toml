@@ -31,10 +31,6 @@ dashmap = "5.3.4"
 rocket = { version = "0.5.0-rc.2", features = ["json"] }
 rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
 
-[dependencies.serenity]
-version = "0.11.2"
-default-features=false
-features=["client", "gateway", "rustls_backend", "model", "cache", "collector"]
 
 [build-dependencies]
 sqlx = {version = "0.5.13", features = [ "runtime-tokio-rustls" , "sqlite"]}
