@@ -1,21 +1,25 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::bot_twilight::state::State;
-use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_READY};
+use crate::discord::{
+    ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN,
+    CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL,
+    CUSTOM_ID_VOD_READY,
+};
 use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use dashmap::DashMap;
+use rocket::outcome::IntoOutcome;
+use serenity::model::interactions::message_component::ComponentType;
 use sqlx::{Error, SqlitePool};
 use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::future::Future;
 use std::ops::Deref;
 use std::sync::Arc;
-use rocket::outcome::IntoOutcome;
-use serenity::model::interactions::message_component::ComponentType;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::cluster::ShardScheme;
@@ -28,13 +32,17 @@ use twilight_model::application::command::{
     BaseCommandOptionData, Command, CommandOption, CommandType,
 };
 use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::component::{ActionRow, Button, Component, TextInput};
 use twilight_model::application::component::text_input::TextInputStyle;
+use twilight_model::application::component::{ActionRow, Button, Component, TextInput};
 use twilight_model::application::interaction::application_command::{
     CommandDataOption, CommandOptionValue,
 };
-use twilight_model::application::interaction::{ApplicationCommand, Interaction, MessageComponentInteraction};
-use twilight_model::application::interaction::modal::{ModalInteractionDataActionRow, ModalInteractionDataComponent, ModalSubmitInteraction};
+use twilight_model::application::interaction::modal::{
+    ModalInteractionDataActionRow, ModalInteractionDataComponent, ModalSubmitInteraction,
+};
+use twilight_model::application::interaction::{
+    ApplicationCommand, Interaction, MessageComponentInteraction,
+};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::channel::Message;
 use twilight_model::gateway::event::Event;
@@ -45,7 +53,9 @@ use twilight_model::http::interaction::InteractionResponseType::DeferredChannelM
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, MessageMarker, UserMarker};
+use twilight_model::id::marker::{
+    ApplicationMarker, ChannelMarker, GuildMarker, MessageMarker, UserMarker,
+};
 use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
@@ -54,6 +64,7 @@ use twilight_validate::component::button;
 use super::CREATE_RACE_CMD;
 
 mod state {
+    use crate::Webhooks;
     use dashmap::DashMap;
     use sqlx::SqlitePool;
     use twilight_cache_inmemory::InMemoryCache;
@@ -61,7 +72,6 @@ mod state {
     use twilight_http::Client;
     use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, UserMarker};
     use twilight_model::id::Id;
-    use crate::Webhooks;
 
     pub(super) struct State {
         pub cache: InMemoryCache,
@@ -71,7 +81,6 @@ mod state {
         // this isn't handled by the cache b/c it is not updated via Gateway events
         private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
         application_id: Id<ApplicationMarker>,
-
     }
 
     impl State {
@@ -124,12 +133,14 @@ mod state {
     }
 }
 
-pub(crate) async fn launch(webhooks: Webhooks, mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>) {
+pub(crate) async fn launch(
+    webhooks: Webhooks,
+    mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
+) {
     let token = std::env::var(TOKEN_VAR).unwrap();
     let aid_str = std::env::var(APPLICATION_ID_VAR).unwrap();
     let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
     let pool = get_pool().await.unwrap();
-
 
     let intents = Intents::GUILDS
         | Intents::GUILD_MESSAGES
@@ -229,10 +240,9 @@ fn update_resp_to_plain_content<S: Into<String>>(content: S) -> InteractionRespo
             components: Some(vec![]),
             content: Some(content.into()),
             ..Default::default()
-        })
+        }),
     }
 }
-
 
 fn button_component<S1: Into<String>, S2: Into<String>>(
     label: S1,
@@ -361,22 +371,24 @@ async fn handle_create_race(
     )))
 }
 
-async fn handle_run_start(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let mut rr = RaceRun::search_by_message_id_tw(&interaction.message.id, &state.pool).await?
-        .ok_or(format!("No RaceRun found for message id {}", interaction.message.id))?;
+async fn handle_run_start(
+    interaction: Box<MessageComponentInteraction>,
+    state: &Arc<State>,
+) -> Result<(), String> {
+    let mut rr = RaceRun::search_by_message_id_tw(&interaction.message.id, &state.pool)
+        .await?
+        .ok_or(format!(
+            "No RaceRun found for message id {}",
+            interaction.message.id
+        ))?;
     rr.start();
     match rr.save(&state.pool).await {
         Ok(_) => {
             let buttons = vec![Component::ActionRow(ActionRow {
-                components: vec![button_component(
-                    "Finish run",
-                    CUSTOM_ID_FINISH_RUN,
-                    ButtonStyle::Success,
-                ), button_component(
-                    "Forfeit",
-                    CUSTOM_ID_FORFEIT_RUN,
-                    ButtonStyle::Danger
-                )],
+                components: vec![
+                    button_component("Finish run", CUSTOM_ID_FINISH_RUN, ButtonStyle::Success),
+                    button_component("Forfeit", CUSTOM_ID_FORFEIT_RUN, ButtonStyle::Danger),
+                ],
             })];
             let content = format!("Good luck! your filenames are: `{}`
 
@@ -384,34 +396,38 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
 ", rr.filenames().unwrap());
             let resp = InteractionResponse {
                 kind: InteractionResponseType::UpdateMessage,
-                data: Some(InteractionResponseDataBuilder::new()
-                    .components(buttons)
-                    .content(content)
-                    .build())
+                data: Some(
+                    InteractionResponseDataBuilder::new()
+                        .components(buttons)
+                        .content(content)
+                        .build(),
+                ),
             };
             // TODO: why is this creating a new response instead of updating the response?
-            state.interaction_client().create_response(
-                interaction.id,
-                &interaction.token,
-                &resp
-            ).exec()
+            state
+                .interaction_client()
+                .create_response(interaction.id, &interaction.token, &resp)
+                .exec()
                 .await
                 .map_err(|e| e.to_string())
-                .map(|_|())
+                .map(|_| ())
         }
         Err(e) => {
             println!("Error updating race run: {}", e);
-            let ir = update_resp_to_plain_content("There was an error starting your race. Please ping FoxLisk.");
+            let ir = update_resp_to_plain_content(
+                "There was an error starting your race. Please ping FoxLisk.",
+            );
 
-            state.interaction_client().create_response(
-                interaction.id,
-                &interaction.token,
-                &ir
-            ).exec().await.map_err(|e| e.to_string()).map(|_|())
+            state
+                .interaction_client()
+                .create_response(interaction.id, &interaction.token, &ir)
+                .exec()
+                .await
+                .map_err(|e| e.to_string())
+                .map(|_| ())
         }
     }
 }
-
 
 trait GetMessageId {
     fn get_message_id(&self) -> Option<Id<MessageMarker>>;
@@ -430,18 +446,20 @@ impl GetMessageId for ModalSubmitInteraction {
 }
 
 async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> Result<(), String>
-    where
-        M: GetMessageId,
-        T: Deref<Target=M> + Debug,
-        F: FnOnce(&mut RaceRun) -> ()
+where
+    M: GetMessageId,
+    T: Deref<Target = M> + Debug,
+    F: FnOnce(&mut RaceRun) -> (),
 {
     let mid = match interaction.get_message_id() {
         Some(id) => id,
-        None => { return Err(format!("Interaction {:?} has no message id", interaction)); }
+        None => {
+            return Err(format!("Interaction {:?} has no message id", interaction));
+        }
     };
 
     let rro = match RaceRun::search_by_message_id_tw(&mid, &state.pool).await {
-        Ok(r) => {r}
+        Ok(r) => r,
         Err(e) => {
             return Err(e);
         }
@@ -457,73 +475,113 @@ async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> 
                 }
             }
         }
-        None => {
-            Err(format!("Update for unknown race with message id {}", mid))
-        }
+        None => Err(format!("Update for unknown race with message id {}", mid)),
     }
 }
 
-async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    let content = if let Err(e) = update_race_run(&interaction, |rr| {rr.forfeit();}, state ).await {
+async fn handle_run_forfeit(
+    interaction: Box<MessageComponentInteraction>,
+    state: &Arc<State>,
+) -> Result<(), String> {
+    let content = if let Err(e) = update_race_run(
+        &interaction,
+        |rr| {
+            rr.forfeit();
+        },
+        state,
+    )
+    .await
+    {
         println!("Error forfeiting race: {}", e);
-        state.webhooks.message_async(&format!(
-            "{} tried to forfeit a race but encountered an internal error: {}",
-            interaction.author_id().map(|m| m.mention().to_string())
-                .unwrap_or("Unknown user".to_string()),
-            e)).await.ok();
-            "Something went wrong forfeiting this match. Please ping FoxLisk."
-    } else{
-            "You have forfeited this match. Please let the admins know if there are any issues."
+        state
+            .webhooks
+            .message_async(&format!(
+                "{} tried to forfeit a race but encountered an internal error: {}",
+                interaction
+                    .author_id()
+                    .map(|m| m.mention().to_string())
+                    .unwrap_or("Unknown user".to_string()),
+                e
+            ))
+            .await
+            .ok();
+        "Something went wrong forfeiting this match. Please ping FoxLisk."
+    } else {
+        "You have forfeited this match. Please let the admins know if there are any issues."
     };
     let ir = update_resp_to_plain_content(content);
 
-    state.interaction_client().create_response(
-        interaction.id,
-        &interaction.token,
-        &ir
-    ).exec().await.map_err(|e| e.to_string()).map(|_|())
+    state
+        .interaction_client()
+        .create_response(interaction.id, &interaction.token, &ir)
+        .exec()
+        .await
+        .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
-fn create_modal(custom_id: &str, content: &str, title: &str, components: Vec<Component> ) -> InteractionResponse {
+fn create_modal(
+    custom_id: &str,
+    content: &str,
+    title: &str,
+    components: Vec<Component>,
+) -> InteractionResponse {
     InteractionResponse {
         kind: InteractionResponseType::Modal,
         data: Some(InteractionResponseData {
-            components: Some(vec![
-                Component::ActionRow(ActionRow {
-                    components,
-                })
-            ]),
+            components: Some(vec![Component::ActionRow(ActionRow { components })]),
             content: Some(content.to_string()),
             custom_id: Some(custom_id.to_string()),
             title: Some(title.to_string()),
             ..Default::default()
-        })
+        }),
     }
 }
 
-async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
-    if let Err(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
+async fn handle_run_finish(
+    interaction: Box<MessageComponentInteraction>,
+    state: &Arc<State>,
+) -> Result<(), String> {
+    if let Err(e) = update_race_run(
+        &interaction,
+        |rr| {
+            rr.finish();
+        },
+        state,
+    )
+    .await
+    {
         println!("Error finishing race: {}", e);
-        state.webhooks.message_async(&format!(
-            "{} tried to finish a race but encountered an internal error: {}",
-            interaction.author_id().map(|m| m.mention().to_string())
-                .unwrap_or("Unknown user".to_string()),
-            e)).await.ok();
+        state
+            .webhooks
+            .message_async(&format!(
+                "{} tried to finish a race but encountered an internal error: {}",
+                interaction
+                    .author_id()
+                    .map(|m| m.mention().to_string())
+                    .unwrap_or("Unknown user".to_string()),
+                e
+            ))
+            .await
+            .ok();
 
         let ir = update_resp_to_plain_content(
-            "Something went wrong finishing this match. Please ping FoxLisk.");
+            "Something went wrong finishing this match. Please ping FoxLisk.",
+        );
 
-        return state.interaction_client().create_response(
-            interaction.id,
-            &interaction.token,
-            &ir
-        ).exec().await.map_err(|e| e.to_string()).map(|_|());
+        return state
+            .interaction_client()
+            .create_response(interaction.id, &interaction.token, &ir)
+            .exec()
+            .await
+            .map_err(|e| e.to_string())
+            .map(|_| ());
     }
     let ir = create_modal(
         CUSTOM_ID_USER_TIME_MODAL,
         "Please enter finish time in **H:MM:SS** format",
         "Enter finish time in **H:MM:SS** format",
-        vec![Component::TextInput(TextInput{
+        vec![Component::TextInput(TextInput {
             custom_id: CUSTOM_ID_USER_TIME.to_string(),
             label: "Finish time:".to_string(),
             max_length: Some(100),
@@ -531,18 +589,23 @@ async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state:
             placeholder: None,
             required: Some(true),
             style: TextInputStyle::Short,
-            value: None
-        })]);
+            value: None,
+        })],
+    );
 
-
-    state.interaction_client().create_response(
-        interaction.id,
-        &interaction.token,
-        &ir
-    ).exec().await.map_err(|e| e.to_string()).map(|_|())
+    state
+        .interaction_client()
+        .create_response(interaction.id, &interaction.token, &ir)
+        .exec()
+        .await
+        .map_err(|e| e.to_string())
+        .map(|_| ())
 }
 
-async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+async fn handle_button_interaction(
+    interaction: Box<MessageComponentInteraction>,
+    state: &Arc<State>,
+) -> Result<(), String> {
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
         CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit(interaction, state).await,
@@ -555,7 +618,10 @@ async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>
     }
 }
 
-fn get_field_from_modal_components(rows: Vec<ModalInteractionDataActionRow>, custom_id: &str) -> Option<String> {
+fn get_field_from_modal_components(
+    rows: Vec<ModalInteractionDataActionRow>,
+    custom_id: &str,
+) -> Option<String> {
     for row in rows {
         for cmp in row.components {
             // modal interaction components can be ActionRows, but they can't have sub-components?
@@ -578,55 +644,82 @@ impl ErrorResponse {
     fn new<S1: Into<String>, S2: Into<String>>(user_facing_error: S1, internal_error: S2) -> Self {
         Self {
             user_facing_error: user_facing_error.into(),
-            internal_error: Some(internal_error.into())
+            internal_error: Some(internal_error.into()),
         }
     }
 }
 
-async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), ErrorResponse> {
-
-    let mid = interaction.get_message_id().ok_or(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "No message found for interaction???"))?;
+async fn handle_user_time_modal(
+    mut interaction: Box<ModalSubmitInteraction>,
+    state: &Arc<State>,
+) -> Result<(), ErrorResponse> {
+    let mid = interaction.get_message_id().ok_or(ErrorResponse::new(
+        "Something went wrong reporting your time. Please ping FoxLisk.",
+        "No message found for interaction???",
+    ))?;
     let rr = RaceRun::get_by_message_id_tw(&mid, &state.pool)
         .await
-        .map_err(|e|
+        .map_err(|e| {
             ErrorResponse::new(
                 "Something went wrong reporting your time. Please ping FoxLisk.",
-                e))?;
-
+                e,
+            )
+        })?;
 
     let ut = get_field_from_modal_components(
-        std::mem::take(&mut interaction.data.components), CUSTOM_ID_USER_TIME
-    ).ok_or(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "Error getting user time form modal."))?;
-    update_race_run(&interaction, |rr| rr.report_user_time(ut), state).await
-        .map_err(|e| ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", e))?;
+        std::mem::take(&mut interaction.data.components),
+        CUSTOM_ID_USER_TIME,
+    )
+    .ok_or(ErrorResponse::new(
+        "Something went wrong reporting your time. Please ping FoxLisk.",
+        "Error getting user time form modal.",
+    ))?;
+    update_race_run(&interaction, |rr| rr.report_user_time(ut), state)
+        .await
+        .map_err(|e| {
+            ErrorResponse::new(
+                "Something went wrong reporting your time. Please ping FoxLisk.",
+                e,
+            )
+        })?;
 
     let ir = InteractionResponse {
         kind: InteractionResponseType::UpdateMessage,
         data: Some(InteractionResponseData {
-            components: Some(vec![Component::ActionRow(
-                    ActionRow {
-                        components: vec![
-                            button_component("VoD ready", CUSTOM_ID_VOD_READY, ButtonStyle::Success)
-                        ]
-                    }
-                )]),
+            components: Some(vec![Component::ActionRow(ActionRow {
+                components: vec![button_component(
+                    "VoD ready",
+                    CUSTOM_ID_VOD_READY,
+                    ButtonStyle::Success,
+                )],
+            })]),
             content: Some("Please click here once your VoD is ready".to_string()),
             ..Default::default()
-        })
+        }),
     };
-    state.interaction_client().create_response(interaction.id, &interaction.token, &ir)
+    state
+        .interaction_client()
+        .create_response(interaction.id, &interaction.token, &ir)
         .exec()
         .await
-        .map_err(|e| ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", e.to_string()))
-        .map(|_|())
+        .map_err(|e| {
+            ErrorResponse::new(
+                "Something went wrong reporting your time. Please ping FoxLisk.",
+                e.to_string(),
+            )
+        })
+        .map(|_| ())
 }
 
-async fn handle_vod_ready(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+async fn handle_vod_ready(
+    interaction: Box<MessageComponentInteraction>,
+    state: &Arc<State>,
+) -> Result<(), String> {
     let ir = create_modal(
         CUSTOM_ID_VOD_MODAL,
         "Please enter your VoD URL",
         "VoD URL",
-        vec![Component::TextInput(TextInput{
+        vec![Component::TextInput(TextInput {
             custom_id: CUSTOM_ID_VOD.to_string(),
             label: "Enter VoD here".to_string(),
             max_length: None,
@@ -634,42 +727,72 @@ async fn handle_vod_ready(interaction: Box<MessageComponentInteraction>, state: 
             placeholder: None,
             required: Some(true),
             style: TextInputStyle::Short,
-            value: None
-        })]);
-    state.interaction_client().create_response(interaction.id, &interaction.token, &ir)
+            value: None,
+        })],
+    );
+    state
+        .interaction_client()
+        .create_response(interaction.id, &interaction.token, &ir)
         .exec()
         .await
         .map_err(|e| e.to_string())
-        .map(|_|())
+        .map(|_| ())
 }
 
-
-async fn handle_vod_modal(mut interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), ErrorResponse> {
-    let mid = interaction.get_message_id().ok_or(ErrorResponse::new("Something went wrong reporting your time. Please ping FoxLisk.", "No message found for interaction???"))?;
+async fn handle_vod_modal(
+    mut interaction: Box<ModalSubmitInteraction>,
+    state: &Arc<State>,
+) -> Result<(), ErrorResponse> {
+    let mid = interaction.get_message_id().ok_or(ErrorResponse::new(
+        "Something went wrong reporting your time. Please ping FoxLisk.",
+        "No message found for interaction???",
+    ))?;
     let rr = RaceRun::get_by_message_id_tw(&mid, &state.pool)
         .await
-        .map_err(|e|
+        .map_err(|e| {
             ErrorResponse::new(
                 "Something went wrong reporting your VoD. Please ping FoxLisk.",
-                e))?;
+                e,
+            )
+        })?;
     let user_input = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
-        CUSTOM_ID_VOD
-    ).ok_or(ErrorResponse::new("Something went wrong reporting your VoD. Please ping FoxLisk.", "Error getting vod from modal."))?;
-    update_race_run(&interaction, |rr| rr.set_vod(user_input), state).await.map_err(|e|
-        ErrorResponse::new("Something went wrong reporting your VoD. Please ping FoxLisk.", e))?;
-    let ir = plain_interaction_response("Thank you, your race is completed. Please message the admins if there are any issues.");
+        CUSTOM_ID_VOD,
+    )
+    .ok_or(ErrorResponse::new(
+        "Something went wrong reporting your VoD. Please ping FoxLisk.",
+        "Error getting vod from modal.",
+    ))?;
+    update_race_run(&interaction, |rr| rr.set_vod(user_input), state)
+        .await
+        .map_err(|e| {
+            ErrorResponse::new(
+                "Something went wrong reporting your VoD. Please ping FoxLisk.",
+                e,
+            )
+        })?;
+    let ir = plain_interaction_response(
+        "Thank you, your race is completed. Please message the admins if there are any issues.",
+    );
 
-    state.interaction_client().create_response(interaction.id.clone(), &interaction.token, &ir)
+    state
+        .interaction_client()
+        .create_response(interaction.id.clone(), &interaction.token, &ir)
         .exec()
         .await
-        .map_err(|e| ErrorResponse::new(
-            "Something went wrong reporting your VoD. Please ping FoxLisk.", e.to_string()
-        ))
-        .map(|_|())
+        .map_err(|e| {
+            ErrorResponse::new(
+                "Something went wrong reporting your VoD. Please ping FoxLisk.",
+                e.to_string(),
+            )
+        })
+        .map(|_| ())
 }
 
-async fn handle_modal_submission(interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
+async fn handle_modal_submission(
+    interaction: Box<ModalSubmitInteraction>,
+    state: &Arc<State>,
+) -> Result<(), String> {
     let id = interaction.id.clone();
     let token = interaction.token.clone();
     let resp = match interaction.data.custom_id.as_str() {
@@ -682,17 +805,22 @@ async fn handle_modal_submission(interaction: Box<ModalSubmitInteraction>, state
     };
     if let Err(e) = resp {
         // inform user about the error
-        let ir = update_resp_to_plain_content(
-            e.user_facing_error);
+        let ir = update_resp_to_plain_content(e.user_facing_error);
 
-        let err_ext = state.interaction_client().create_response(
-            id,
-            &token,
-            &ir
-        ).exec().await.map_err(|e| e.to_string()).map(|_| ()).err();
+        let err_ext = state
+            .interaction_client()
+            .create_response(id, &token, &ir)
+            .exec()
+            .await
+            .map_err(|e| e.to_string())
+            .map(|_| ())
+            .err();
         if e.internal_error.is_some() || err_ext.is_some() {
             // inform admins about the error
-            let final_internal_error = format!("Error: {:?} | Error communicating with user: {:?}", e.internal_error, err_ext);
+            let final_internal_error = format!(
+                "Error: {:?} | Error communicating with user: {:?}",
+                e.internal_error, err_ext
+            );
             println!("{}", final_internal_error);
             if let Err(e) = state.webhooks.message_async(&final_internal_error).await {
                 // at some point you just have to give up
@@ -744,7 +872,7 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
             if let Err(e) = handle_button_interaction(mc, &state).await {
                 println!("Error handling button: {}", e);
             }
-        },
+        }
         Interaction::ModalSubmit(ms) => {
             if let Err(e) = handle_modal_submission(ms, &state).await {
                 println!("Error handling modal submission: {}", e);
