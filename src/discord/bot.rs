@@ -2,33 +2,24 @@ use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{
-    ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN,
+    CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN,
     CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL,
     CUSTOM_ID_VOD_READY,
 };
-use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use dashmap::DashMap;
-use rocket::outcome::IntoOutcome;
-use sqlx::{Error, SqlitePool};
-use std::collections::HashMap;
-use std::fmt::{Debug, Display};
-use std::future::Future;
+use std::fmt::{Debug};
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_gateway::cluster::ShardScheme;
 use twilight_gateway::Cluster;
-use twilight_http::client::InteractionClient;
-use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_mention::Mention;
 use twilight_model::application::command::{
-    BaseCommandOptionData, Command, CommandOption, CommandType,
+    BaseCommandOptionData,  CommandOption, CommandType,
 };
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
@@ -37,35 +28,32 @@ use twilight_model::application::interaction::application_command::{
     CommandDataOption, CommandOptionValue,
 };
 use twilight_model::application::interaction::modal::{
-    ModalInteractionDataActionRow, ModalInteractionDataComponent, ModalSubmitInteraction,
+    ModalInteractionDataActionRow, ModalSubmitInteraction,
 };
 use twilight_model::application::interaction::{
     ApplicationCommand, Interaction, MessageComponentInteraction,
 };
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
-use twilight_model::channel::Message;
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
-use twilight_model::guild::{Guild, Permissions, Role};
-use twilight_model::http::interaction::InteractionResponseType::DeferredChannelMessageWithSource;
+use twilight_model::guild::{ Permissions};
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
 use twilight_model::id::marker::{
-    ApplicationMarker, ChannelMarker, GuildMarker, MessageMarker, UserMarker,
+    ApplicationMarker,   MessageMarker, UserMarker,
 };
 use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
-use twilight_validate::component::button;
 
 use super::CREATE_RACE_CMD;
 
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
-    mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
+    shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Arc<DiscordState> {
     let token = std::env::var(TOKEN_VAR).unwrap();
     let aid_str = std::env::var(APPLICATION_ID_VAR).unwrap();
@@ -552,18 +540,6 @@ async fn handle_user_time_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
-    let mid = interaction.get_message_id().ok_or(ErrorResponse::new(
-        "Something went wrong reporting your time. Please ping FoxLisk.",
-        "No message found for interaction???",
-    ))?;
-    let rr = RaceRun::get_by_message_id(mid, &state.pool)
-        .await
-        .map_err(|e| {
-            ErrorResponse::new(
-                "Something went wrong reporting your time. Please ping FoxLisk.",
-                e,
-            )
-        })?;
 
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
@@ -642,18 +618,6 @@ async fn handle_vod_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
-    let mid = interaction.get_message_id().ok_or(ErrorResponse::new(
-        "Something went wrong reporting your time. Please ping FoxLisk.",
-        "No message found for interaction???",
-    ))?;
-    let rr = RaceRun::get_by_message_id(mid, &state.pool)
-        .await
-        .map_err(|e| {
-            ErrorResponse::new(
-                "Something went wrong reporting your VoD. Please ping FoxLisk.",
-                e,
-            )
-        })?;
     let user_input = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_VOD,
@@ -723,7 +687,7 @@ async fn handle_modal_submission(
             println!("{}", final_internal_error);
             if let Err(e) = state.webhooks.message_async(&final_internal_error).await {
                 // at some point you just have to give up
-                println!("Error reporting internal error");
+                println!("Error reporting internal error: {}", e);
             }
         }
     }

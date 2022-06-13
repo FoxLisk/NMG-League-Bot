@@ -1,5 +1,4 @@
 use shutdown::Shutdown;
-use twilight_model::channel::message::MessageFlags;
 
 mod constants;
 mod db;

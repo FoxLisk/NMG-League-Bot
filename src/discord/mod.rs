@@ -3,19 +3,6 @@ mod webhooks;
 pub(crate) use webhooks::Webhooks;
 pub(crate) mod discord_state;
 
-use std::collections::HashMap;
-use std::fmt::{Display, Formatter};
-use std::sync::Arc;
-
-use sqlx::SqlitePool;
-use tokio::sync::RwLock;
-
-use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
-use crate::db::get_pool;
-use crate::models::race::{NewRace, Race};
-use crate::models::race_run::RaceRun;
-use crate::shutdown::Shutdown;
-
 extern crate rand;
 extern crate sqlx;
 extern crate tokio;

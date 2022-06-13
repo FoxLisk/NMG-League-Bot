@@ -17,13 +17,12 @@ use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::{get, Request, State};
 use rocket_dyn_templates::Template;
-use tokio::sync::{Mutex as AsyncMutex, RwLock};
+use tokio::sync::{Mutex as AsyncMutex};
 use tokio::time::{Duration, Instant};
 use tokio_stream::StreamExt;
 
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
-    NMG_LEAGUE_GUILD_ID,
 };
 use crate::db::get_pool;
 use crate::models::race_run::RaceRunState;
@@ -285,7 +284,7 @@ async fn discord_login(
             match resp.model().await {
                 Ok(cu) => cu,
                 Err(e) => {
-                    println!("Error deserializing CurrentUser");
+                    println!("Error deserializing CurrentUser: {}", e);
                     return Err(redirect);
                 }
             }

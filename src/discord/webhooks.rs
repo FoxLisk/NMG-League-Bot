@@ -1,15 +1,10 @@
 use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, TOKEN_VAR};
-use regex::Regex;
-use sqlx::Execute;
-use std::fmt::Display;
 use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
 use twilight_http::response::marker::EmptyBody;
 use twilight_http::Response;
 use twilight_model::channel::Webhook;
-use twilight_model::id::marker::WebhookMarker;
-use twilight_model::id::Id;
 use twilight_util::link::webhook::parse;
 
 #[derive(Clone)]
