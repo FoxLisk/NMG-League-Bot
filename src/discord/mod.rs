@@ -1,6 +1,5 @@
 pub(crate) mod bot_twilight;
 mod webhooks;
-
 pub(crate) use webhooks::Webhooks;
 
 use std::collections::HashMap;
@@ -64,101 +63,8 @@ impl TypeMapKey for AdminRoleMap {
 
 struct RaceHandler;
 
-impl RaceHandler {
-    async fn handle_run_forfeit(
-        ctx: &Context,
-        interaction: MessageComponentInteraction,
-        mut race_run: RaceRun,
-    ) -> Result<(), String> {
-        println!("Serenity bot: forfeit: sundown...");
-        return Ok(());
+impl EventHandler for RaceHandler {
 
-    }
-
-    async fn handle_run_finish(
-        ctx: &Context,
-        interaction: MessageComponentInteraction,
-        mut race_run: RaceRun,
-    ) -> Result<(), String> {
-        println!("Serenity: sundowning run finishes...");
-        return Ok(());
-
-    }
-
-    async fn handle_run_start(
-        ctx: &Context,
-        interaction: MessageComponentInteraction,
-        mut race_run: RaceRun,
-    ) -> Result<(), String> {
-        println!("Serenity bot: handle run sundowning");
-        return Ok(());
-    }
-
-    async fn _handle_vod_modal(
-        ctx: &Context,
-        mut interaction: ModalSubmitInteraction,
-    ) -> Result<(), String> {
-        println!("Handle vod modal: serenity sundown...");
-        return Ok(());
-    }
-
-    async fn _handle_user_time_modal(
-        ctx: &Context,
-        mut interaction: ModalSubmitInteraction,
-    ) -> Result<(), String> {
-        println!("Handle user time modal: Serenity sundown...");
-        return Ok(());
-    }
-
-    async fn handle_vod_ready(
-        ctx: &Context,
-        interaction: MessageComponentInteraction,
-    ) -> Result<(), String> {
-        println!("VOD ready: Serenity sundown...");
-        return Ok(());
-
-    }
-
-    async fn handle_race_run_modal(
-        &self,
-        ctx: &Context,
-        interaction: ModalSubmitInteraction,
-    ) -> Result<(), String> {
-        match interaction.data.custom_id.as_str() {
-            CUSTOM_ID_USER_TIME_MODAL => Self::_handle_user_time_modal(ctx, interaction).await,
-            CUSTOM_ID_VOD_MODAL => Self::_handle_vod_modal(ctx, interaction).await,
-            _ => Err(format!("Unexpected modal: {}", interaction.data.custom_id)),
-        }
-    }
-
-    async fn handle_race_run_button(
-        &self,
-        ctx: &Context,
-        interaction: MessageComponentInteraction,
-    ) -> Result<(), String> {
-        let mrr: Option<RaceRun> = {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            RaceRun::get_by_message_id(&interaction.message.id, &pool).await?
-        };
-
-        if let Some(rr) = mrr {
-            println!("Got interaction for race {} - {:?}", rr.id, interaction);
-            match interaction.data.custom_id.as_str() {
-                CUSTOM_ID_START_RUN => Self::handle_run_start(ctx, interaction, rr).await,
-                CUSTOM_ID_FINISH_RUN => Self::handle_run_finish(ctx, interaction, rr).await,
-                CUSTOM_ID_VOD_READY => Self::handle_vod_ready(ctx, interaction).await,
-                CUSTOM_ID_FORFEIT_RUN => Self::handle_run_forfeit(ctx, interaction, rr).await,
-                _ => {
-                    println!("Unhandled interaction");
-                    Err("Unhandled interaction".to_string())
-                }
-            }
-        } else {
-            // TODO: Look up based on other fields
-            Err(format!("Unknown message id: {}", interaction.message.id))
-        }
-    }
 }
 
 async fn maybe_update_admin_role(ctx: &Context, role: Role) -> Option<Role> {

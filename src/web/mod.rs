@@ -28,8 +28,9 @@ use crate::constants::{
 use crate::db::get_pool;
 use crate::models::race_run::RaceRunState;
 use crate::shutdown::Shutdown;
-use crate::web::session_manager::SessionManager;
+use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
+use crate::discord::bot_twilight::state::DiscordState;
 use serde::Serialize;
 use serenity::http::Http;
 use serenity::model::id::{GuildId, RoleId, UserId};
@@ -37,8 +38,12 @@ use serenity::model::user::{CurrentUser, User};
 use serenity::CacheAndHttp;
 use sqlx::SqlitePool;
 use std::str::FromStr;
+use twilight_model::id::Id;
+use twilight_model::id::marker::UserMarker;
 
 mod session_manager;
+
+type SessionManager = _SessionManager<Id<UserMarker>>;
 
 const SESSION_COOKIE_NAME: &str = "nmg_league_session";
 
@@ -184,16 +189,15 @@ impl<'r> FromRequest<'r> for Admin {
             }
         };
 
-        let role_checker = match request.guard::<&State<DiscordStateRepository>>().await {
+        let role_checker = match request.guard::<&State<Arc<DiscordState>>>().await {
             Outcome::Success(s) => s,
             _ => {
                 return Outcome::Forward(());
             }
         };
-        if role_checker.has_nmg_league_admin_role(&uid).await {
-            Outcome::Success(Admin {})
-        } else {
-            Outcome::Forward(())
+        match role_checker.has_nmg_league_admin_role(uid).await {
+            Ok(true) => Outcome::Success(Admin {}),
+            _ =>  Outcome::Forward(())
         }
     }
 }
@@ -255,7 +259,7 @@ async fn discord_login(
     error_description: Option<String>,
     client: &State<OauthClient>,
     session_manager: &State<Arc<AsyncMutex<SessionManager>>>,
-    role_checker: &State<DiscordStateRepository>,
+    role_checker: &State<Arc<DiscordState>>,
     cookies: &CookieJar<'_>,
 ) -> Result<Template, Redirect> {
     println!("code: {:?}", code);
@@ -277,18 +281,29 @@ async fn discord_login(
             return Err(redirect);
         }
     };
-    let http = Http::new(&*user_token);
-    let user_info: CurrentUser = match http.get_current_user().await {
-        Ok(ui) => {
-            println!("Got user info {:?}", ui);
-            ui
+
+    let client = twilight_http::client::Client::new(user_token);
+
+    let user_info = match client.current_user().exec().await {
+        Ok(resp) => {
+            match resp.model().await {
+                Ok(cu) => cu,
+                Err(e) => {
+                    println!("Error deserializing CurrentUser");
+                    return Err(redirect);
+                }
+            }
         }
         Err(e) => {
             println!("Error getting user info: {}", e);
             return Err(redirect);
         }
     };
-    let is_admin = role_checker.has_nmg_league_admin_role(&user_info.id).await;
+    let is_admin = role_checker.has_nmg_league_admin_role(user_info.id.clone()).await
+        .map_err(|e| {
+            println!("Error checking for admin status: {}", e);
+            Redirect::to(uri!(login_page))
+        })?;
 
     if is_admin {
         let st = {
@@ -315,7 +330,7 @@ async fn discord_login(
 async fn async_view(
     _a: Admin,
     pool: &State<SqlitePool>,
-    discord_state: &State<DiscordStateRepository>,
+    discord_state: &State<Arc<DiscordState>>,
 ) -> Template {
     let mut qr = sqlx::query!(
         r#"SELECT
@@ -333,8 +348,9 @@ async fn async_view(
     )
     .fetch(pool.inner());
 
+
     #[derive(Serialize)]
-    struct Row {
+    struct Run {
         run_uuid: String,
         racer_name: String,
         filenames: String,
@@ -342,7 +358,15 @@ async fn async_view(
         vod: Option<String>,
     }
 
-    let mut races = HashMap::<String, Vec<Row>>::new();
+    #[derive(Serialize)]
+    struct Race {
+        state: String,
+        p1: Run,
+        p2: Run
+    }
+
+    let mut runs = HashMap::<i64, Vec<Run>>::new();
+    let mut race_state = HashMap::<i64, String>::new();
 
     while let Some(row_res) = qr.next().await {
         let row = match row_res {
@@ -352,93 +376,67 @@ async fn async_view(
                 continue;
             }
         };
-        let uid = match UserId::from_str(&row.racer_id) {
+        let uid = match Id::<UserMarker>::from_str(&row.racer_id) {
             Ok(u) => u,
             Err(e) => {
                 println!("Error parsing racer id {}: {}", row.racer_id, e);
                 continue;
             }
         };
-        let username = match discord_state.cache_and_http.cache.user(uid) {
-            Some(user) => user.name,
-            None => match discord_state.get_user(uid).await {
-                Some(user) => user.name,
-                None => {
-                    println!("Cannot find racer with user id {}", uid);
-                    "Unknown".to_string()
-                }
-            },
-        };
-        let output_row = Row {
+        let username = discord_state.get_user(uid).await.ok().flatten().map(|u| u.name).unwrap_or("Unknown".to_string());
+        let run = Run {
             run_uuid: row.rr_uuid,
             racer_name: username,
             filenames: row.filenames,
             vod: row.vod,
             run_state: row.rr_state,
         };
-        races
-            .entry(row.race_state)
+        runs
+            .entry(row.race_id)
             .or_insert(vec![])
-            .push(output_row);
+            .push(run);
+        race_state.insert(row.race_id, row.race_state);
+    }
+    let mut races = HashMap::<String, Vec<Race>>::new();
+    for (id, mut runs) in runs.into_iter() {
+        let state = match race_state.remove(&id) {
+            Some(s) => s,
+            None => {
+                println!("Run found for missing race?");
+                continue;
+            }
+        };
+        runs.sort_by(|a, b| a.racer_name.partial_cmp(&b.racer_name).unwrap());
+        let p1 = match runs.pop() {
+            Some(r) => r,
+            None => {
+                println!("Not enough runs for race {}", id);
+                continue;
+            }
+        };
+        let p2 = match runs.pop() {
+            Some(r) => r,
+            None => {
+                println!("Not enough runs for race {}", id);
+                continue;
+            }
+        };
+        races.entry(state.clone()).or_insert(vec![]).push(Race {
+            state, p1, p2
+        });
     }
 
     #[derive(Serialize)]
     struct Context {
-        races: HashMap<String, Vec<Row>>,
+        races_by_state: HashMap<String, Vec<Race>>,
     }
 
-    Template::render("asyncs", Context { races })
+    Template::render("asyncs", Context { races_by_state: races })
 }
 
-struct DiscordStateRepository {
-    cache_and_http: Arc<CacheAndHttp>,
-    guild_role_map: Arc<RwLock<HashMap<GuildId, RoleId>>>,
-}
-
-impl DiscordStateRepository {
-    async fn has_nmg_league_admin_role(&self, uid: &UserId) -> bool {
-        let u = match self.cache_and_http.cache.user(uid) {
-            Some(user) => user,
-            None => match self.cache_and_http.http.get_user(uid.0).await {
-                Ok(user) => user,
-                Err(e) => {
-                    println!("Error fetching user: {}", e);
-                    return false;
-                }
-            },
-        };
-
-        let gid = GuildId(NMG_LEAGUE_GUILD_ID.parse().unwrap());
-        let role_id = {
-            match self.guild_role_map.read().await.get(&gid) {
-                Some(rid) => rid.clone(),
-                None => {
-                    println!("No admin role found for nmg league?");
-                    return false;
-                }
-            }
-        };
-
-        match u.has_role(&self.cache_and_http, gid, role_id).await {
-            Ok(b) => b,
-            Err(e) => {
-                println!("Error checking user role: {}", e);
-                false
-            }
-        }
-    }
-
-    async fn get_user(&self, uid: UserId) -> Option<User> {
-        match self.cache_and_http.cache.user(&uid) {
-            Some(u) => Some(u),
-            None => self.cache_and_http.http.get_user(uid.0).await.ok(),
-        }
-    }
-}
 
 pub(crate) async fn launch_website(
-    cache_and_http: Arc<CacheAndHttp>,
-    guild_role_map: Arc<RwLock<HashMap<GuildId, RoleId>>>,
+    state: Arc<DiscordState>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) {
     let pool = get_pool().await.unwrap();
@@ -460,10 +458,7 @@ pub(crate) async fn launch_website(
             ],
         )
         .attach(Template::fairing())
-        .manage(DiscordStateRepository {
-            cache_and_http,
-            guild_role_map,
-        })
+        .manage(state)
         .manage(session_manager)
         .manage(oauth_client)
         .manage(pool);

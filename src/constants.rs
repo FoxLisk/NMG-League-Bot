@@ -13,4 +13,4 @@ pub const CRON_TICKS_VAR: &str = "CRON_TICK_SECS";
 pub const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/api/oauth2/authorize";
 pub const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
 pub const FOXLISK_USER_ID: u64 = 255676979460702210;
-pub const NMG_LEAGUE_GUILD_ID: &str = "982502396590698498";
+pub const NMG_LEAGUE_GUILD_ID: u64 = 982502396590698498;

@@ -20,21 +20,23 @@ pub(crate) enum UserNotAuthenticated {
     TokenExpired,
 }
 
-pub(crate) struct SessionManager {
-    session: HashMap<SessionToken, (UserId, Instant)>,
+pub(crate) struct SessionManager<T> {
+    session: HashMap<SessionToken, (T, Instant)>,
 }
+
+
 
 // N.B. maybe using UserTokens isn't ideal here, and we should have some kind of internal type
 // it's gonna include a lot of copying, at least - although, again, performance doesn't actually matter, so w/e
 
-impl SessionManager {
+impl<T: Clone> SessionManager<T> {
     pub(crate) fn new() -> Self {
         Self {
             session: Default::default(),
         }
     }
 
-    pub(crate) fn log_in_user(&mut self, uid: UserId, expire_at: Instant) -> SessionToken {
+    pub(crate) fn log_in_user(&mut self, uid: T, expire_at: Instant) -> SessionToken {
         let t = SessionToken::create();
         self.session.insert(t.clone(), (uid, expire_at));
         t
@@ -45,7 +47,7 @@ impl SessionManager {
     pub(crate) fn get_user(
         &mut self,
         st: &SessionTokenRef,
-    ) -> Result<UserId, UserNotAuthenticated> {
+    ) -> Result<T, UserNotAuthenticated> {
         let (uid, exp_at) = self
             .session
             .get(st)
@@ -53,7 +55,8 @@ impl SessionManager {
         if Instant::now() > *exp_at {
             Err(UserNotAuthenticated::TokenExpired)
         } else {
-            Ok(uid.clone())
+            let t: T = uid.clone();
+            Ok(t)
         }
     }
 }

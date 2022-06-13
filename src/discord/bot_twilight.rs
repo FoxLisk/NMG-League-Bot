@@ -1,6 +1,6 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
-use crate::discord::bot_twilight::state::State;
+use crate::discord::bot_twilight::state::DiscordState;
 use crate::discord::{
     ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN,
     CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL,
@@ -63,17 +63,21 @@ use twilight_validate::component::button;
 
 use super::CREATE_RACE_CMD;
 
-mod state {
+pub(crate) mod state {
     use crate::Webhooks;
     use dashmap::DashMap;
     use sqlx::SqlitePool;
     use twilight_cache_inmemory::InMemoryCache;
     use twilight_http::client::InteractionClient;
     use twilight_http::Client;
-    use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, UserMarker};
+    use twilight_model::guild::Role;
+    use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
     use twilight_model::id::Id;
+    use twilight_model::user::User;
+    use crate::constants::NMG_LEAGUE_GUILD_ID;
+    use crate::discord::ADMIN_ROLE_NAME;
 
-    pub(super) struct State {
+    pub(crate) struct DiscordState {
         pub cache: InMemoryCache,
         pub client: Client,
         pub pool: SqlitePool,
@@ -83,7 +87,7 @@ mod state {
         application_id: Id<ApplicationMarker>,
     }
 
-    impl State {
+    impl DiscordState {
         pub(super) fn new(
             cache: InMemoryCache,
             client: Client,
@@ -130,18 +134,66 @@ mod state {
                 ))
             }
         }
+
+        pub(crate) fn get_admin_role(&self, guild_id: Id<GuildMarker>) -> Option<Role> {
+            let roles = self.cache.guild_roles(guild_id)?;
+
+            for role_id in roles.value() {
+                if let Some(role) = self.cache.role(*role_id) {
+                    if role.name == ADMIN_ROLE_NAME {
+                        // cloning pulls it out of the reference, unlocking the cache
+                        return Some(role.resource().clone());
+                    }
+                }
+            }
+            None
+        }
+
+        // making this async now so when i inevitably add an actual HTTP request fallback it's already async
+        pub(crate) async fn has_admin_role(&self, user_id: Id<UserMarker>, guild_id: Id<GuildMarker>) -> Result<bool, String> {
+            let role =
+                self.get_admin_role(guild_id).ok_or("Error: Cannot find admin role".to_string())?;
+            let member = self
+                .cache
+                .member(guild_id, user_id)
+                .ok_or("Error: cannot find member".to_string())?
+                .value()
+                .clone();
+            Ok(member.roles().contains(&role.id))
+        }
+
+        // convenience for website which i have negative interest in adding guild info to
+        pub(crate) async fn has_nmg_league_admin_role(&self, user_id: Id<UserMarker>) -> Result<bool, String> {
+            let gid = Id::<GuildMarker>::new(NMG_LEAGUE_GUILD_ID);
+            self.has_admin_role(user_id, gid).await
+        }
+
+        pub(crate) async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {
+            Ok(
+                self.cache.user(user_id).map(|u| u.value().clone())
+            )
+        }
     }
 }
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
-) {
+) -> Arc<DiscordState> {
     let token = std::env::var(TOKEN_VAR).unwrap();
     let aid_str = std::env::var(APPLICATION_ID_VAR).unwrap();
     let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
     let pool = get_pool().await.unwrap();
 
+    let http = Client::new(token.clone());
+    let cache = InMemoryCache::builder().build();
+    let state = Arc::new(DiscordState::new(cache, http, aid, pool, webhooks));
+
+    tokio::spawn(run_bot(token, state.clone(), shutdown));
+    state
+}
+
+async fn run_bot(token: String, state: Arc<DiscordState>, mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,) {
     let intents = Intents::GUILDS
         | Intents::GUILD_MESSAGES
         | Intents::GUILD_MESSAGE_REACTIONS
@@ -159,18 +211,11 @@ pub(crate) async fn launch(
         .unwrap();
 
     let cluster = Arc::new(cluster);
-
-    // Start up the cluster
     let cluster_start = cluster.clone();
     let cluster_stop = cluster.clone();
     tokio::spawn(async move {
         cluster_start.up().await;
     });
-
-    let http = Client::new(token);
-    let cache = InMemoryCache::builder().build();
-    let state = Arc::new(State::new(cache, http, aid, pool, webhooks));
-
     loop {
         tokio::select! {
             Some((_shard_id, event)) = events.next() => {
@@ -184,36 +229,7 @@ pub(crate) async fn launch(
             }
         }
     }
-}
-
-fn get_admin_role(guild_id: Id<GuildMarker>, state: &Arc<State>) -> Option<Role> {
-    let roles = state.cache.guild_roles(guild_id)?;
-
-    for role_id in roles.value() {
-        if let Some(role) = state.cache.role(*role_id) {
-            if role.name == ADMIN_ROLE_NAME {
-                // cloning pulls it out of the reference, unlocking the cache
-                return Some(role.resource().clone());
-            }
-        }
-    }
-    None
-}
-
-fn can_create_race(
-    guild_id: Id<GuildMarker>,
-    user_id: Id<UserMarker>,
-    state: &Arc<State>,
-) -> Result<bool, String> {
-    let role =
-        get_admin_role(guild_id, state).ok_or("Error: Cannot find admin role".to_string())?;
-    let member = state
-        .cache
-        .member(guild_id, user_id)
-        .ok_or("Error: cannot find member".to_string())?
-        .value()
-        .clone();
-    Ok(member.roles().contains(&role.id))
+    println!("Twilight bot done");
 }
 
 /// InteractionResponseData with just content + no allowed mentions
@@ -262,7 +278,7 @@ fn button_component<S1: Into<String>, S2: Into<String>>(
 async fn notify_racer(
     mut race_run: RaceRun,
     race: &Race,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let uid = race_run.racer_id_tw()?;
     if Some(uid) == state.cache.current_user().map(|cu| cu.id) {
@@ -306,7 +322,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
 
 async fn handle_create_race(
     mut ac: Box<ApplicationCommand>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     let gid = ac
         .guild_id
@@ -315,7 +331,7 @@ async fn handle_create_race(
         .author_id()
         .ok_or("Create race called by no one ????".to_string())?;
 
-    if !can_create_race(gid, uid, &state)? {
+    if ! state.has_admin_role(uid, gid).await? {
         return Err("Unprivileged user attempted to create race".to_string());
     }
 
@@ -373,7 +389,7 @@ async fn handle_create_race(
 
 async fn handle_run_start(
     interaction: Box<MessageComponentInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let mut rr = RaceRun::search_by_message_id_tw(&interaction.message.id, &state.pool)
         .await?
@@ -445,7 +461,7 @@ impl GetMessageId for ModalSubmitInteraction {
     }
 }
 
-async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<State>) -> Result<(), String>
+async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<DiscordState>) -> Result<(), String>
 where
     M: GetMessageId,
     T: Deref<Target = M> + Debug,
@@ -481,7 +497,7 @@ where
 
 async fn handle_run_forfeit(
     interaction: Box<MessageComponentInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let content = if let Err(e) = update_race_run(
         &interaction,
@@ -540,7 +556,7 @@ fn create_modal(
 
 async fn handle_run_finish(
     interaction: Box<MessageComponentInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     if let Err(e) = update_race_run(
         &interaction,
@@ -604,7 +620,7 @@ async fn handle_run_finish(
 
 async fn handle_button_interaction(
     interaction: Box<MessageComponentInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
@@ -651,7 +667,7 @@ impl ErrorResponse {
 
 async fn handle_user_time_modal(
     mut interaction: Box<ModalSubmitInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
     let mid = interaction.get_message_id().ok_or(ErrorResponse::new(
         "Something went wrong reporting your time. Please ping FoxLisk.",
@@ -713,7 +729,7 @@ async fn handle_user_time_modal(
 
 async fn handle_vod_ready(
     interaction: Box<MessageComponentInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let ir = create_modal(
         CUSTOM_ID_VOD_MODAL,
@@ -741,7 +757,7 @@ async fn handle_vod_ready(
 
 async fn handle_vod_modal(
     mut interaction: Box<ModalSubmitInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
     let mid = interaction.get_message_id().ok_or(ErrorResponse::new(
         "Something went wrong reporting your time. Please ping FoxLisk.",
@@ -791,7 +807,7 @@ async fn handle_vod_modal(
 
 async fn handle_modal_submission(
     interaction: Box<ModalSubmitInteraction>,
-    state: &Arc<State>,
+    state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let id = interaction.id.clone();
     let token = interaction.token.clone();
@@ -832,7 +848,7 @@ async fn handle_modal_submission(
     Ok(())
 }
 
-async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
+async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordState>) {
     let interaction_id = interaction.id();
     let token = interaction.token().to_string();
     match interaction.0 {
@@ -882,7 +898,7 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<State>) {
     }
 }
 
-async fn set_application_commands(gc: &Box<GuildCreate>, state: Arc<State>) -> Result<(), String> {
+async fn set_application_commands(gc: &Box<GuildCreate>, state: Arc<DiscordState>) -> Result<(), String> {
     let cb = CommandBuilder::new(
         CREATE_RACE_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
@@ -936,7 +952,7 @@ async fn set_application_commands(gc: &Box<GuildCreate>, state: Arc<State>) -> R
     }
 }
 
-async fn handle_event(event: Event, state: Arc<State>) {
+async fn handle_event(event: Event, state: Arc<DiscordState>) {
     match event {
         Event::GuildCreate(gc) => {
             if let Err(e) = set_application_commands(&gc, state).await {

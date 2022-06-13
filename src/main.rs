@@ -31,15 +31,13 @@ async fn main() {
 
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
     tokio::spawn(race_cron::cron(shutdown_send.subscribe(), webhooks.clone()));
-    let (cache, guild_role_map) = discord::launch_discord_bot(
-        shutdown_send.subscribe()).await;
+
+    let state= discord::bot_twilight::launch(webhooks, shutdown_send.subscribe()).await;
     tokio::spawn(web::launch_website(
-        cache,
-        guild_role_map,
+        state,
         shutdown_send.subscribe(),
     ));
 
-    tokio::spawn(discord::bot_twilight::launch(webhooks, shutdown_send.subscribe()));
 
     tokio::signal::ctrl_c().await.ok();
     let (shutdown_signal_send, mut shutdown_signal_recv) = tokio::sync::mpsc::channel(1);
