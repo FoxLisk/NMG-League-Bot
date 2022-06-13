@@ -2,15 +2,14 @@ use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{
-    CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN,
-    CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL,
-    CUSTOM_ID_VOD_READY,
+    CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME,
+    CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_READY,
 };
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use std::fmt::{Debug};
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
@@ -18,9 +17,7 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
 use twilight_http::Client;
 use twilight_mention::Mention;
-use twilight_model::application::command::{
-    BaseCommandOptionData,  CommandOption, CommandType,
-};
+use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
 use twilight_model::application::component::{ActionRow, Button, Component, TextInput};
@@ -37,19 +34,16 @@ use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
-use twilight_model::guild::{ Permissions};
+use twilight_model::guild::Permissions;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{
-    ApplicationMarker,   MessageMarker, UserMarker,
-};
+use twilight_model::id::marker::{ApplicationMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 
 use super::CREATE_RACE_CMD;
-
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
@@ -68,7 +62,11 @@ pub(crate) async fn launch(
     state
 }
 
-async fn run_bot(token: String, state: Arc<DiscordState>, mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,) {
+async fn run_bot(
+    token: String,
+    state: Arc<DiscordState>,
+    mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
+) {
     let intents = Intents::GUILDS
         | Intents::GUILD_MESSAGES
         | Intents::GUILD_MESSAGE_REACTIONS
@@ -206,7 +204,7 @@ async fn handle_create_race(
         .author_id()
         .ok_or("Create race called by no one ????".to_string())?;
 
-    if ! state.has_admin_role(uid, gid).await? {
+    if !state.has_admin_role(uid, gid).await? {
         return Err("Unprivileged user attempted to create race".to_string());
     }
 
@@ -266,8 +264,7 @@ async fn handle_run_start(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
-    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool)
-        .await?;
+    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool).await?;
     rr.start();
     match rr.save(&state.pool).await {
         Ok(_) => {
@@ -332,7 +329,11 @@ impl GetMessageId for ModalSubmitInteraction {
     }
 }
 
-async fn update_race_run<M, T, F>(interaction: &T, f: F, state: &Arc<DiscordState>) -> Result<(), String>
+async fn update_race_run<M, T, F>(
+    interaction: &T,
+    f: F,
+    state: &Arc<DiscordState>,
+) -> Result<(), String>
 where
     M: GetMessageId,
     T: Deref<Target = M> + Debug,
@@ -540,7 +541,6 @@ async fn handle_user_time_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
-
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_USER_TIME,
@@ -745,7 +745,10 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordSt
     }
 }
 
-async fn set_application_commands(gc: &Box<GuildCreate>, state: Arc<DiscordState>) -> Result<(), String> {
+async fn set_application_commands(
+    gc: &Box<GuildCreate>,
+    state: Arc<DiscordState>,
+) -> Result<(), String> {
     let cb = CommandBuilder::new(
         CREATE_RACE_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),

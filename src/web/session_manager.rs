@@ -22,8 +22,6 @@ pub(crate) struct SessionManager<T> {
     session: HashMap<SessionToken, (T, Instant)>,
 }
 
-
-
 // N.B. maybe using UserTokens isn't ideal here, and we should have some kind of internal type
 // it's gonna include a lot of copying, at least - although, again, performance doesn't actually matter, so w/e
 
@@ -42,10 +40,7 @@ impl<T: Clone> SessionManager<T> {
 
     /// Returns the user associated with the given session token, if any
     #[allow(unused)]
-    pub(crate) fn get_user(
-        &mut self,
-        st: &SessionTokenRef,
-    ) -> Result<T, UserNotAuthenticated> {
+    pub(crate) fn get_user(&mut self, st: &SessionTokenRef) -> Result<T, UserNotAuthenticated> {
         let (uid, exp_at) = self
             .session
             .get(st)

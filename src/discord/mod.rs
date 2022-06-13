@@ -18,4 +18,3 @@ const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 
 const CREATE_RACE_CMD: &str = "create_race";
 const ADMIN_ROLE_NAME: &'static str = "Admin";
-

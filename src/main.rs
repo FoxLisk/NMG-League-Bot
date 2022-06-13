@@ -30,12 +30,8 @@ async fn main() {
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
     tokio::spawn(race_cron::cron(shutdown_send.subscribe(), webhooks.clone()));
 
-    let state= discord::bot::launch(webhooks, shutdown_send.subscribe()).await;
-    tokio::spawn(web::launch_website(
-        state,
-        shutdown_send.subscribe(),
-    ));
-
+    let state = discord::bot::launch(webhooks, shutdown_send.subscribe()).await;
+    tokio::spawn(web::launch_website(state, shutdown_send.subscribe()));
 
     tokio::signal::ctrl_c().await.ok();
     let (shutdown_signal_send, mut shutdown_signal_recv) = tokio::sync::mpsc::channel(1);

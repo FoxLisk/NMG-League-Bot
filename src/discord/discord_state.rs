@@ -1,3 +1,5 @@
+use crate::constants::NMG_LEAGUE_GUILD_ID;
+use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
@@ -8,8 +10,6 @@ use twilight_model::guild::Role;
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::user::User;
-use crate::constants::NMG_LEAGUE_GUILD_ID;
-use crate::discord::ADMIN_ROLE_NAME;
 
 pub(crate) struct DiscordState {
     pub cache: InMemoryCache,
@@ -84,9 +84,14 @@ impl DiscordState {
     }
 
     // making this async now so when i inevitably add an actual HTTP request fallback it's already async
-    pub(crate) async fn has_admin_role(&self, user_id: Id<UserMarker>, guild_id: Id<GuildMarker>) -> Result<bool, String> {
-        let role =
-            self.get_admin_role(guild_id).ok_or("Error: Cannot find admin role".to_string())?;
+    pub(crate) async fn has_admin_role(
+        &self,
+        user_id: Id<UserMarker>,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<bool, String> {
+        let role = self
+            .get_admin_role(guild_id)
+            .ok_or("Error: Cannot find admin role".to_string())?;
         let member = self
             .cache
             .member(guild_id, user_id)
@@ -97,14 +102,15 @@ impl DiscordState {
     }
 
     // convenience for website which i have negative interest in adding guild info to
-    pub(crate) async fn has_nmg_league_admin_role(&self, user_id: Id<UserMarker>) -> Result<bool, String> {
+    pub(crate) async fn has_nmg_league_admin_role(
+        &self,
+        user_id: Id<UserMarker>,
+    ) -> Result<bool, String> {
         let gid = Id::<GuildMarker>::new(NMG_LEAGUE_GUILD_ID);
         self.has_admin_role(user_id, gid).await
     }
 
     pub(crate) async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {
-        Ok(
-            self.cache.user(user_id).map(|u| u.value().clone())
-        )
+        Ok(self.cache.user(user_id).map(|u| u.value().clone()))
     }
 }

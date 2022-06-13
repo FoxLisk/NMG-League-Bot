@@ -17,7 +17,7 @@ use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::{get, Request, State};
 use rocket_dyn_templates::Template;
-use tokio::sync::{Mutex as AsyncMutex};
+use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Duration, Instant};
 use tokio_stream::StreamExt;
 
@@ -25,16 +25,16 @@ use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
 };
 use crate::db::get_pool;
+use crate::discord::discord_state::DiscordState;
 use crate::models::race_run::RaceRunState;
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
-use crate::discord::discord_state::DiscordState;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::str::FromStr;
-use twilight_model::id::Id;
 use twilight_model::id::marker::UserMarker;
+use twilight_model::id::Id;
 
 mod session_manager;
 
@@ -88,9 +88,7 @@ impl OauthClient {
             .client
             .authorize_url(CsrfToken::new_random)
             // Set the desired scopes.
-            .add_scope(Scope::new(
-                "identify".to_string()
-            ))
+            .add_scope(Scope::new("identify".to_string()))
             .url();
         let thing = self.states.lock();
         match thing {
@@ -192,7 +190,7 @@ impl<'r> FromRequest<'r> for Admin {
         };
         match role_checker.has_nmg_league_admin_role(uid).await {
             Ok(true) => Outcome::Success(Admin {}),
-            _ =>  Outcome::Forward(())
+            _ => Outcome::Forward(()),
         }
     }
 }
@@ -280,21 +278,21 @@ async fn discord_login(
     let client = twilight_http::client::Client::new(user_token);
 
     let user_info = match client.current_user().exec().await {
-        Ok(resp) => {
-            match resp.model().await {
-                Ok(cu) => cu,
-                Err(e) => {
-                    println!("Error deserializing CurrentUser: {}", e);
-                    return Err(redirect);
-                }
+        Ok(resp) => match resp.model().await {
+            Ok(cu) => cu,
+            Err(e) => {
+                println!("Error deserializing CurrentUser: {}", e);
+                return Err(redirect);
             }
-        }
+        },
         Err(e) => {
             println!("Error getting user info: {}", e);
             return Err(redirect);
         }
     };
-    let is_admin = role_checker.has_nmg_league_admin_role(user_info.id.clone()).await
+    let is_admin = role_checker
+        .has_nmg_league_admin_role(user_info.id.clone())
+        .await
         .map_err(|e| {
             println!("Error checking for admin status: {}", e);
             Redirect::to(uri!(login_page))
@@ -343,7 +341,6 @@ async fn async_view(
     )
     .fetch(pool.inner());
 
-
     #[derive(Serialize)]
     struct Run {
         run_uuid: String,
@@ -357,7 +354,7 @@ async fn async_view(
     struct Race {
         state: String,
         p1: Run,
-        p2: Run
+        p2: Run,
     }
 
     let mut runs = HashMap::<i64, Vec<Run>>::new();
@@ -378,7 +375,13 @@ async fn async_view(
                 continue;
             }
         };
-        let username = discord_state.get_user(uid).await.ok().flatten().map(|u| u.name).unwrap_or("Unknown".to_string());
+        let username = discord_state
+            .get_user(uid)
+            .await
+            .ok()
+            .flatten()
+            .map(|u| u.name)
+            .unwrap_or("Unknown".to_string());
         let run = Run {
             run_uuid: row.rr_uuid,
             racer_name: username,
@@ -386,10 +389,7 @@ async fn async_view(
             vod: row.vod,
             run_state: row.rr_state,
         };
-        runs
-            .entry(row.race_id)
-            .or_insert(vec![])
-            .push(run);
+        runs.entry(row.race_id).or_insert(vec![]).push(run);
         race_state.insert(row.race_id, row.race_state);
     }
     let mut races = HashMap::<String, Vec<Race>>::new();
@@ -416,9 +416,10 @@ async fn async_view(
                 continue;
             }
         };
-        races.entry(state.clone()).or_insert(vec![]).push(Race {
-            state, p1, p2
-        });
+        races
+            .entry(state.clone())
+            .or_insert(vec![])
+            .push(Race { state, p1, p2 });
     }
 
     #[derive(Serialize)]
@@ -426,9 +427,13 @@ async fn async_view(
         races_by_state: HashMap<String, Vec<Race>>,
     }
 
-    Template::render("asyncs", Context { races_by_state: races })
+    Template::render(
+        "asyncs",
+        Context {
+            races_by_state: races,
+        },
+    )
 }
-
 
 pub(crate) async fn launch_website(
     state: Arc<DiscordState>,

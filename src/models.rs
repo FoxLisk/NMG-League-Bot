@@ -29,7 +29,6 @@ impl From<Id<UserMarker>> for InternalUserId {
     }
 }
 
-
 pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun};
     use crate::models::{epoch_timestamp, uuid_string, InternalUserId};
@@ -441,9 +440,9 @@ pub(crate) mod race_run {
             message_id: Id<MessageMarker>,
             pool: &SqlitePool,
         ) -> Result<Self, String> {
-            Self::search_by_message_id(message_id.clone(), pool).await
+            Self::search_by_message_id(message_id.clone(), pool)
+                .await
                 .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
-
         }
 
         pub(crate) async fn search_by_message_id(
