@@ -30,7 +30,7 @@ use crate::models::race_run::RaceRunState;
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
-use crate::discord::bot_twilight::state::DiscordState;
+use crate::discord::discord_state::DiscordState;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::str::FromStr;

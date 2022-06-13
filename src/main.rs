@@ -31,7 +31,7 @@ async fn main() {
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
     tokio::spawn(race_cron::cron(shutdown_send.subscribe(), webhooks.clone()));
 
-    let state= discord::bot_twilight::launch(webhooks, shutdown_send.subscribe()).await;
+    let state= discord::bot::launch(webhooks, shutdown_send.subscribe()).await;
     tokio::spawn(web::launch_website(
         state,
         shutdown_send.subscribe(),
