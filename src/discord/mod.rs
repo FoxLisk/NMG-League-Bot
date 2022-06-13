@@ -82,36 +82,7 @@ impl RaceHandler {
     ) -> Result<(), String> {
         println!("Serenity: sundowning run finishes...");
         return Ok(());
-        race_run.finish();
-        {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            if let Err(e) = race_run.save(&pool).await {
-                println!("Error saving race: {}", e);
-            }
-        }
 
-        interaction
-            .create_interaction_response(&ctx.http, |ir| {
-                ir.kind(InteractionResponseType::Modal)
-                    .interaction_response_data(|ird| {
-                        ird.content("Please enter finish time in **H:MM:SS** format")
-                            .custom_id(CUSTOM_ID_USER_TIME_MODAL)
-                            .title("Enter finish time in **H:MM:SS** format")
-                            .components(|cmps| {
-                                cmps.create_action_row(|ar| {
-                                    ar.create_input_text(|it| {
-                                        it.custom_id(CUSTOM_ID_USER_TIME)
-                                            .label("Finish time:")
-                                            .style(InputTextStyle::Short)
-                                    })
-                                })
-                            })
-                    })
-            })
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
     }
 
     async fn handle_run_start(
