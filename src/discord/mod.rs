@@ -163,46 +163,6 @@ impl RaceHandler {
     ) -> Result<(), String> {
         println!("Handle user time modal: Serenity sundown...");
         return Ok(());
-        let mrr: Option<RaceRun> = {
-            let d = ctx.data.read().await;
-            let pool = d.get::<Pool>().unwrap();
-            RaceRun::get_by_message_id(&interaction.message.clone().unwrap().id, &pool).await?
-        };
-
-        if let Some(mut rr) = mrr {
-            let user_input = Self::get_user_input_from_modal_field(
-                std::mem::take(&mut interaction.data.components),
-                CUSTOM_ID_USER_TIME,
-            )?;
-            rr.report_user_time(user_input);
-            {
-                let d = ctx.data.read().await;
-                let pool = d.get::<Pool>().unwrap();
-                rr.save(&pool).await?;
-            }
-            interaction
-                .create_interaction_response(&ctx.http, |cir| {
-                    cir.kind(InteractionResponseType::UpdateMessage)
-                        .interaction_response_data(|ird| {
-                            ird.content("Please click here once your VoD is ready")
-                                .components(|cmp| {
-                                    cmp.create_action_row(|ar| {
-                                        ar.create_button(|btn| {
-                                            btn.label("VoD ready")
-                                                .custom_id(CUSTOM_ID_VOD_READY)
-                                                .style(ButtonStyle::Success)
-                                        })
-                                    })
-                                })
-                        })
-                })
-                .await
-                .map(|_| ())
-                .map_err(|e| e.to_string())
-        } else {
-            println!("Unknown message id {:?}", interaction.message);
-            Err("Unknown whatever I'm exhausted".to_string())
-        }
     }
 
     async fn handle_vod_ready(
