@@ -169,26 +169,9 @@ impl RaceHandler {
         ctx: &Context,
         interaction: MessageComponentInteraction,
     ) -> Result<(), String> {
-        interaction
-            .create_interaction_response(&ctx.http, |ir| {
-                ir.kind(InteractionResponseType::Modal)
-                    .interaction_response_data(|ird| {
-                        ird.title("VoD URL")
-                            .custom_id(CUSTOM_ID_VOD_MODAL)
-                            .components(|cmps| {
-                                cmps.create_action_row(|row| {
-                                    row.create_input_text(|it| {
-                                        it.label("Enter VoD here")
-                                            .custom_id(CUSTOM_ID_VOD)
-                                            .style(InputTextStyle::Short)
-                                    })
-                                })
-                            })
-                    })
-            })
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        println!("VOD ready: Serenity sundown...");
+        return Ok(());
+        
     }
 
     async fn handle_race_run_modal(

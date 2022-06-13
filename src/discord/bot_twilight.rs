@@ -1,7 +1,7 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::bot_twilight::state::State;
-use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_READY};
+use crate::discord::{ADMIN_ROLE_NAME, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_READY};
 use crate::models::race::RaceState::CREATED;
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
@@ -483,6 +483,22 @@ async fn handle_run_forfeit(interaction: Box<MessageComponentInteraction>, state
     ).exec().await.map_err(|e| e.to_string()).map(|_|())
 }
 
+fn create_modal(custom_id: &str, content: &str, title: &str, components: Vec<Component> ) -> InteractionResponse {
+    InteractionResponse {
+        kind: InteractionResponseType::Modal,
+        data: Some(InteractionResponseData {
+            components: Some(vec![
+                Component::ActionRow(ActionRow {
+                    components,
+                })
+            ]),
+            content: Some(content.to_string()),
+            custom_id: Some(custom_id.to_string()),
+            title: Some(title.to_string()),
+            ..Default::default()
+        })
+    }
+}
 
 async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
     if let Some(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
@@ -502,29 +518,21 @@ async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state:
             &ir
         ).exec().await.map_err(|e| e.to_string()).map(|_|());
     }
-    let ir = InteractionResponse {
-        kind: InteractionResponseType::Modal,
-        data: Some(InteractionResponseData {
-            components: Some(vec![
-                Component::ActionRow(ActionRow {
-                    components: vec![Component::TextInput(TextInput{
-                            custom_id: CUSTOM_ID_USER_TIME.to_string(),
-                            label: "Finish time:".to_string(),
-                            max_length: Some(100),
-                            min_length: Some(5),
-                            placeholder: None,
-                            required: Some(true),
-                            style: TextInputStyle::Short,
-                            value: None
-                        })],
-                })
-            ]),
-            content: Some("Please enter finish time in **H:MM:SS** format".to_string()),
-            custom_id: Some(CUSTOM_ID_USER_TIME_MODAL.to_string()),
-            title: Some("Enter finish time in **H:MM:SS** format".to_string()),
-            ..Default::default()
-        })
-    };
+    let ir = create_modal(
+        CUSTOM_ID_USER_TIME_MODAL,
+        "Please enter finish time in **H:MM:SS** format",
+        "Enter finish time in **H:MM:SS** format",
+        vec![Component::TextInput(TextInput{
+            custom_id: CUSTOM_ID_USER_TIME.to_string(),
+            label: "Finish time:".to_string(),
+            max_length: Some(100),
+            min_length: Some(5),
+            placeholder: None,
+            required: Some(true),
+            style: TextInputStyle::Short,
+            value: None
+        })]);
+
 
     state.interaction_client().create_response(
         interaction.id,
@@ -538,6 +546,7 @@ async fn handle_button_interaction(interaction: Box<MessageComponentInteraction>
         CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
         CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit(interaction, state).await,
         CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
+        CUSTOM_ID_VOD_READY => handle_vod_ready(interaction, state).await,
         _ => {
             println!("Unhandled button: {:?}", interaction);
             Ok(())
@@ -621,8 +630,78 @@ async fn handle_user_time_modal(mut interaction: Box<ModalSubmitInteraction>, st
         .map_err(|e| e.to_string())
         .map(|_|())
 }
+/*
 
+async fn handle_run_finish(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    if let Some(e) = update_race_run(&interaction, |rr| {rr.finish();}, state ).await {
+        println!("Error finishing race: {}", e);
+        state.webhooks.message_async(&format!(
+            "{} tried to finish a race but encountered an internal error: {}",
+            interaction.author_id().map(|m| m.mention().to_string())
+                .unwrap_or("Unknown user".to_string()),
+            e)).await.ok();
 
+        let ir = update_resp_to_plain_content(
+            "Something went wrong finishing this match. Please ping FoxLisk.");
+
+        return state.interaction_client().create_response(
+            interaction.id,
+            &interaction.token,
+            &ir
+        ).exec().await.map_err(|e| e.to_string()).map(|_|());
+    }
+    let ir = InteractionResponse {
+        kind: InteractionResponseType::Modal,
+        data: Some(InteractionResponseData {
+            components: Some(vec![
+                Component::ActionRow(ActionRow {
+                    components: vec![Component::TextInput(TextInput{
+                            custom_id: CUSTOM_ID_USER_TIME.to_string(),
+                            label: "Finish time:".to_string(),
+                            max_length: Some(100),
+                            min_length: Some(5),
+                            placeholder: None,
+                            required: Some(true),
+                            style: TextInputStyle::Short,
+                            value: None
+                        })],
+                })
+            ]),
+            content: Some("Please enter finish time in **H:MM:SS** format".to_string()),
+            custom_id: Some(CUSTOM_ID_USER_TIME_MODAL.to_string()),
+            title: Some("Enter finish time in **H:MM:SS** format".to_string()),
+            ..Default::default()
+        })
+    };
+
+    state.interaction_client().create_response(
+        interaction.id,
+        &interaction.token,
+        &ir
+    ).exec().await.map_err(|e| e.to_string()).map(|_|())
+}
+ */
+async fn handle_vod_ready(interaction: Box<MessageComponentInteraction>, state: &Arc<State>) -> Result<(), String> {
+    let ir = create_modal(
+        CUSTOM_ID_VOD_MODAL,
+        "Please enter your VoD URL",
+        "VoD URL",
+        vec![Component::TextInput(TextInput{
+            custom_id: CUSTOM_ID_VOD.to_string(),
+            label: "Enter VoD here".to_string(),
+            max_length: None,
+            min_length: Some(5),
+            placeholder: None,
+            required: Some(true),
+            style: TextInputStyle::Short,
+            value: None
+        })]);
+    state.interaction_client().create_response(interaction.id, &interaction.token, &ir)
+        .exec()
+        .await
+        .map_err(|e| e.to_string())
+        .map(|_|())
+}
 
 async fn handle_modal_submission(interaction: Box<ModalSubmitInteraction>, state: &Arc<State>) -> Result<(), String> {
     match interaction.data.custom_id.as_str() {
