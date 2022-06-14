@@ -2,6 +2,7 @@ pub(crate) mod bot;
 mod webhooks;
 pub(crate) use webhooks::Webhooks;
 pub(crate) mod discord_state;
+mod interactions;
 
 extern crate rand;
 extern crate sqlx;

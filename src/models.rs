@@ -223,13 +223,13 @@ pub(crate) mod race_run {
                 .ok_or(format!("Invalid filenames field: {} - bad format", value))?;
             let one = caps
                 .get(1)
-                .ok_or(format!("Invalid filenames field: {}", value))?;
+                .ok_or(format!("Invalid filenames field 1: {}", value))?;
             let three_cap = caps
                 .get(2)
-                .ok_or(format!("Invalid filenames field: {}", value))?;
+                .ok_or(format!("Invalid filenames field 3: {}", value))?;
             let four_cap = caps
                 .get(3)
-                .ok_or(format!("Invalid filenames field: {}", value))?;
+                .ok_or(format!("Invalid filenames field 4: {}", value))?;
 
             let mut three_chars = three_cap.as_str().chars();
             let three: [char; 3] = [
