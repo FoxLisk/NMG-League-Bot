@@ -5,16 +5,27 @@ use twilight_http::request::channel::webhook::ExecuteWebhook;
 use twilight_http::response::marker::EmptyBody;
 use twilight_http::Response;
 use twilight_model::channel::Webhook;
+use twilight_model::id::Id;
+use twilight_model::id::marker::WebhookMarker;
 use twilight_util::link::webhook::parse;
 
 #[derive(Clone)]
 pub(crate) struct Webhooks {
     http_client: Arc<Client>,
-    async_channel: Webhook,
-    admin_channel: Webhook,
+    async_channel: WebhookInfo,
+    admin_channel: WebhookInfo,
 }
 
-async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook, String> {
+#[derive(Clone)]
+// this structure is because we *really* need webhooks with tokens here, to be able to execute them,
+// but the API returns a nullable token, which the twilight API faithfully reproduces, and
+// I want zero .unwrap() calls in steady state code
+struct WebhookInfo {
+    id: Id<WebhookMarker>,
+    token: String,
+}
+
+async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<WebhookInfo, String> {
     let (id, tokeno) = parse(&url).map_err(|e| e.to_string())?;
     let token = tokeno.ok_or(format!("No token found for webhook {}", id))?;
     let resp: Response<Webhook> = match client.webhook(id).token(&token).exec().await {
@@ -25,7 +36,17 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
             return Err(er);
         }
     };
-    resp.model().await.map_err(|e| e.to_string())
+    match resp.model().await{
+        Ok(w) => {
+            Ok(WebhookInfo {
+                id: w.id,
+                token: w.token.ok_or("Webhook with no token".to_string())?
+            })
+        }
+        Err(e) => {
+            Err(e.to_string())
+        }
+    }
 }
 
 impl Webhooks {
@@ -71,9 +92,10 @@ impl Webhooks {
         }
     }
 
-    fn _execute_webhook<'a>(&'a self, webhook: &'a Webhook) -> ExecuteWebhook<'a> {
+    fn _execute_webhook<'a>(&'a self, webhook: &'a WebhookInfo) -> ExecuteWebhook<'a> {
+
         self.http_client
-            .execute_webhook(webhook.id, webhook.token.as_ref().unwrap())
+            .execute_webhook(webhook.id, &webhook.token)
     }
 
     pub(crate) fn prepare_execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {
