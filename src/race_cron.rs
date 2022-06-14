@@ -38,14 +38,14 @@ fn format_finisher(run: &RaceRun) -> String {
                 (Some(start), Some(finish)) => format_secs((finish - start) as u64),
                 _ => "N/A".to_string(),
             };
-            let id = Id::<UserMarker>::new(run.racer_id_raw().unwrap());
+            let p = run.racer_id().map(|id| id.mention().to_string()).unwrap_or("Error finding user".to_string());
             format!(
                 r#"Player: {}
     Reported time: {}
     Bot time: {}
     VoD URL: {}
     Expected filenames: {}"#,
-                id.mention(),
+                p,
                 run.reported_run_time.as_ref().unwrap_or(&"N/A".to_string()),
                 bot_time,
                 run.vod.as_ref().unwrap_or(&"N/A".to_string()),
@@ -72,18 +72,16 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
         Ok(r) => r,
         Err(e) => {
             println!("Error fetching runs for race {}: {}", race.uuid, e);
-            // webhooks.
             return;
         }
     };
     if r1.finished() && r2.finished() {
-        let e = webhooks.prepare_execute_async();
-
         let s = format!(
-            r#"Race finished:
+            r#"Race {} finished:
 {}
 
 {}"#,
+            race.uuid,
             format_finisher(&r1),
             format_finisher(&r2)
         );
@@ -97,8 +95,22 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
                 )
             }
         };
+        // N.B. this level of error handling is realistically unnecessary
+        let ew = match webhooks.prepare_execute_async().content(&c) {
+            Ok(ex) => ex,
+            Err(mve) => {
+                match webhooks.prepare_execute_async().content("A race finished but I can't tell you which one for some reason. Check the logs") {
+                    Ok(ex) => ex,
+                    Err(mve) => {
+                        println!("Error reporting race: {}", c);
+                        return;
+                    }
+                }
+            }
+        }.flags(MessageFlags::SUPPRESS_EMBEDS);
+
         if let Err(e) = webhooks
-            .execute_webhook(e.content(&c).unwrap().flags(MessageFlags::SUPPRESS_EMBEDS))
+            .execute_webhook(ew)
             .await
         {
             println!("Error executing webhook: {}", e);
@@ -106,6 +118,7 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
         race.finish();
         if let Err(e) = race.save(pool).await {
             println!("Error saving finished race: {}", e);
+            // TODO: report this, too, probably
         }
     }
 }
