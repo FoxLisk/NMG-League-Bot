@@ -1,7 +1,11 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::{CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_READY, interactions};
+use crate::discord::{
+    interactions, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN,
+    CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD, CUSTOM_ID_VOD_MODAL,
+    CUSTOM_ID_VOD_READY,
+};
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
@@ -219,16 +223,27 @@ async fn handle_run_start(
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
     const USER_FACING_ERROR: &str = "There was an error starting your race. Please ping FoxLisk.";
-    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool).await
+    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool)
+        .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
-    let filenames = rr.filenames().map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+    let filenames = rr
+        .filenames()
+        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     rr.start();
     match rr.save(&state.pool).await {
         Ok(_) => {
             let buttons = vec![Component::ActionRow(ActionRow {
                 components: vec![
-                    interactions::button_component("Finish run", CUSTOM_ID_FINISH_RUN, ButtonStyle::Success),
-                    interactions::button_component("Forfeit", CUSTOM_ID_FORFEIT_RUN, ButtonStyle::Danger),
+                    interactions::button_component(
+                        "Finish run",
+                        CUSTOM_ID_FINISH_RUN,
+                        ButtonStyle::Success,
+                    ),
+                    interactions::button_component(
+                        "Forfeit",
+                        CUSTOM_ID_FORFEIT_RUN,
+                        ButtonStyle::Danger,
+                    ),
                 ],
             })];
             let content = format!("Good luck! your filenames are: `{}`
@@ -327,7 +342,8 @@ async fn handle_run_forfeit(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
-    const USER_FACING_ERROR: &str = "Something went wrong forfeiting this match. Please ping FoxLisk.";
+    const USER_FACING_ERROR: &str =
+        "Something went wrong forfeiting this match. Please ping FoxLisk.";
     if let Err(e) = update_race_run(
         &interaction,
         |rr| {
@@ -339,16 +355,17 @@ async fn handle_run_forfeit(
     {
         Err(ErrorResponse::new(USER_FACING_ERROR, e))
     } else {
-        let ir = interactions::update_resp_to_plain_content("You have forfeited this match. Please let the admins know if there are any issues.");
+        let ir = interactions::update_resp_to_plain_content(
+            "You have forfeited this match. Please let the admins know if there are any issues.",
+        );
         state
             .interaction_client()
             .create_response(interaction.id, &interaction.token, &ir)
             .exec()
             .await
-            .map_err(|e|ErrorResponse::new(USER_FACING_ERROR, e))
+            .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))
             .map(|_| ())
     }
-
 }
 
 fn create_modal(
@@ -383,7 +400,7 @@ async fn handle_run_finish(
     )
     .await
     {
-       return Err(ErrorResponse::new(USER_FACING_ERROR, e));
+        return Err(ErrorResponse::new(USER_FACING_ERROR, e));
     }
     let ir = create_modal(
         CUSTOM_ID_USER_TIME_MODAL,
@@ -408,24 +425,6 @@ async fn handle_run_finish(
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))
         .map(|_| ())
-}
-
-
-
-async fn handle_button_interaction(
-    interaction: Box<MessageComponentInteraction>,
-    state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
-    match interaction.data.custom_id.as_str() {
-        CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
-        CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit(interaction, state).await,
-        CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
-        CUSTOM_ID_VOD_READY => handle_vod_ready(interaction, state).await,
-        _ => {
-            println!("Unhandled button: {:?}", interaction);
-            Ok(())
-        }
-    }
 }
 
 fn get_field_from_modal_components(
@@ -458,7 +457,6 @@ impl ErrorResponse {
         }
     }
 }
-
 
 async fn handle_user_time_modal(
     mut interaction: Box<ModalSubmitInteraction>,
@@ -509,8 +507,6 @@ async fn handle_user_time_modal(
         .map(|_| ())
 }
 
-
-
 async fn handle_vod_ready(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
@@ -535,7 +531,12 @@ async fn handle_vod_ready(
         .create_response(interaction.id, &interaction.token, &ir)
         .exec()
         .await
-        .map_err(|e| ErrorResponse::new("There was an error accepting your VoD. Please ping FoxLisk", e))
+        .map_err(|e| {
+            ErrorResponse::new(
+                "There was an error accepting your VoD. Please ping FoxLisk",
+                e,
+            )
+        })
         .map(|_| ())
 }
 
@@ -577,6 +578,21 @@ async fn handle_vod_modal(
         .map(|_| ())
 }
 
+async fn handle_button_interaction(
+    interaction: Box<MessageComponentInteraction>,
+    state: &Arc<DiscordState>,
+) -> Result<(), ErrorResponse> {
+    match interaction.data.custom_id.as_str() {
+        CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
+        CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit(interaction, state).await,
+        CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
+        CUSTOM_ID_VOD_READY => handle_vod_ready(interaction, state).await,
+        _ => {
+            println!("Unhandled button: {:?}", interaction);
+            Ok(())
+        }
+    }
+}
 
 async fn handle_modal_submission(
     interaction: Box<ModalSubmitInteraction>,
@@ -594,48 +610,37 @@ async fn handle_modal_submission(
     }
 }
 
-async fn _handle_interaction(interaction: InteractionCreate, state: &Arc<DiscordState>) -> Result<(), ErrorResponse> {
+async fn _handle_interaction(
+    interaction: InteractionCreate,
+    state: &Arc<DiscordState>,
+) -> Result<(), ErrorResponse> {
     let interaction_id = interaction.id();
     let token = interaction.token().to_string();
     match interaction.0 {
         Interaction::ApplicationCommand(ac) => match ac.data.name.as_str() {
-            CREATE_RACE_CMD => {
-                match handle_create_race(ac, &state).await {
-                    Ok(r) => {
-                        state
-                            .interaction_client()
-                            .create_response(interaction_id, &token, &r)
-                            .exec()
-                            .await
-                            .map(|_|())
-                            .map_err(|e| ErrorResponse {
-                                user_facing_error: format!("Error creating race: {}", e),
-                                internal_error: None
-                            })
-                    },
-                    Err(e) => {
-                        Err(ErrorResponse {
-                            user_facing_error: format!("Internal error creating race: {}", e),
-                            internal_error: None
-                        })
-                    }
-                }
-            }
+            CREATE_RACE_CMD => match handle_create_race(ac, &state).await {
+                Ok(r) => state
+                    .interaction_client()
+                    .create_response(interaction_id, &token, &r)
+                    .exec()
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| ErrorResponse {
+                        user_facing_error: format!("Error creating race: {}", e),
+                        internal_error: None,
+                    }),
+                Err(e) => Err(ErrorResponse {
+                    user_facing_error: format!("Internal error creating race: {}", e),
+                    internal_error: None,
+                }),
+            },
             _ => {
-                println!(
-                    "Unhandled ApplicationCommand: {}",
-                    ac.data.name
-                );
+                println!("Unhandled ApplicationCommand: {}", ac.data.name);
                 Ok(())
             }
         },
-        Interaction::MessageComponent(mc) => {
-            handle_button_interaction(mc, &state).await
-        }
-        Interaction::ModalSubmit(ms) => {
-            handle_modal_submission(ms, &state).await
-
-        }
+        Interaction::MessageComponent(mc) => handle_button_interaction(mc, &state).await,
+        Interaction::ModalSubmit(ms) => handle_modal_submission(ms, &state).await,
         _ => {
             println!("Unhandled interaction: {:?}", interaction);
             Ok(())
