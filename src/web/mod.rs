@@ -208,7 +208,10 @@ impl<'r> FromRequest<'r> for StaticAsset {
             Some(f) => f,
             None => return Outcome::Failure((rocket::http::Status::NotFound, ())),
         };
-        let suffix = filename.rsplit('.').next().unwrap();
+        let suffix = match filename.rsplit('.').next() {
+            None => {return Outcome::Failure((rocket::http::Status::NotFound, ()));}
+            Some(s) => s
+        };
         if STATIC_SUFFIXES.contains(&suffix) {
             Outcome::Success(StaticAsset {})
         } else {
@@ -401,7 +404,7 @@ async fn async_view(
                 continue;
             }
         };
-        runs.sort_by(|a, b| a.racer_name.partial_cmp(&b.racer_name).unwrap());
+        runs.sort_by(|a, b| a.racer_name.cmp(&b.racer_name));
         let p1 = match runs.pop() {
             Some(r) => r,
             None => {
