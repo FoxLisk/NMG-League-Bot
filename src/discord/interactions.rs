@@ -1,7 +1,9 @@
-use twilight_model::http::interaction::{InteractionResponse, InteractionResponseData, InteractionResponseType};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{Button, Component};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
+use twilight_model::http::interaction::{
+    InteractionResponse, InteractionResponseData, InteractionResponseType,
+};
 
 /// InteractionResponseData with just content + no allowed mentions
 fn plain_interaction_data<S: Into<String>>(content: S) -> InteractionResponseData {

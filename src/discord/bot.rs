@@ -10,7 +10,7 @@ use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Display};
 use std::ops::Deref;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
@@ -21,7 +21,7 @@ use twilight_mention::Mention;
 use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
-use twilight_model::application::component::{ActionRow, Button, Component, TextInput};
+use twilight_model::application::component::{ActionRow, Component, TextInput};
 use twilight_model::application::interaction::application_command::{
     CommandDataOption, CommandOptionValue,
 };
@@ -31,7 +31,6 @@ use twilight_model::application::interaction::modal::{
 use twilight_model::application::interaction::{
     ApplicationCommand, Interaction, MessageComponentInteraction,
 };
-use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
@@ -598,8 +597,6 @@ async fn handle_modal_submission(
     interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
-    let id = interaction.id.clone();
-    let token = interaction.token.clone();
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction, state).await,
         CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction, state).await,

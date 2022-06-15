@@ -143,6 +143,7 @@ pub(crate) mod race {
 pub(crate) mod race_run {
     use crate::models::epoch_timestamp;
     use crate::models::uuid_string;
+    use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
     use serde::Serialize;
@@ -152,10 +153,9 @@ pub(crate) mod race_run {
     use std::fmt::Formatter;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
-    use lazy_static::lazy_static;
-    use rocket::form::validate::Len;
     lazy_static! {
-        static ref FILENAMES_REGEX: regex::Regex = regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
+        static ref FILENAMES_REGEX: regex::Regex =
+            regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
     }
 
     pub(crate) struct Filenames {
@@ -360,10 +360,6 @@ pub(crate) mod race_run {
                 .map_err(|e| e.to_string())
                 .map(Id::<UserMarker>::new)
                 .map_err(|e| e.to_string())
-        }
-
-        pub(crate) fn racer_id_raw(&self) -> Result<u64, String> {
-            self.racer_id.parse::<u64>().map_err(|e| e.to_string())
         }
 
         pub(crate) fn finished(&self) -> bool {

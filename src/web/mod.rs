@@ -209,8 +209,10 @@ impl<'r> FromRequest<'r> for StaticAsset {
             None => return Outcome::Failure((rocket::http::Status::NotFound, ())),
         };
         let suffix = match filename.rsplit('.').next() {
-            None => {return Outcome::Failure((rocket::http::Status::NotFound, ()));}
-            Some(s) => s
+            None => {
+                return Outcome::Failure((rocket::http::Status::NotFound, ()));
+            }
+            Some(s) => s,
         };
         if STATIC_SUFFIXES.contains(&suffix) {
             Outcome::Success(StaticAsset {})

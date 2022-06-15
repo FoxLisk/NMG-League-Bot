@@ -5,8 +5,8 @@ use twilight_http::request::channel::webhook::ExecuteWebhook;
 use twilight_http::response::marker::EmptyBody;
 use twilight_http::Response;
 use twilight_model::channel::Webhook;
-use twilight_model::id::Id;
 use twilight_model::id::marker::WebhookMarker;
+use twilight_model::id::Id;
 use twilight_util::link::webhook::parse;
 
 #[derive(Clone)]
@@ -36,16 +36,12 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
             return Err(er);
         }
     };
-    match resp.model().await{
-        Ok(w) => {
-            Ok(WebhookInfo {
-                id: w.id,
-                token: w.token.ok_or("Webhook with no token".to_string())?
-            })
-        }
-        Err(e) => {
-            Err(e.to_string())
-        }
+    match resp.model().await {
+        Ok(w) => Ok(WebhookInfo {
+            id: w.id,
+            token: w.token.ok_or("Webhook with no token".to_string())?,
+        }),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -93,9 +89,7 @@ impl Webhooks {
     }
 
     fn _execute_webhook<'a>(&'a self, webhook: &'a WebhookInfo) -> ExecuteWebhook<'a> {
-
-        self.http_client
-            .execute_webhook(webhook.id, &webhook.token)
+        self.http_client.execute_webhook(webhook.id, &webhook.token)
     }
 
     pub(crate) fn prepare_execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {

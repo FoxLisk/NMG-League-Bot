@@ -9,8 +9,6 @@ use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-use twilight_model::id::marker::UserMarker;
-use twilight_model::id::Id;
 
 fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
@@ -38,7 +36,10 @@ fn format_finisher(run: &RaceRun) -> String {
                 (Some(start), Some(finish)) => format_secs((finish - start) as u64),
                 _ => "N/A".to_string(),
             };
-            let p = run.racer_id().map(|id| id.mention().to_string()).unwrap_or("Error finding user".to_string());
+            let p = run
+                .racer_id()
+                .map(|id| id.mention().to_string())
+                .unwrap_or("Error finding user".to_string());
             format!(
                 r#"Player: {}
     Reported time: {}
@@ -99,20 +100,18 @@ async fn handle_race(mut race: Race, pool: &SqlitePool, webhooks: &Webhooks) {
         let ew = match webhooks.prepare_execute_async().content(&c) {
             Ok(ex) => ex,
             Err(mve) => {
+                println!("Message validation error sending {}: {}", c, mve);
                 match webhooks.prepare_execute_async().content("A race finished but I can't tell you which one for some reason. Check the logs") {
                     Ok(ex) => ex,
                     Err(mve) => {
-                        println!("Error reporting race: {}", c);
+                        println!("Error reporting race {}: {}", race.uuid, mve);
                         return;
                     }
                 }
             }
         }.flags(MessageFlags::SUPPRESS_EMBEDS);
 
-        if let Err(e) = webhooks
-            .execute_webhook(ew)
-            .await
-        {
+        if let Err(e) = webhooks.execute_webhook(ew).await {
             println!("Error executing webhook: {}", e);
         }
         race.finish();
