@@ -152,6 +152,11 @@ pub(crate) mod race_run {
     use std::fmt::Formatter;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
+    use lazy_static::lazy_static;
+    use rocket::form::validate::Len;
+    lazy_static! {
+        static ref FILENAMES_REGEX: regex::Regex = regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
+    }
 
     pub(crate) struct Filenames {
         pub(crate) one: char,
@@ -217,8 +222,7 @@ pub(crate) mod race_run {
         }
 
         fn from_str(value: &str) -> Result<Self, String> {
-            let re = regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
-            let caps = re
+            let caps = FILENAMES_REGEX
                 .captures(value)
                 .ok_or(format!("Invalid filenames field: {} - bad format", value))?;
             let one = caps
@@ -231,13 +235,20 @@ pub(crate) mod race_run {
                 .get(3)
                 .ok_or(format!("Invalid filenames field 4: {}", value))?;
 
+            if three_cap.as_str().len() != 3 {
+                return Err(format!("Invalid filenames field 3: {}", three_cap.as_str()));
+            }
             let mut three_chars = three_cap.as_str().chars();
+
             let three: [char; 3] = [
                 three_chars.next().unwrap(),
                 three_chars.next().unwrap(),
                 three_chars.next().unwrap(),
             ];
 
+            if four_cap.as_str().len() != 3 {
+                return Err(format!("Invalid filenames field 4: {}", four_cap.as_str()));
+            }
             let mut four_chars = four_cap.as_str().chars();
             let four: [char; 4] = [
                 four_chars.next().unwrap(),
@@ -245,6 +256,10 @@ pub(crate) mod race_run {
                 four_chars.next().unwrap(),
                 four_chars.next().unwrap(),
             ];
+
+            if one.as_str().len() != 1 {
+                return Err(format!("Invalid filenames field 1: {}", one.as_str()));
+            }
 
             Ok(Self {
                 one: one.as_str().chars().next().unwrap(),
