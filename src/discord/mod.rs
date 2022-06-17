@@ -11,9 +11,15 @@ extern crate tokio;
 const CUSTOM_ID_START_RUN: &str = "start_run";
 const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
 const CUSTOM_ID_FORFEIT_RUN: &str = "forfeit_run";
+
+const CUSTOM_ID_FORFEIT_MODAL: &str = "forfeit_modal";
+const CUSTOM_ID_FORFEIT_MODAL_INPUT: &str = "forfeit_modal_input";
+
 const CUSTOM_ID_VOD_READY: &str = "vod_ready";
+
 const CUSTOM_ID_VOD_MODAL: &str = "vod_modal";
-const CUSTOM_ID_VOD: &str = "vod";
+const CUSTOM_ID_VOD_MODAL_INPUT: &str = "vod";
+
 const CUSTOM_ID_USER_TIME: &str = "user_time";
 const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 

@@ -246,7 +246,7 @@ pub(crate) mod race_run {
                 three_chars.next().unwrap(),
             ];
 
-            if four_cap.as_str().len() != 3 {
+            if four_cap.as_str().len() != 4 {
                 return Err(format!("Invalid filenames field 4: {}", four_cap.as_str()));
             }
             let mut four_chars = four_cap.as_str().chars();
@@ -309,7 +309,7 @@ pub(crate) mod race_run {
 
     pub(crate) struct RaceRun {
         pub(crate) id: i64,
-        uuid: String,
+        pub(crate) uuid: String,
         race_id: i64,
         racer_id: String,
         filenames: String,
