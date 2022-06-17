@@ -105,6 +105,38 @@ async fn run_bot(
     println!("Twilight bot done");
 }
 
+
+struct ErrorResponse {
+    user_facing_error: String,
+    internal_error: Option<String>,
+}
+
+impl ErrorResponse {
+    fn new<S1: Into<String>, S2: Display>(user_facing_error: S1, internal_error: S2) -> Self {
+        Self {
+            user_facing_error: user_facing_error.into(),
+            internal_error: Some(internal_error.to_string()),
+        }
+    }
+}
+
+trait GetMessageId {
+    fn get_message_id(&self) -> Option<Id<MessageMarker>>;
+}
+
+impl GetMessageId for MessageComponentInteraction {
+    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
+        Some(self.message.id)
+    }
+}
+
+impl GetMessageId for ModalSubmitInteraction {
+    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
+        self.message.as_ref().map(|m| m.id.clone())
+    }
+}
+
+
 async fn notify_racer(
     mut race_run: RaceRun,
     race: &Race,
@@ -283,22 +315,6 @@ If anything goes wrong, tell an admin there was an issue with race `254bb3a6-5d2
     }
 }
 
-trait GetMessageId {
-    fn get_message_id(&self) -> Option<Id<MessageMarker>>;
-}
-
-impl GetMessageId for MessageComponentInteraction {
-    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
-        Some(self.message.id)
-    }
-}
-
-impl GetMessageId for ModalSubmitInteraction {
-    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
-        self.message.as_ref().map(|m| m.id.clone())
-    }
-}
-
 async fn update_race_run<M, T, F>(
     interaction: &T,
     f: F,
@@ -441,20 +457,6 @@ fn get_field_from_modal_components(
         }
     }
     None
-}
-
-struct ErrorResponse {
-    user_facing_error: String,
-    internal_error: Option<String>,
-}
-
-impl ErrorResponse {
-    fn new<S1: Into<String>, S2: Display>(user_facing_error: S1, internal_error: S2) -> Self {
-        Self {
-            user_facing_error: user_facing_error.into(),
-            internal_error: Some(internal_error.to_string()),
-        }
-    }
 }
 
 async fn handle_user_time_modal(
