@@ -29,6 +29,7 @@ pub(crate) mod race {
     pub(crate) enum RaceState {
         CREATED,
         FINISHED,
+        ABANDONED,
     }
 
     pub(crate) struct NewRace {
@@ -63,6 +64,10 @@ pub(crate) mod race {
     impl Race {
         pub(crate) fn finish(&mut self) {
             self.state = RaceState::FINISHED;
+        }
+
+        pub(crate) fn abandon(&mut self) {
+            self.state = RaceState::ABANDONED;
         }
 
         pub(crate) async fn save(&self, pool: &SqlitePool) -> Result<(), String> {

@@ -88,6 +88,10 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         Ok(r) => r,
         Err(e) => {
             println!("Error fetching runs for race {}: {}", race.uuid, e);
+            race.abandon();
+            if let Err(e) = race.save(&state.pool).await {
+                println!("Error abandoning race {}: {}", race.uuid, e);
+            }
             return;
         }
     };
