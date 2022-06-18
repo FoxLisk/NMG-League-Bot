@@ -1,81 +1,11 @@
 {% extends "base" %}
+
+{% import "macros" as macros %}
 {% block pagename %}Async Status{% endblock %}
 {% block body %}
 <div>
-    {% for state, races in races_by_state %}
-    <table class="border border-slate-500
-        {% if state == "FINISHED" %}
-            bg-emerald-400
-        {% else %}
-            bg-slate-200
-        {% endif %}
-        my-3
-        ">
-        <thead>
-            <tr>
-                <th class="border-x border-slate-500">
-                    Run state
-                </th>
-                <th class="border-x border-slate-500">
-                    Racer
-                </th>
-                <th class="border-x border-slate-500">
-                    Filenames
-                </th>
-                <th class="border-x border-slate-500">
-                    Run state
-                </th>
-                <th class="border-x border-slate-500">
-                    VoD link
-                </th>
-                <th class="border-x border-slate-500">
-                    Run UUID
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-        {% for race in races %}
-            <tr>
-                <th rowspan=2>
-                    {{ state }}
-                </th>
-                <td class="border-x border-slate-500">
-                    {{ race.p1.racer_name }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p1.filenames }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p1.run_state }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p1.vod }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p1.run_uuid }}
-                </td>
-            </tr>
-            <tr class="border-b border-slate-500">
-                {# state is taken by the rowspan=2 thing #}
-                <td class="border-x border-slate-500">
-                    {{ race.p2.racer_name }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p2.filenames }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p2.run_state }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p2.vod }}
-                </td>
-                <td class="border-x border-slate-500">
-                    {{ race.p2.run_uuid }}
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-    {% endfor %}
+    {{ macros::async_table(state="Created",   races=created,   bg_class="bg-slate-200") }}
+    {{ macros::async_table(state="Finished",  races=finished,  bg_class="bg-emerald-400") }}
+    {{ macros::async_table(state="Abandoned", races=abandoned, bg_class="bg-red-300") }}
 </div>
 {% endblock %}
