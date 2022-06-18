@@ -39,7 +39,7 @@ use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use lazy_static::lazy_static;
-use crate::discord::interactions::update_resp_to_plain_content;
+use crate::discord::interactions::{plain_interaction_response, update_resp_to_plain_content};
 
 use super::CREATE_RACE_CMD;
 
@@ -134,7 +134,7 @@ impl GetMessageId for ModalSubmitInteraction {
     }
 }
 
-
+/// DM the player & save the run model if the DM sends successfully
 async fn notify_racer(
     mut race_run: RaceRun,
     race: &Race,
@@ -174,6 +174,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
     if resp.status().is_success() {
         let msg = resp.model().await.map_err(|e| e.to_string())?;
         race_run.set_message_id(msg.id.get());
+        race_run.contacted();
         race_run.save(&state.pool).await
     } else {
         Err(format!("Error sending message: {}", resp.status()))
@@ -224,7 +225,7 @@ async fn handle_create_race(
         .await
         .map_err(|e| format!("Error saving race: {}", e))?;
     let (r1, r2) = race
-        .select_racers(p1, p2, &state.pool)
+        .select_racers(p1.clone(), p2.clone(), &state.pool)
         .await
         .map_err(|e| format!("Error saving race: {}", e))?;
 
@@ -234,17 +235,39 @@ async fn handle_create_race(
             notify_racer(r2, &race, &state)
         )
     };
-    if let Err(err) = first.and(second) {
-        return Ok(interactions::plain_interaction_response(format!(
-            "Internal error creating race: {}",
-            err
-        )));
+    // this is annoying, i havent really found a pattern i like for "report 0-2 errors" in Rust yet
+    match (first, second) {
+        (Ok(_), Ok(_)) => {
+            Ok(plain_interaction_response(format!(
+                "Race created for users {} and {}",
+                p1.mention(),
+                p2.mention(),
+            )))
+        },
+        (Err(e), Ok(_)) => {
+            Ok(
+                plain_interaction_response(format!("Error creating race: error contacting {}: {}",
+                    p1.mention(),
+                    e
+                ))
+            )
+        },
+        (Ok(_), Err(e)) => {
+            Ok(plain_interaction_response(format!("Error creating race: error contacting {}: {}",
+                                               p2.mention(),
+                                               e
+            )))
+        },
+        (Err(e1), Err(e2)) => {
+            Ok(plain_interaction_response(format!("Error creating race: error contacting {}: {} \
+            error contacting {}: {}",
+                                               p1.mention(),
+                                               e1,
+                p2.mention(),
+                e2
+            )))
+        },
     }
-    Ok(interactions::plain_interaction_response(format!(
-        "Race created for users {} and {}",
-        p1.mention(),
-        p2.mention(),
-    )))
 }
 
 fn run_started_components() -> Vec<Component> {
@@ -720,7 +743,7 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordSt
     let token = interaction.token().to_string();
     if let Err(e) = _handle_interaction(interaction, &state).await {
         // inform user about the error
-        let ir = interactions::update_resp_to_plain_content(e.user_facing_error);
+        let ir = update_resp_to_plain_content(e.user_facing_error.clone());
         let err_ext = state
             .interaction_client()
             .create_response(interaction_id, &token, &ir)
@@ -732,8 +755,8 @@ async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordSt
         if e.internal_error.is_some() || err_ext.is_some() {
             // inform admins about the error
             let final_internal_error = format!(
-                "Error: {:?} | Error communicating with user: {:?}",
-                e.internal_error, err_ext
+                "Error: {} - Internal error: {:?} | Error communicating with user: {:?}",
+                e.user_facing_error, e.internal_error, err_ext
             );
             println!("{}", final_internal_error);
             if let Err(e) = state.webhooks.message_async(&final_internal_error).await {

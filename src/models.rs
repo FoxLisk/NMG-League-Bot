@@ -299,11 +299,19 @@ pub(crate) mod race_run {
 
     #[derive(sqlx::Type, Debug, Serialize)]
     pub(crate) enum RaceRunState {
+        /// RaceRun created
         CREATED,
+        /// Player successfully contacted via DM
+        CONTACTED,
+        /// Player has clicked Start run
         STARTED,
+        /// Player has clicked Finish
         FINISHED,
+        /// Player has submitted their run time (or, well, some text in that input box)
         TIME_SUBMITTED,
+        /// Player has submitted VoD link (or, well, some text in that input box)
         VOD_SUBMITTED,
+        /// Player has confirmed forfeit
         FORFEIT,
     }
 
@@ -372,6 +380,11 @@ pub(crate) mod race_run {
 
         pub(crate) fn filenames(&self) -> Result<Filenames, String> {
             Filenames::from_str(&self.filenames)
+        }
+
+
+        pub(crate) fn contacted(&mut self) {
+            self.state = RaceRunState::CONTACTED;
         }
 
         pub(crate) fn start(&mut self) {
