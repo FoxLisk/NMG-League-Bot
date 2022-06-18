@@ -1,4 +1,5 @@
-use crate::constants::NMG_LEAGUE_GUILD_ID;
+use std::env;
+use crate::constants::{GUILD_ID_VAR};
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use dashmap::DashMap;
@@ -19,6 +20,7 @@ pub(crate) struct DiscordState {
     // this isn't handled by the cache b/c it is not updated via Gateway events
     private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
     application_id: Id<ApplicationMarker>,
+    gid: Id<GuildMarker>,
 }
 
 impl DiscordState {
@@ -29,6 +31,8 @@ impl DiscordState {
         pool: SqlitePool,
         webhooks: Webhooks,
     ) -> Self {
+        let gid_s = env::var(GUILD_ID_VAR).unwrap();
+        let gid = Id::<GuildMarker>::new(gid_s.parse::<u64>().unwrap());
         Self {
             cache,
             client,
@@ -36,6 +40,7 @@ impl DiscordState {
             webhooks,
             application_id: aid,
             private_channels: Default::default(),
+            gid
         }
     }
 
@@ -91,11 +96,11 @@ impl DiscordState {
     ) -> Result<bool, String> {
         let role = self
             .get_admin_role(guild_id)
-            .ok_or("Error: Cannot find admin role".to_string())?;
+            .ok_or(format!("Error: Cannot find admin role for guild {}", guild_id))?;
         let member = self
             .cache
             .member(guild_id, user_id)
-            .ok_or("Error: cannot find member".to_string())?
+            .ok_or(format!("Error: cannot find member {}", user_id))?
             .value()
             .clone();
         Ok(member.roles().contains(&role.id))
@@ -106,8 +111,7 @@ impl DiscordState {
         &self,
         user_id: Id<UserMarker>,
     ) -> Result<bool, String> {
-        let gid = Id::<GuildMarker>::new(NMG_LEAGUE_GUILD_ID);
-        self.has_admin_role(user_id, gid).await
+        self.has_admin_role(user_id, self.gid.clone()).await
     }
 
     pub(crate) async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {

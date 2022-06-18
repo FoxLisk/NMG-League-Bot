@@ -1,7 +1,7 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::{interactions, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_READY, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT};
+use crate::discord::{CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY, interactions};
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
@@ -40,6 +40,7 @@ use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use lazy_static::lazy_static;
 use crate::discord::interactions::{plain_interaction_response, update_resp_to_plain_content};
+use crate::discord::notify_racer;
 
 use super::CREATE_RACE_CMD;
 
@@ -134,53 +135,6 @@ impl GetMessageId for ModalSubmitInteraction {
     }
 }
 
-/// DM the player & save the run model if the DM sends successfully
-async fn notify_racer(
-    mut race_run: RaceRun,
-    race: &Race,
-    state: &Arc<DiscordState>,
-) -> Result<(), String> {
-    let uid = race_run.racer_id()?;
-    if Some(uid) == state.cache.current_user().map(|cu| cu.id) {
-        println!("Not sending messages to myself");
-        return Ok(());
-    }
-    let dm = state.get_private_channel(uid).await?;
-    let content = format!(
-        "Hello, your asynchronous race is now ready.
-When you're ready to begin your race, click \"Start run\" and you will be given
-filenames to enter.
-
-If anything goes wrong, tell an admin there was an issue with race `{}`",
-        race.uuid
-    );
-
-    let resp = state
-        .client
-        .create_message(dm)
-        .components(&[Component::ActionRow(ActionRow {
-            components: vec![interactions::button_component(
-                "Start run",
-                CUSTOM_ID_START_RUN,
-                ButtonStyle::Primary,
-            )],
-        })])
-        .and_then(|cm| cm.content(&content))
-        .map_err(|e| e.to_string())?
-        .exec()
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if resp.status().is_success() {
-        let msg = resp.model().await.map_err(|e| e.to_string())?;
-        race_run.set_message_id(msg.id.get());
-        race_run.contacted();
-        race_run.save(&state.pool).await
-    } else {
-        Err(format!("Error sending message: {}", resp.status()))
-    }
-}
-
 async fn handle_create_race(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
@@ -224,15 +178,15 @@ async fn handle_create_race(
         .save(&state.pool)
         .await
         .map_err(|e| format!("Error saving race: {}", e))?;
-    let (r1, r2) = race
+    let (mut r1, mut r2) = race
         .select_racers(p1.clone(), p2.clone(), &state.pool)
         .await
         .map_err(|e| format!("Error saving race: {}", e))?;
 
     let (first, second) = {
         tokio::join!(
-            notify_racer(r1, &race, &state),
-            notify_racer(r2, &race, &state)
+            notify_racer(&mut r1, &race, &state),
+            notify_racer(&mut r2, &race, &state)
         )
     };
     // this is annoying, i havent really found a pattern i like for "report 0-2 errors" in Rust yet

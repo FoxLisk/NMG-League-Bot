@@ -26,13 +26,16 @@ use discord::Webhooks;
 async fn main() {
     dotenv::dotenv().unwrap();
     let webhooks = Webhooks::new().await.unwrap();
-
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
-    tokio::spawn(race_cron::cron(shutdown_send.subscribe(), webhooks.clone()));
 
-    let state = discord::bot::launch(webhooks, shutdown_send.subscribe()).await;
-    tokio::spawn(web::launch_website(state, shutdown_send.subscribe()));
+    let state = discord::bot::launch(webhooks.clone(), shutdown_send.subscribe()).await;
 
+    tokio::spawn(race_cron::cron(shutdown_send.subscribe(), webhooks.clone(), state.clone()));
+
+    tokio::spawn(web::launch_website(state.clone(), shutdown_send.subscribe()));
+
+    drop(state);
+    drop(webhooks);
     tokio::signal::ctrl_c().await.ok();
     let (shutdown_signal_send, mut shutdown_signal_recv) = tokio::sync::mpsc::channel(1);
     // send a copy of an mpsc sender to each watcher of the shutdown thread...

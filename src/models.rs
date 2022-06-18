@@ -315,6 +315,15 @@ pub(crate) mod race_run {
         FORFEIT,
     }
 
+    impl RaceRunState {
+        pub(crate) fn is_created(&self) -> bool {
+            match self {
+                Self::CREATED => true,
+                _ => false,
+            }
+        }
+    }
+
     pub(crate) struct RaceRun {
         pub(crate) id: i64,
         pub(crate) uuid: String,
@@ -370,7 +379,7 @@ pub(crate) mod race_run {
                 .map_err(|e| e.to_string())
         }
 
-        pub(crate) fn finished(&self) -> bool {
+        pub(crate) fn is_finished(&self) -> bool {
             match self.state {
                 RaceRunState::VOD_SUBMITTED => true,
                 RaceRunState::FORFEIT => true,
@@ -383,7 +392,7 @@ pub(crate) mod race_run {
         }
 
 
-        pub(crate) fn contacted(&mut self) {
+        pub(crate) fn contact_succeeded(&mut self) {
             self.state = RaceRunState::CONTACTED;
         }
 
