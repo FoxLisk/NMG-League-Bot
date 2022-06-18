@@ -299,12 +299,29 @@ pub(crate) mod race_run {
 
     #[derive(sqlx::Type, Debug, Serialize)]
     pub(crate) enum RaceRunState {
+        /// RaceRun created
         CREATED,
+        /// Player successfully contacted via DM
+        CONTACTED,
+        /// Player has clicked Start run
         STARTED,
+        /// Player has clicked Finish
         FINISHED,
+        /// Player has submitted their run time (or, well, some text in that input box)
         TIME_SUBMITTED,
+        /// Player has submitted VoD link (or, well, some text in that input box)
         VOD_SUBMITTED,
+        /// Player has confirmed forfeit
         FORFEIT,
+    }
+
+    impl RaceRunState {
+        pub(crate) fn is_created(&self) -> bool {
+            match self {
+                Self::CREATED => true,
+                _ => false,
+            }
+        }
     }
 
     pub(crate) struct RaceRun {
@@ -362,7 +379,7 @@ pub(crate) mod race_run {
                 .map_err(|e| e.to_string())
         }
 
-        pub(crate) fn finished(&self) -> bool {
+        pub(crate) fn is_finished(&self) -> bool {
             match self.state {
                 RaceRunState::VOD_SUBMITTED => true,
                 RaceRunState::FORFEIT => true,
@@ -372,6 +389,11 @@ pub(crate) mod race_run {
 
         pub(crate) fn filenames(&self) -> Result<Filenames, String> {
             Filenames::from_str(&self.filenames)
+        }
+
+
+        pub(crate) fn contact_succeeded(&mut self) {
+            self.state = RaceRunState::CONTACTED;
         }
 
         pub(crate) fn start(&mut self) {
