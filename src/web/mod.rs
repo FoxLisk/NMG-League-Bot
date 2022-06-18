@@ -338,7 +338,8 @@ async fn async_view(
             filenames,
             rr.state as "rr_state: RaceRunState",
             vod,
-            r.state as "race_state!"
+            r.state as "race_state!",
+            r.created
         FROM race_runs rr
         LEFT JOIN races r
         ON rr.race_id = r.id
@@ -353,6 +354,7 @@ async fn async_view(
         filenames: String,
         run_state: RaceRunState,
         vod: Option<String>,
+        created: i64,
     }
 
     #[derive(Serialize)]
@@ -393,6 +395,7 @@ async fn async_view(
             filenames: row.filenames,
             vod: row.vod,
             run_state: row.rr_state,
+            created: row.created,
         };
         runs.entry(row.race_id).or_insert(vec![]).push(run);
         race_state.insert(row.race_id, row.race_state);
@@ -427,15 +430,32 @@ async fn async_view(
             .push(Race { state, p1, p2 });
     }
 
+    for v in races.values_mut() {
+        v.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
+    }
+
+    let mut finished = races.remove("FINISHED").unwrap_or(vec![]);
+    finished.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
+
+    let mut created = races.remove("CREATED").unwrap_or(vec![]);
+    created.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
+
+
+    let mut abandoned = races.remove("ABANDONED").unwrap_or(vec![]);
+    abandoned.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
+
+
     #[derive(Serialize)]
     struct Context {
-        races_by_state: HashMap<String, Vec<Race>>,
+        finished: Vec<Race>,
+        created: Vec<Race>,
+        abandoned: Vec<Race>,
     }
 
     Template::render(
         "asyncs",
         Context {
-            races_by_state: races,
+            finished, created, abandoned
         },
     )
 }
