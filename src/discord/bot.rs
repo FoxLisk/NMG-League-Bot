@@ -1,7 +1,7 @@
-use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
+use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR, WEBSITE_URL};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::{CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY, interactions};
+use crate::discord::{CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY, interactions};
 use crate::models::race::{NewRace, Race};
 use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
@@ -14,7 +14,7 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
 use twilight_http::Client;
 use twilight_mention::Mention;
-use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType};
+use twilight_model::application::command::{BaseCommandOptionData, CommandOption, CommandType, NumberCommandOptionData};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
 use twilight_model::application::component::{ActionRow, Component, TextInput};
@@ -39,6 +39,10 @@ use twilight_model::id::Id;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use lazy_static::lazy_static;
+use twilight_http::request::application::command::UpdateCommandPermissions;
+use twilight_http::response::DeserializeBodyError;
+use twilight_model::application::command::permissions::{CommandPermissions, CommandPermissionsType};
+use twilight_validate::command::CommandValidationError;
 use crate::discord::interactions::{plain_interaction_response, update_resp_to_plain_content};
 use crate::discord::notify_racer;
 
@@ -135,7 +139,8 @@ impl GetMessageId for ModalSubmitInteraction {
     }
 }
 
-async fn handle_create_race(
+// this is doing all the work but it's being wrapped just to make refactoring easier
+async fn _handle_create_race(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
@@ -221,6 +226,44 @@ async fn handle_create_race(
                 e2
             )))
         },
+    }
+}
+
+
+async fn handle_create_race(
+    mut ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Result<(), ErrorResponse> {
+    let interaction_id = ac.id;
+    let token = ac.token.to_string();
+    match _handle_create_race(ac, &state).await {
+        Ok(r) => state
+            .interaction_client()
+            .create_response(interaction_id, &token, &r)
+            .exec()
+            .await
+            .map(|_| ())
+            .map_err(|e| ErrorResponse {
+                user_facing_error: format!("Error creating race: {}", e),
+                internal_error: None,
+            }),
+        Err(e) => Err(ErrorResponse {
+            user_facing_error: format!("Internal error creating race: {}", e),
+            internal_error: None,
+        }),
+    }
+}
+
+async fn handle_application_interaction(
+    mut ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Result<(), ErrorResponse> {
+    match ac.data.name.as_str() {
+        CREATE_RACE_CMD => handle_create_race(ac, state).await,
+        _ => {
+            println!("Unhandled application command: {}", ac.data.name);
+            Ok(())
+        }
     }
 }
 
@@ -658,31 +701,8 @@ async fn _handle_interaction(
     interaction: InteractionCreate,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
-    let interaction_id = interaction.id();
-    let token = interaction.token().to_string();
     match interaction.0 {
-        Interaction::ApplicationCommand(ac) => match ac.data.name.as_str() {
-            CREATE_RACE_CMD => match handle_create_race(ac, &state).await {
-                Ok(r) => state
-                    .interaction_client()
-                    .create_response(interaction_id, &token, &r)
-                    .exec()
-                    .await
-                    .map(|_| ())
-                    .map_err(|e| ErrorResponse {
-                        user_facing_error: format!("Error creating race: {}", e),
-                        internal_error: None,
-                    }),
-                Err(e) => Err(ErrorResponse {
-                    user_facing_error: format!("Internal error creating race: {}", e),
-                    internal_error: None,
-                }),
-            },
-            _ => {
-                println!("Unhandled ApplicationCommand: {}", ac.data.name);
-                Ok(())
-            }
-        },
+        Interaction::ApplicationCommand(ac) => handle_application_interaction(ac, &state).await,
         Interaction::MessageComponent(mc) => handle_button_interaction(mc, &state).await,
         Interaction::ModalSubmit(ms) => handle_modal_submission(ms, &state).await,
         _ => {
@@ -725,7 +745,7 @@ async fn set_application_commands(
     gc: &Box<GuildCreate>,
     state: Arc<DiscordState>,
 ) -> Result<(), String> {
-    let cb = CommandBuilder::new(
+    let create_race = CommandBuilder::new(
         CREATE_RACE_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
         CommandType::ChatInput,
@@ -747,9 +767,30 @@ async fn set_application_commands(
     }))
     .build();
 
+    let cancel_race = CommandBuilder::new(
+        CANCEL_RACE_CMD.to_string(),
+        "Cancel an existing asynchronous race".to_string(),
+        CommandType::ChatInput,
+    ).default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: format!("Race ID. Get this from {}", WEBSITE_URL),
+            description_localizations: None,
+            max_value: None,
+            min_value: None,
+            name: "race_id".to_string(),
+            name_localizations: None,
+            required: true
+        }
+        ))
+        .build();
+
+    let commands = vec![create_race, cancel_race];
+
     let resp = state
         .interaction_client()
-        .set_guild_commands(gc.id.clone(), &[cb])
+        .set_guild_commands(gc.id.clone(), &commands)
         .exec()
         .await
         .map_err(|e| e.to_string())?;
@@ -763,12 +804,6 @@ async fn set_application_commands(
 
     match resp.model().await {
         Ok(cmds) => {
-            println!("Got commands for guild {}:", gc.id);
-
-            for cmd in cmds {
-                // TODO: role-based permissions
-                println!("{:?}", cmd);
-            }
             Ok(())
         }
         Err(e) => {

@@ -15,3 +15,5 @@ pub const GUILD_ID_VAR: &str = "LEAGUE_GUILD_ID";
 pub const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/api/oauth2/authorize";
 pub const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
 pub const FOXLISK_USER_ID: u64 = 255676979460702210;
+
+pub const WEBSITE_URL: &str = "https://nmg-league.foxlisk.com";
