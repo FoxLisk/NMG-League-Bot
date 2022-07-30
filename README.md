@@ -44,3 +44,10 @@ i think this link has the correct permissions. `client_id` is the bot's client i
 server this is irrelevant.
 
 https://discord.com/api/oauth2/authorize?client_id=<>&permissions=535061589072&scope=bot%20applications.commands
+
+# expectations for contributing
+
+just have fun and be yourself :)
+
+And _absolutely_ no panics in steady-state running code. Crashing on a missing env variable on startup is totally fine,
+but once startup is complete all errors must be handled.
