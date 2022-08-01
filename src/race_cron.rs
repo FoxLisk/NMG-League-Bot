@@ -11,25 +11,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-
-fn format_secs(secs: u64) -> String {
-    let mins = secs / 60;
-    let hours = mins / 60;
-    if hours > 0 {
-        format!(
-            "{hours}:{mins:02}:{secs:02}",
-            hours = hours,
-            mins = mins % 60,
-            secs = secs % 60 % 60
-        )
-    } else {
-        format!(
-            "{mins:02}:{secs:02}",
-            mins = mins % 60,
-            secs = secs % 60 % 60
-        )
-    }
-}
+use crate::utils::format_secs;
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {

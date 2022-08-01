@@ -18,18 +18,31 @@ pub(crate) fn epoch_timestamp() -> u32 {
 }
 
 pub(crate) mod race {
-    use crate::models::race_run::{NewRaceRun, RaceRun};
+    use std::fmt::{Display, Formatter};
+    use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::models::{epoch_timestamp, uuid_string};
     use serde::Serialize;
     use sqlx::SqlitePool;
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
-    #[derive(sqlx::Type, Debug, Serialize)]
+    #[derive(sqlx::Type, Debug, Serialize, PartialEq)]
     pub(crate) enum RaceState {
         CREATED,
         FINISHED,
         ABANDONED,
+        CANCELLED_BY_ADMIN,
+    }
+
+    impl Display for RaceState {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                RaceState::CREATED => {write!(f, "CREATED")}
+                RaceState::FINISHED => {write!(f, "FINISHED")}
+                RaceState::ABANDONED => {write!(f, "ABANDONED")}
+                RaceState::CANCELLED_BY_ADMIN => {write!(f, "CANCELLED_BY_ADMIN")}
+            }
+        }
     }
 
     pub(crate) struct NewRace {
@@ -39,10 +52,10 @@ pub(crate) mod race {
     }
 
     pub(crate) struct Race {
-        id: i32,
+        pub(crate) id: i32,
         pub(crate) uuid: String,
         created: u32,
-        state: RaceState,
+        pub(crate) state: RaceState,
     }
 
     // statics
@@ -58,6 +71,20 @@ pub(crate) mod race {
             .fetch_all(pool)
             .await
             .map_err(|e| e.to_string())
+        }
+
+        pub(crate) async fn get_by_id(id: i64, pool: &SqlitePool) -> Result<Self, String> {
+        sqlx::query_as!(
+            Self,
+            r#"SELECT id as "id: _", uuid, created as "created: _", state as "state: _"
+                    FROM races
+                    WHERE id=?"#,
+                id
+            )
+            .fetch_one(pool)
+            .await
+            .map_err(|e| e.to_string())
+
         }
     }
 
@@ -93,6 +120,7 @@ pub(crate) mod race {
             nrr.save(pool).await
         }
 
+        /// Creates RaceRuns with the appropriate users and associates them with this race
         pub(crate) async fn select_racers(
             &self,
             racer_1: Id<UserMarker>,
@@ -105,6 +133,31 @@ pub(crate) mod race {
             let r1 = self.add_run(racer_1, pool).await?;
             let r2 = self.add_run(racer_2, pool).await?;
             Ok((r1, r2))
+        }
+
+        /// Cancels this race and its associated RaceRun
+        /// This updates the database
+        pub(crate) async fn cancel(&self, pool: &SqlitePool) -> Result<(), String> {
+            sqlx::query!(
+                "\
+                UPDATE races
+                SET state=?
+                WHERE id=?;
+
+                UPDATE race_runs
+                SET state=?
+                WHERE race_id=?;
+                ",
+                RaceState::CANCELLED_BY_ADMIN,
+                self.id,
+                RaceRunState::CANCELLED_BY_ADMIN,
+                self.id,
+            )
+                .execute(pool)
+                .await
+                .map(|_|())
+                .map_err(|e| e.to_string())
+
         }
 
         pub(crate) async fn get_runs(
@@ -156,6 +209,7 @@ pub(crate) mod race_run {
     use sqlx::encode::IsNull;
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
+    use std::str::FromStr;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
     lazy_static! {
@@ -318,6 +372,10 @@ pub(crate) mod race_run {
         VOD_SUBMITTED,
         /// Player has confirmed forfeit
         FORFEIT,
+        /// Associated race was cancelled
+        // N.B. maybe this shouldn't be denormalized and we should just check
+        // race state on every RaceRun operation?
+        CANCELLED_BY_ADMIN,
     }
 
     impl RaceRunState {
@@ -325,6 +383,13 @@ pub(crate) mod race_run {
             match self {
                 Self::CREATED => true,
                 _ => false,
+            }
+        }
+
+        pub(crate) fn is_pre_start(&self) -> bool {
+            match self {
+                Self::CREATED | Self::CONTACTED => true,
+                _ => false
             }
         }
     }
@@ -337,7 +402,7 @@ pub(crate) mod race_run {
         filenames: String,
         created: u32,
         pub(crate) state: RaceRunState,
-        message_id: Option<String>,
+        pub(crate) message_id: Option<String>,
         pub(crate) run_started: Option<i64>,
         pub(crate) run_finished: Option<i64>,
         pub(crate) reported_run_time: Option<String>,
@@ -345,6 +410,7 @@ pub(crate) mod race_run {
         pub(crate) vod: Option<String>,
     }
 
+    // statics
     impl RaceRun {
         pub(crate) async fn get_runs(
             race_id: i32,
@@ -399,6 +465,15 @@ pub(crate) mod race_run {
 
         pub(crate) fn contact_succeeded(&mut self) {
             self.state = RaceRunState::CONTACTED;
+        }
+
+        pub(crate) fn get_message_id(&self) -> Option<Id<MessageMarker>> {
+            self.message_id.as_ref()
+                .and_then(
+                    |ms|
+                        Id::<MessageMarker>::from_str(&ms)
+                            .ok()
+                )
         }
 
         pub(crate) fn start(&mut self) {

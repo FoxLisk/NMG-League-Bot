@@ -7,7 +7,6 @@ use std::str::FromStr;
 
 #[tokio::main]
 async fn main() {
-    println!("cargo:rerun-if-changed=migrations");
 
     let sqlite_db_path = match dotenv::var("DATABASE_URL") {
         Ok(v) => v,

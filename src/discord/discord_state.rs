@@ -1,4 +1,5 @@
 use std::env;
+use std::sync::Arc;
 use crate::constants::{GUILD_ID_VAR};
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
@@ -11,12 +12,14 @@ use twilight_model::guild::Role;
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::user::User;
+use twilight_standby::Standby;
 
 pub(crate) struct DiscordState {
     pub cache: InMemoryCache,
     pub client: Client,
     pub pool: SqlitePool,
     pub webhooks: Webhooks,
+    pub standby: Arc<Standby>,
     // this isn't handled by the cache b/c it is not updated via Gateway events
     private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
     application_id: Id<ApplicationMarker>,
@@ -30,6 +33,7 @@ impl DiscordState {
         aid: Id<ApplicationMarker>,
         pool: SqlitePool,
         webhooks: Webhooks,
+        standby: Arc<Standby>,
     ) -> Self {
         let gid_s = env::var(GUILD_ID_VAR).unwrap();
         let gid = Id::<GuildMarker>::new(gid_s.parse::<u64>().unwrap());
@@ -38,6 +42,7 @@ impl DiscordState {
             client,
             pool,
             webhooks,
+            standby,
             application_id: aid,
             private_channels: Default::default(),
             gid

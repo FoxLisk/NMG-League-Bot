@@ -33,8 +33,11 @@ use crate::web::session_manager::SessionToken;
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::str::FromStr;
+use chrono::{DateTime, NaiveDateTime};
+use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
+use crate::utils::format_secs;
 
 mod session_manager;
 
@@ -154,6 +157,10 @@ impl<'r> FromRequest<'r> for Admin {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
+        if cfg!(feature="no_auth_website") {
+            return Outcome::Success(Admin{});
+        }
+
         let cookie = match request.cookies().get(SESSION_COOKIE_NAME) {
             Some(c) => c.value(),
             None => {
@@ -324,12 +331,21 @@ async fn discord_login(
     }
 }
 
+const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
+
+// TODO: this code is fucking annoying
 #[get("/asyncs")]
 async fn async_view(
     _a: Admin,
     pool: &State<SqlitePool>,
     discord_state: &State<Arc<DiscordState>>,
 ) -> Template {
+    /*
+     pub(crate) run_started: Option<i64>,
+        pub(crate) run_finished: Option<i64>,
+        pub(crate) reported_run_time: Option<String>,
+        reported_at: Option<u32>,
+     */
     let mut qr = sqlx::query!(
         r#"SELECT
             race_id,
@@ -339,7 +355,11 @@ async fn async_view(
             rr.state as "rr_state: RaceRunState",
             vod,
             r.state as "race_state!",
-            r.created
+            r.created,
+            rr.run_started,
+            rr.run_finished,
+            rr.reported_run_time,
+            rr.reported_at
         FROM race_runs rr
         LEFT JOIN races r
         ON rr.race_id = r.id
@@ -349,16 +369,22 @@ async fn async_view(
 
     #[derive(Serialize)]
     struct Run {
+        race_id: i64,
         run_uuid: String,
         racer_name: String,
         filenames: String,
         run_state: RaceRunState,
         vod: Option<String>,
         created: i64,
+        started: Option<String>,
+        bot_time_to_finish: Option<String>,
+        user_reported_time: Option<String>,
+        time_from_finish_to_report: Option<String>,
     }
 
     #[derive(Serialize)]
     struct Race {
+        id: i64,
         state: String,
         p1: Run,
         p2: Run,
@@ -389,13 +415,51 @@ async fn async_view(
             .flatten()
             .map(|u| u.name)
             .unwrap_or("Unknown".to_string());
+        // let t = chr
+        // let started = row.run_started.map(|r| c
+        let start_dt: Option<NaiveDateTime> = row.run_started.map(|t|
+            NaiveDateTime::from_timestamp(t, 0)
+        );
+        let finish_dt: Option<NaiveDateTime> = row.run_finished.map(|t|
+            NaiveDateTime::from_timestamp(t, 0)
+        );
+        let reported_dt: Option<NaiveDateTime> = row.reported_at.map(|t|
+            NaiveDateTime::from_timestamp(t, 0)
+        );
+
+        let bot_time_to_finish = finish_dt.and_then(|edt|
+            start_dt.map(|sdt|
+                {
+                     let elapsed = edt.signed_duration_since(sdt);
+                    format_secs(elapsed.num_seconds() as u64)
+                }
+
+            )
+        );
+
+        let time_from_finish_to_report = reported_dt.and_then(|rdt|
+            finish_dt.map(|fdt|
+                {
+                    let elapsed = rdt.signed_duration_since(fdt);
+                    format_secs(elapsed.num_seconds() as u64)
+                }
+
+            )
+        );
+
+
         let run = Run {
+            race_id: row.race_id,
             run_uuid: row.rr_uuid,
             racer_name: username,
             filenames: row.filenames,
             vod: row.vod,
             run_state: row.rr_state,
             created: row.created,
+            started: start_dt.map(|s| s.format(DATETIME_FORMAT).to_string()),
+            bot_time_to_finish,
+            user_reported_time: row.reported_run_time,
+            time_from_finish_to_report
         };
         runs.entry(row.race_id).or_insert(vec![]).push(run);
         race_state.insert(row.race_id, row.race_state);
@@ -427,7 +491,7 @@ async fn async_view(
         races
             .entry(state.clone())
             .or_insert(vec![])
-            .push(Race { state, p1, p2 });
+            .push(Race { id: p1.race_id, state, p1, p2 });
     }
 
     for v in races.values_mut() {
@@ -445,19 +509,42 @@ async fn async_view(
     abandoned.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
 
 
+    let mut cancelled = races.remove("CANCELLED_BY_ADMIN").unwrap_or(vec![]);
+    cancelled.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
+
     #[derive(Serialize)]
     struct Context {
         finished: Vec<Race>,
         created: Vec<Race>,
         abandoned: Vec<Race>,
+        cancelled: Vec<Race>
     }
 
     Template::render(
         "asyncs",
         Context {
-            finished, created, abandoned
+            finished, created, abandoned, cancelled
         },
     )
+}
+
+fn option_default(v: &Value, h: &HashMap<String, Value>) -> rocket_dyn_templates::tera::Result<Value> {
+    let d = match h.get("default") {
+        None => {
+            return Err(
+                rocket_dyn_templates::tera::Error::msg(
+                    "option_default missing required argument `default`"
+                ));
+        }
+        Some(d) => {
+            try_get_value!("default", "option_default", String, d)
+        }
+    };
+    match v {
+        Value::Null => Ok(to_value(d)?),
+
+        _ => Ok(v.clone())
+    }
 }
 
 pub(crate) async fn launch_website(
@@ -469,6 +556,7 @@ pub(crate) async fn launch_website(
     let oauth_client = OauthClient::new();
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
+
 
     let rocket = rocket::build()
         .mount("/static", rocket::routes![statics])
@@ -482,7 +570,11 @@ pub(crate) async fn launch_website(
                 async_view
             ],
         )
-        .attach(Template::fairing())
+        .attach(Template::custom(
+            |e| {
+                e.tera.register_filter("option_default", option_default);
+            }
+        ))
         .manage(state)
         .manage(session_manager)
         .manage(oauth_client)
