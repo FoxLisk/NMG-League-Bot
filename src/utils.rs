@@ -1,4 +1,3 @@
-
 pub fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
     let hours = mins / 60;

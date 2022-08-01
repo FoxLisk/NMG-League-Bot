@@ -18,11 +18,11 @@ pub(crate) fn epoch_timestamp() -> u32 {
 }
 
 pub(crate) mod race {
-    use std::fmt::{Display, Formatter};
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::models::{epoch_timestamp, uuid_string};
     use serde::Serialize;
     use sqlx::SqlitePool;
+    use std::fmt::{Display, Formatter};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
@@ -37,10 +37,18 @@ pub(crate) mod race {
     impl Display for RaceState {
         fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
             match self {
-                RaceState::CREATED => {write!(f, "CREATED")}
-                RaceState::FINISHED => {write!(f, "FINISHED")}
-                RaceState::ABANDONED => {write!(f, "ABANDONED")}
-                RaceState::CANCELLED_BY_ADMIN => {write!(f, "CANCELLED_BY_ADMIN")}
+                RaceState::CREATED => {
+                    write!(f, "CREATED")
+                }
+                RaceState::FINISHED => {
+                    write!(f, "FINISHED")
+                }
+                RaceState::ABANDONED => {
+                    write!(f, "ABANDONED")
+                }
+                RaceState::CANCELLED_BY_ADMIN => {
+                    write!(f, "CANCELLED_BY_ADMIN")
+                }
             }
         }
     }
@@ -74,9 +82,9 @@ pub(crate) mod race {
         }
 
         pub(crate) async fn get_by_id(id: i64, pool: &SqlitePool) -> Result<Self, String> {
-        sqlx::query_as!(
-            Self,
-            r#"SELECT id as "id: _", uuid, created as "created: _", state as "state: _"
+            sqlx::query_as!(
+                Self,
+                r#"SELECT id as "id: _", uuid, created as "created: _", state as "state: _"
                     FROM races
                     WHERE id=?"#,
                 id
@@ -84,7 +92,6 @@ pub(crate) mod race {
             .fetch_one(pool)
             .await
             .map_err(|e| e.to_string())
-
         }
     }
 
@@ -153,11 +160,10 @@ pub(crate) mod race {
                 RaceRunState::CANCELLED_BY_ADMIN,
                 self.id,
             )
-                .execute(pool)
-                .await
-                .map(|_|())
-                .map_err(|e| e.to_string())
-
+            .execute(pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
         }
 
         pub(crate) async fn get_runs(
@@ -389,7 +395,7 @@ pub(crate) mod race_run {
         pub(crate) fn is_pre_start(&self) -> bool {
             match self {
                 Self::CREATED | Self::CONTACTED => true,
-                _ => false
+                _ => false,
             }
         }
     }
@@ -462,18 +468,14 @@ pub(crate) mod race_run {
             Filenames::from_str(&self.filenames)
         }
 
-
         pub(crate) fn contact_succeeded(&mut self) {
             self.state = RaceRunState::CONTACTED;
         }
 
         pub(crate) fn get_message_id(&self) -> Option<Id<MessageMarker>> {
-            self.message_id.as_ref()
-                .and_then(
-                    |ms|
-                        Id::<MessageMarker>::from_str(&ms)
-                            .ok()
-                )
+            self.message_id
+                .as_ref()
+                .and_then(|ms| Id::<MessageMarker>::from_str(&ms).ok())
         }
 
         pub(crate) fn start(&mut self) {

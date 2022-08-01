@@ -5,13 +5,13 @@ use crate::discord::{notify_racer, Webhooks};
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
+use crate::utils::format_secs;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-use crate::utils::format_secs;
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {

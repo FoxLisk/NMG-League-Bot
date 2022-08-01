@@ -1,7 +1,9 @@
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR, WEBSITE_URL};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions::{button_component, plain_interaction_response, update_resp_to_plain_content};
+use crate::discord::interactions::{
+    button_component, plain_interaction_response, update_resp_to_plain_content,
+};
 use crate::discord::notify_racer;
 use crate::discord::{
     interactions, CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL,
@@ -73,7 +75,14 @@ pub(crate) async fn launch(
     let http = Client::new(token.clone());
     let cache = InMemoryCache::builder().build();
     let standby = Arc::new(Standby::new());
-    let state = Arc::new(DiscordState::new(cache, http, aid, pool, webhooks, standby.clone() ));
+    let state = Arc::new(DiscordState::new(
+        cache,
+        http,
+        aid,
+        pool,
+        webhooks,
+        standby.clone(),
+    ));
 
     tokio::spawn(run_bot(token, state.clone(), shutdown));
     state
@@ -131,7 +140,7 @@ enum ErrorResponseType {
 struct ErrorResponse {
     user_facing_error: String,
     internal_error: Option<String>,
-    type_: ErrorResponseType
+    type_: ErrorResponseType,
 }
 
 impl ErrorResponse {
@@ -149,7 +158,7 @@ impl ErrorResponse {
         Self {
             user_facing_error: user_facing_error.into(),
             internal_error: None,
-            type_: ErrorResponseType::Create
+            type_: ErrorResponseType::Create,
         }
     }
 
@@ -157,18 +166,14 @@ impl ErrorResponse {
         Self {
             user_facing_error: user_facing_error.into(),
             internal_error: None,
-            type_: ErrorResponseType::Update
+            type_: ErrorResponseType::Update,
         }
     }
 
     fn to_plain_content_resp(&self) -> InteractionResponse {
         match self.type_ {
-            ErrorResponseType::Create => {
-                plain_interaction_response(self.to_string())
-            }
-            ErrorResponseType::Update => {
-                update_resp_to_plain_content(self.to_string())
-            }
+            ErrorResponseType::Create => plain_interaction_response(self.to_string()),
+            ErrorResponseType::Update => update_resp_to_plain_content(self.to_string()),
         }
     }
 }
@@ -289,9 +294,9 @@ async fn handle_create_race(
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     _handle_create_race(ac, state)
         .await
-        .map_err(|e| ErrorResponse::create_no_internal(
-            format!("Internal error creating race: {}", e)
-        ))
+        .map_err(|e| {
+            ErrorResponse::create_no_internal(format!("Internal error creating race: {}", e))
+        })
         .map(|r| Some(r))
 }
 
@@ -439,49 +444,45 @@ async fn handle_cancel_race(
         let mut resp =
             plain_interaction_response("Are you sure? One of those runs has already been started.");
         if let Some(ref mut d) = resp.data {
-            d.components = Some(action_row(
-                vec![
-
-               button_component("Really cancel race", "really_cancel", ButtonStyle::Danger),
-               button_component("Do not cancel race", "dont_cancel", ButtonStyle::Secondary)
+            d.components = Some(action_row(vec![
+                button_component("Really cancel race", "really_cancel", ButtonStyle::Danger),
+                button_component("Do not cancel race", "dont_cancel", ButtonStyle::Secondary),
             ]));
         }
-        state.interaction_client()
-            .create_response(
-                ac.id.clone(),
-                &ac.token,
-                &resp
-            ).exec()
-            .await
-            .map_err(
-                |e|
-                    ErrorResponse::create_no_internal(
-                        format!("Error blah blah {}", e)
-                    )
-            )?;
-        let msg_resp = state.interaction_client().response(&ac.token)
+        state
+            .interaction_client()
+            .create_response(ac.id.clone(), &ac.token, &resp)
             .exec()
             .await
-
-            .map_err( |e|
-                ErrorResponse::create_no_internal(
-                    format!("Error asking you if you were serious? lol what: {}", e)
-                )
-            )?;
-        let msg = msg_resp.model().await.map_err(
-            |e|
-                ErrorResponse::create_no_internal(format!("Error deserializing response: {}", e))
-        )?;
-        let comp = state.standby.wait_for_component(
-            msg.id,
-            // I don't know why but spelling out the parameter type here seems to fix a compiler
-            // complaint
-            |e: &MessageComponentInteraction| true
-        ).await.map_err(|_|
-            ErrorResponse::create_no_internal(
-                "Weird internal error involving dropping a Standby?"
+            .map_err(|e| ErrorResponse::create_no_internal(format!("Error blah blah {}", e)))?;
+        let msg_resp = state
+            .interaction_client()
+            .response(&ac.token)
+            .exec()
+            .await
+            .map_err(|e| {
+                ErrorResponse::create_no_internal(format!(
+                    "Error asking you if you were serious? lol what: {}",
+                    e
+                ))
+            })?;
+        let msg = msg_resp.model().await.map_err(|e| {
+            ErrorResponse::create_no_internal(format!("Error deserializing response: {}", e))
+        })?;
+        let comp = state
+            .standby
+            .wait_for_component(
+                msg.id,
+                // I don't know why but spelling out the parameter type here seems to fix a compiler
+                // complaint
+                |e: &MessageComponentInteraction| true,
             )
-        )?;
+            .await
+            .map_err(|_| {
+                ErrorResponse::create_no_internal(
+                    "Weird internal error involving dropping a Standby?",
+                )
+            })?;
 
         let resp_text = if comp.data.custom_id == "really_cancel" {
             match actually_cancel_race(race, r1, r2, state).await {
@@ -492,26 +493,31 @@ async fn handle_cancel_race(
             "Okay, not cancelling it".to_string()
         };
         /*
-         this &comp.token bit is why we have to duplicate some code here. the workflow is a
-         little confusing IMO. its like
-         > user creates an application command interaction (1)
-         < we create a response (r1) to that with a couple buttons or whatever
-         > user clicks a button (2)
-         < we must create a response (r2) that is an UPDATE and that uses the TOKEN from (2)
+        this &comp.token bit is why we have to duplicate some code here. the workflow is a
+        little confusing IMO. its like
+        > user creates an application command interaction (1)
+        < we create a response (r1) to that with a couple buttons or whatever
+        > user clicks a button (2)
+        < we must create a response (r2) that is an UPDATE and that uses the TOKEN from (2)
 
-         i.e. if we do an update using (1)'s token, we get an error (interaction already acknowledged)
-              if we do a create using (2)'s token, we get a different error (the user sees a UI
-              element claiming that their response was not acknowledged).
-         */
-        state.interaction_client()
-            .create_response(comp.id.clone(), &comp.token,
-                             &update_resp_to_plain_content(resp_text))
+        i.e. if we do an update using (1)'s token, we get an error (interaction already acknowledged)
+             if we do a create using (2)'s token, we get a different error (the user sees a UI
+             element claiming that their response was not acknowledged).
+        */
+        state
+            .interaction_client()
+            .create_response(
+                comp.id.clone(),
+                &comp.token,
+                &update_resp_to_plain_content(resp_text),
+            )
             .exec()
             .await
             .ok();
         return Ok(None);
     } else {
-        actually_cancel_race(race, r1, r2, state).await
+        actually_cancel_race(race, r1, r2, state)
+            .await
             .map(|r| Some(plain_interaction_response("Race cancelled.")))
             .map_err(|e| ErrorResponse::create_no_internal(e))
     }
@@ -550,19 +556,13 @@ async fn handle_application_interaction(
 
 fn run_started_components() -> Vec<Component> {
     action_row(vec![
-        button_component(
-            "Finish run",
-            CUSTOM_ID_FINISH_RUN,
-            ButtonStyle::Success,
-        ),
+        button_component("Finish run", CUSTOM_ID_FINISH_RUN, ButtonStyle::Success),
         button_component("Forfeit", CUSTOM_ID_FORFEIT_RUN, ButtonStyle::Danger),
     ])
 }
 
 fn action_row(components: Vec<Component>) -> Vec<Component> {
-    vec![Component::ActionRow(ActionRow {
-        components,
-    })]
+    vec![Component::ActionRow(ActionRow { components })]
 }
 
 fn run_started_interaction_response(

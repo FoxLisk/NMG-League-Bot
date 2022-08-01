@@ -1,10 +1,10 @@
-use std::env;
-use std::sync::Arc;
-use crate::constants::{GUILD_ID_VAR};
+use crate::constants::GUILD_ID_VAR;
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
+use std::env;
+use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
 use twilight_http::Client;
@@ -45,7 +45,7 @@ impl DiscordState {
             standby,
             application_id: aid,
             private_channels: Default::default(),
-            gid
+            gid,
         }
     }
 
@@ -99,9 +99,10 @@ impl DiscordState {
         user_id: Id<UserMarker>,
         guild_id: Id<GuildMarker>,
     ) -> Result<bool, String> {
-        let role = self
-            .get_admin_role(guild_id)
-            .ok_or(format!("Error: Cannot find admin role for guild {}", guild_id))?;
+        let role = self.get_admin_role(guild_id).ok_or(format!(
+            "Error: Cannot find admin role for guild {}",
+            guild_id
+        ))?;
         let member = self
             .cache
             .member(guild_id, user_id)

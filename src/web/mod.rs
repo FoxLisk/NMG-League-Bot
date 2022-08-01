@@ -28,16 +28,16 @@ use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::models::race_run::RaceRunState;
 use crate::shutdown::Shutdown;
+use crate::utils::format_secs;
 use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
+use chrono::{DateTime, NaiveDateTime};
+use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use sqlx::SqlitePool;
 use std::str::FromStr;
-use chrono::{DateTime, NaiveDateTime};
-use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
-use crate::utils::format_secs;
 
 mod session_manager;
 
@@ -157,8 +157,8 @@ impl<'r> FromRequest<'r> for Admin {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        if cfg!(feature="no_auth_website") {
-            return Outcome::Success(Admin{});
+        if cfg!(feature = "no_auth_website") {
+            return Outcome::Success(Admin {});
         }
 
         let cookie = match request.cookies().get(SESSION_COOKIE_NAME) {
@@ -341,11 +341,11 @@ async fn async_view(
     discord_state: &State<Arc<DiscordState>>,
 ) -> Template {
     /*
-     pub(crate) run_started: Option<i64>,
-        pub(crate) run_finished: Option<i64>,
-        pub(crate) reported_run_time: Option<String>,
-        reported_at: Option<u32>,
-     */
+    pub(crate) run_started: Option<i64>,
+       pub(crate) run_finished: Option<i64>,
+       pub(crate) reported_run_time: Option<String>,
+       reported_at: Option<u32>,
+    */
     let mut qr = sqlx::query!(
         r#"SELECT
             race_id,
@@ -417,36 +417,27 @@ async fn async_view(
             .unwrap_or("Unknown".to_string());
         // let t = chr
         // let started = row.run_started.map(|r| c
-        let start_dt: Option<NaiveDateTime> = row.run_started.map(|t|
-            NaiveDateTime::from_timestamp(t, 0)
-        );
-        let finish_dt: Option<NaiveDateTime> = row.run_finished.map(|t|
-            NaiveDateTime::from_timestamp(t, 0)
-        );
-        let reported_dt: Option<NaiveDateTime> = row.reported_at.map(|t|
-            NaiveDateTime::from_timestamp(t, 0)
-        );
+        let start_dt: Option<NaiveDateTime> =
+            row.run_started.map(|t| NaiveDateTime::from_timestamp(t, 0));
+        let finish_dt: Option<NaiveDateTime> = row
+            .run_finished
+            .map(|t| NaiveDateTime::from_timestamp(t, 0));
+        let reported_dt: Option<NaiveDateTime> =
+            row.reported_at.map(|t| NaiveDateTime::from_timestamp(t, 0));
 
-        let bot_time_to_finish = finish_dt.and_then(|edt|
-            start_dt.map(|sdt|
-                {
-                     let elapsed = edt.signed_duration_since(sdt);
-                    format_secs(elapsed.num_seconds() as u64)
-                }
+        let bot_time_to_finish = finish_dt.and_then(|edt| {
+            start_dt.map(|sdt| {
+                let elapsed = edt.signed_duration_since(sdt);
+                format_secs(elapsed.num_seconds() as u64)
+            })
+        });
 
-            )
-        );
-
-        let time_from_finish_to_report = reported_dt.and_then(|rdt|
-            finish_dt.map(|fdt|
-                {
-                    let elapsed = rdt.signed_duration_since(fdt);
-                    format_secs(elapsed.num_seconds() as u64)
-                }
-
-            )
-        );
-
+        let time_from_finish_to_report = reported_dt.and_then(|rdt| {
+            finish_dt.map(|fdt| {
+                let elapsed = rdt.signed_duration_since(fdt);
+                format_secs(elapsed.num_seconds() as u64)
+            })
+        });
 
         let run = Run {
             race_id: row.race_id,
@@ -459,7 +450,7 @@ async fn async_view(
             started: start_dt.map(|s| s.format(DATETIME_FORMAT).to_string()),
             bot_time_to_finish,
             user_reported_time: row.reported_run_time,
-            time_from_finish_to_report
+            time_from_finish_to_report,
         };
         runs.entry(row.race_id).or_insert(vec![]).push(run);
         race_state.insert(row.race_id, row.race_state);
@@ -488,10 +479,12 @@ async fn async_view(
                 continue;
             }
         };
-        races
-            .entry(state.clone())
-            .or_insert(vec![])
-            .push(Race { id: p1.race_id, state, p1, p2 });
+        races.entry(state.clone()).or_insert(vec![]).push(Race {
+            id: p1.race_id,
+            state,
+            p1,
+            p2,
+        });
     }
 
     for v in races.values_mut() {
@@ -504,10 +497,8 @@ async fn async_view(
     let mut created = races.remove("CREATED").unwrap_or(vec![]);
     created.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
 
-
     let mut abandoned = races.remove("ABANDONED").unwrap_or(vec![]);
     abandoned.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
-
 
     let mut cancelled = races.remove("CANCELLED_BY_ADMIN").unwrap_or(vec![]);
     cancelled.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
@@ -517,24 +508,29 @@ async fn async_view(
         finished: Vec<Race>,
         created: Vec<Race>,
         abandoned: Vec<Race>,
-        cancelled: Vec<Race>
+        cancelled: Vec<Race>,
     }
 
     Template::render(
         "asyncs",
         Context {
-            finished, created, abandoned, cancelled
+            finished,
+            created,
+            abandoned,
+            cancelled,
         },
     )
 }
 
-fn option_default(v: &Value, h: &HashMap<String, Value>) -> rocket_dyn_templates::tera::Result<Value> {
+fn option_default(
+    v: &Value,
+    h: &HashMap<String, Value>,
+) -> rocket_dyn_templates::tera::Result<Value> {
     let d = match h.get("default") {
         None => {
-            return Err(
-                rocket_dyn_templates::tera::Error::msg(
-                    "option_default missing required argument `default`"
-                ));
+            return Err(rocket_dyn_templates::tera::Error::msg(
+                "option_default missing required argument `default`",
+            ));
         }
         Some(d) => {
             try_get_value!("default", "option_default", String, d)
@@ -543,7 +539,7 @@ fn option_default(v: &Value, h: &HashMap<String, Value>) -> rocket_dyn_templates
     match v {
         Value::Null => Ok(to_value(d)?),
 
-        _ => Ok(v.clone())
+        _ => Ok(v.clone()),
     }
 }
 
@@ -557,7 +553,6 @@ pub(crate) async fn launch_website(
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
 
-
     let rocket = rocket::build()
         .mount("/static", rocket::routes![statics])
         .mount(
@@ -570,11 +565,9 @@ pub(crate) async fn launch_website(
                 async_view
             ],
         )
-        .attach(Template::custom(
-            |e| {
-                e.tera.register_filter("option_default", option_default);
-            }
-        ))
+        .attach(Template::custom(|e| {
+            e.tera.register_filter("option_default", option_default);
+        }))
         .manage(state)
         .manage(session_manager)
         .manage(oauth_client)

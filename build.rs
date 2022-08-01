@@ -7,7 +7,6 @@ use std::str::FromStr;
 
 #[tokio::main]
 async fn main() {
-
     let sqlite_db_path = match dotenv::var("DATABASE_URL") {
         Ok(v) => v,
         Err(_e) => {
