@@ -15,22 +15,15 @@ use crate::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use lazy_static::lazy_static;
-use rocket_dyn_templates::tera::helpers::tests::value_defined;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
-use std::str::FromStr;
 use std::sync::Arc;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
-use twilight_http::request::application::command::UpdateCommandPermissions;
 use twilight_http::request::channel::message::UpdateMessage;
-use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_mention::Mention;
-use twilight_model::application::command::permissions::{
-    CommandPermissions, CommandPermissionsType,
-};
 use twilight_model::application::command::{
     BaseCommandOptionData, CommandOption, CommandOptionType, CommandType, NumberCommandOptionData,
 };
@@ -58,7 +51,6 @@ use twilight_model::id::Id;
 use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
-use twilight_validate::command::CommandValidationError;
 use twilight_validate::message::MessageValidationError;
 
 use super::CREATE_RACE_CMD;
@@ -159,14 +151,6 @@ impl ErrorResponse {
             user_facing_error: user_facing_error.into(),
             internal_error: None,
             type_: ErrorResponseType::Create,
-        }
-    }
-
-    fn update_no_internal<S1: Into<String>>(user_facing_error: S1) -> Self {
-        Self {
-            user_facing_error: user_facing_error.into(),
-            internal_error: None,
-            type_: ErrorResponseType::Update,
         }
     }
 
@@ -289,7 +273,7 @@ async fn _handle_create_race(
 }
 
 async fn handle_create_race(
-    mut ac: Box<ApplicationCommand>,
+    ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     _handle_create_race(ac, state)
@@ -355,7 +339,6 @@ async fn update_cancelled_race_message(
     run: RaceRun,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
-    // let m = run.
     let mid = run
         .get_message_id()
         .ok_or(format!("Unable to find message associated with run"))?;
@@ -475,7 +458,7 @@ async fn handle_cancel_race(
                 msg.id,
                 // I don't know why but spelling out the parameter type here seems to fix a compiler
                 // complaint
-                |e: &MessageComponentInteraction| true,
+                |_: &MessageComponentInteraction| true,
             )
             .await
             .map_err(|_| {
@@ -486,7 +469,7 @@ async fn handle_cancel_race(
 
         let resp_text = if comp.data.custom_id == "really_cancel" {
             match actually_cancel_race(race, r1, r2, state).await {
-                Ok(o) => "Race cancelled.".to_string(),
+                Ok(()) => "Race cancelled.".to_string(),
                 Err(e) => e,
             }
         } else {
@@ -518,13 +501,13 @@ async fn handle_cancel_race(
     } else {
         actually_cancel_race(race, r1, r2, state)
             .await
-            .map(|r| Some(plain_interaction_response("Race cancelled.")))
+            .map(|_| Some(plain_interaction_response("Race cancelled.")))
             .map_err(|e| ErrorResponse::create_no_internal(e))
     }
 }
 
 async fn handle_application_interaction(
-    mut ac: Box<ApplicationCommand>,
+    ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ErrorResponse> {
     let interaction_id = ac.id.clone();
@@ -1087,14 +1070,7 @@ async fn set_application_commands(
             resp.status()
         ));
     }
-
-    match resp.model().await {
-        Ok(cmds) => Ok(()),
-        Err(e) => {
-            println!("Error inspecting list of returned commands: {}", e);
-            Ok(())
-        }
-    }
+    Ok(())
 }
 
 async fn handle_event(event: Event, state: Arc<DiscordState>) {

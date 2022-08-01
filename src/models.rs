@@ -27,6 +27,7 @@ pub(crate) mod race {
     use twilight_model::id::Id;
 
     #[derive(sqlx::Type, Debug, Serialize, PartialEq)]
+    #[allow(non_camel_case_types)]
     pub(crate) enum RaceState {
         CREATED,
         FINISHED,
@@ -363,6 +364,7 @@ pub(crate) mod race_run {
     }
 
     #[derive(sqlx::Type, Debug, Serialize)]
+    #[allow(non_camel_case_types)]
     pub(crate) enum RaceRunState {
         /// RaceRun created
         CREATED,

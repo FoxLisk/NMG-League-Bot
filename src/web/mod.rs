@@ -31,7 +31,7 @@ use crate::shutdown::Shutdown;
 use crate::utils::format_secs;
 use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
-use chrono::{DateTime, NaiveDateTime};
+use chrono::NaiveDateTime;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use sqlx::SqlitePool;
@@ -340,12 +340,6 @@ async fn async_view(
     pool: &State<SqlitePool>,
     discord_state: &State<Arc<DiscordState>>,
 ) -> Template {
-    /*
-    pub(crate) run_started: Option<i64>,
-       pub(crate) run_finished: Option<i64>,
-       pub(crate) reported_run_time: Option<String>,
-       reported_at: Option<u32>,
-    */
     let mut qr = sqlx::query!(
         r#"SELECT
             race_id,
@@ -415,8 +409,6 @@ async fn async_view(
             .flatten()
             .map(|u| u.name)
             .unwrap_or("Unknown".to_string());
-        // let t = chr
-        // let started = row.run_started.map(|r| c
         let start_dt: Option<NaiveDateTime> =
             row.run_started.map(|t| NaiveDateTime::from_timestamp(t, 0));
         let finish_dt: Option<NaiveDateTime> = row

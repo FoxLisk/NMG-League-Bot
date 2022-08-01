@@ -1,5 +1,4 @@
 use crate::constants::CRON_TICKS_VAR;
-use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
 use crate::models::race::Race;
@@ -100,7 +99,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         if !msgs.is_empty() {
             let msg = format!("Race update: {}", msgs.join(", "));
             if let Err(e) = webhooks.message_async(&msg).await {
-                println!("Error notifying admins about race update: {}", msg);
+                println!("Error notifying admins about race update: Tried to tell them {}, encountered error {}", msg, e);
             }
         }
     }
