@@ -24,7 +24,7 @@ pub fn env_default<K: AsRef<OsStr>, D: FromStr>(key: K, default: D) -> D {
     if let Ok(v) = std::env::var(key) {
         match v.parse::<D>() {
             Ok(parsed) => parsed,
-            Err(e) => default,
+            Err(_e) => default,
         }
     } else {
         default

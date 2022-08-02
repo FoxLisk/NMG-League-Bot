@@ -16,10 +16,10 @@ use crate::utils::env_default;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use lazy_static::lazy_static;
+use sqlx::SqlitePool;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
-use tokio::time::error::Elapsed;
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -51,7 +51,6 @@ use twilight_model::http::interaction::{
 };
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
-use twilight_standby::future::Canceled;
 use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
@@ -128,40 +127,19 @@ async fn run_bot(
     println!("Twilight bot done");
 }
 
-enum ErrorResponseType {
-    Create,
-    Update,
-}
-
+/// an ErrorResponse indicates that, rather than simply responding to the interaction with some
+/// kind of response, you want to both respond to that (with a plain error message)
+/// *AND* inform the admins that there was an error
 struct ErrorResponse {
     user_facing_error: String,
-    internal_error: Option<String>,
-    type_: ErrorResponseType,
+    internal_error: String,
 }
 
 impl ErrorResponse {
-    fn update<S1: Into<String>, S2: Display>(user_facing_error: S1, internal_error: S2) -> Self {
+    fn new<S1: Into<String>, S2: Display>(user_facing_error: S1, internal_error: S2) -> Self {
         Self {
             user_facing_error: user_facing_error.into(),
-            internal_error: Some(internal_error.to_string()),
-            type_: ErrorResponseType::Update,
-        }
-    }
-
-    /// creates a response with a "user-facing" error only, with "create message" type
-    /// used for slash commands
-    fn create_no_internal<S1: Into<String>>(user_facing_error: S1) -> Self {
-        Self {
-            user_facing_error: user_facing_error.into(),
-            internal_error: None,
-            type_: ErrorResponseType::Create,
-        }
-    }
-
-    fn to_plain_content_resp(&self) -> InteractionResponse {
-        match self.type_ {
-            ErrorResponseType::Create => plain_interaction_response(self.to_string()),
-            ErrorResponseType::Update => update_resp_to_plain_content(self.to_string()),
+            internal_error: internal_error.to_string(),
         }
     }
 }
@@ -169,10 +147,7 @@ impl ErrorResponse {
 impl Display for ErrorResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.user_facing_error)?;
-        if let Some(e) = &self.internal_error {
-            write!(f, " (Internal error: {})", e)?;
-        }
-        Ok(())
+        write!(f, " (Internal error: {})", &self.internal_error)
     }
 }
 
@@ -226,7 +201,7 @@ async fn _handle_create_race(
     let p1 = get_user(&mut ac.data.options).ok_or("Expected two users".to_string())?;
     let p2 = get_user(&mut ac.data.options).ok_or("Expected two users".to_string())?;
     if p1 == p2 {
-        return Ok(interactions::plain_interaction_response(
+        return Ok(plain_interaction_response(
             "The racers must be different users",
         ));
     }
@@ -279,23 +254,21 @@ async fn _handle_create_race(
 async fn handle_create_race(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    _handle_create_race(ac, state)
-        .await
-        .map_err(|e| {
-            ErrorResponse::create_no_internal(format!("Internal error creating race: {}", e))
-        })
-        .map(|r| Some(r))
+) -> InteractionResponse {
+    match _handle_create_race(ac, state).await {
+        Ok(ir) => ir,
+        Err(e) => plain_interaction_response(e),
+    }
 }
 
 /// extracts the option with given name, if any
 /// does not preserve order of remaining opts
-/// this kind of expects to only be called in application command handling ATM
+/// returns a string representing the error if the expected opt is not found
 fn get_opt(
     name: &str,
     opts: &mut Vec<CommandDataOption>,
     kind: CommandOptionType,
-) -> Result<CommandDataOption, ErrorResponse> {
+) -> Result<CommandDataOption, String> {
     let mut i = 0;
     while i < opts.len() {
         if opts[i].name == name {
@@ -304,19 +277,16 @@ fn get_opt(
         i += 1;
     }
     if i >= opts.len() {
-        return Err(ErrorResponse::create_no_internal(format!(
-            "Unable to find expected option {}",
-            name
-        )));
+        return Err(format!("Unable to find expected option {}", name));
     }
     let actual_kind = opts[i].value.kind();
     if actual_kind != kind {
-        return Err(ErrorResponse::create_no_internal(format!(
+        return Err(format!(
             "Option {} was of unexpected type (got {}, expected {})",
             name,
             actual_kind.kind(),
             kind.kind()
-        )));
+        ));
     }
 
     Ok(opts.swap_remove(i))
@@ -417,6 +387,9 @@ async fn wait_for_cancel_race_decision(
         }
     }
 }
+
+// this method returns () because it is taking over the interaction flow. we're adding a new
+// interaction cycle and not operating on the original interaction anymore.
 async fn handle_cancel_race_started(
     ac: Box<ApplicationCommand>,
     race: Race,
@@ -480,32 +453,37 @@ async fn handle_cancel_race_started(
     }
 }
 
-async fn handle_cancel_race(
+async fn _handle_cancel_race(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, ErrorResponse> {
+) -> Result<Option<InteractionResponse>, String> {
     let opt = get_opt("race_id", &mut ac.data.options, CommandOptionType::Integer)?;
     if !ac.data.options.is_empty() {
-        println!(
+        return Err(format!(
             "I'm very confused: {} had an unexpected option",
             CANCEL_RACE_CMD
-        );
+        ));
     }
     if opt.name != "race_id" {
-        println!(
+        return Err(format!(
             "I'm very confused: the first option of {} was named {}",
             CANCEL_RACE_CMD, opt.name
-        );
+        ));
     }
     let race_id = if let CommandOptionValue::Integer(val) = opt.value {
         val
     } else {
-        return Err(ErrorResponse::create_no_internal("Error parsing arguments"));
+        return Ok(Some(plain_interaction_response("Error parsing arguments")));
     };
 
-    let race = Race::get_by_id(race_id, &state.pool)
-        .await
-        .map_err(|e| ErrorResponse::create_no_internal(format!("Unable to find race: {}", e)))?;
+    let race = match Race::get_by_id(race_id, &state.pool).await {
+        Ok(r) => r,
+        Err(_e) => {
+            return Ok(Some(plain_interaction_response(
+                "Cannot find a race with that ID",
+            )));
+        }
+    };
 
     if race.state != RaceState::CREATED {
         return Ok(Some(plain_interaction_response(format!(
@@ -514,55 +492,49 @@ async fn handle_cancel_race(
         ))));
     }
 
-    let (r1, r2) = RaceRun::get_runs(race.id, &state.pool).await.map_err(|e| {
-        ErrorResponse::create_no_internal(format!(
-            "Unable to find runs associated with that race: {}",
-            e
-        ))
-    })?;
+    let (r1, r2) = match RaceRun::get_runs(race.id, &state.pool).await {
+        Ok(rs) => rs,
+        Err(e) => {
+            return Ok(Some(plain_interaction_response(format!(
+                "Unable to find runs associated with that race: {}",
+                e
+            ))));
+        }
+    };
 
     if !r1.state.is_pre_start() || !r2.state.is_pre_start() {
         handle_cancel_race_started(ac, race, r1, r2, state)
             .await
             .ok();
-
         Ok(None)
     } else {
         actually_cancel_race(race, r1, r2, state)
             .await
             .map(|_| Some(plain_interaction_response("Race cancelled.")))
-            .map_err(|e| ErrorResponse::create_no_internal(e))
+    }
+}
+
+async fn handle_cancel_race(
+    ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Option<InteractionResponse> {
+    match _handle_cancel_race(ac, state).await {
+        Ok(ir) => ir,
+        Err(e) => Some(plain_interaction_response(e)),
     }
 }
 
 async fn handle_application_interaction(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
-    let interaction_id = ac.id.clone();
-    let token = ac.token.to_string();
-    let iro = match ac.data.name.as_str() {
-        CREATE_RACE_CMD => handle_create_race(ac, state).await,
+) -> Option<InteractionResponse> {
+    match ac.data.name.as_str() {
+        CREATE_RACE_CMD => Some(handle_create_race(ac, state).await),
         CANCEL_RACE_CMD => handle_cancel_race(ac, state).await,
         _ => {
             println!("Unhandled application command: {}", ac.data.name);
-            return Ok(());
+            None
         }
-    }?;
-
-    // the methods return a response that should be presented to the activating user
-    // (i.e. the admin, in current usage)
-    if let Some(ir) = iro {
-        println!("handle_application_interaction: dispatching ir: {:?}", ir);
-        state
-            .interaction_client()
-            .create_response(interaction_id, &token, &ir)
-            .exec()
-            .await
-            .map(|_| ())
-            .map_err(|e| ErrorResponse::create_no_internal(e.to_string()))
-    } else {
-        Ok(())
     }
 }
 
@@ -616,36 +588,30 @@ If anything goes wrong, tell an admin there was an issue with run `{}`
 async fn handle_run_start(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "There was an error starting your race. Please ping FoxLisk.";
     let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool)
         .await
-        .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     rr.start();
     match rr.save(&state.pool).await {
-        Ok(_) => {
-            let resp = run_started_interaction_response(&rr, None)
-                .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))?;
-            state
-                .interaction_client()
-                .create_response(interaction.id, &interaction.token, &resp)
-                .exec()
-                .await
-                .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))
-                .map(|_| ())
-        }
-        Err(e) => Err(ErrorResponse::update(
+        Ok(_) => Ok(Some(run_started_interaction_response(&rr, None).map_err(
+            |e| {
+                ErrorResponse::new(
+                    USER_FACING_ERROR,
+                    format!("Error sending the /run started/ interaction response {}", e),
+                )
+            },
+        )?)),
+        Err(e) => Err(ErrorResponse::new(
             USER_FACING_ERROR,
             format!("Error updating race run: {}", e),
         )),
     }
 }
 
-async fn update_race_run<M, T, F>(
-    interaction: &T,
-    f: F,
-    state: &Arc<DiscordState>,
-) -> Result<(), String>
+// TODO: this should take a message id, this method signature is bullshit
+async fn update_race_run<M, T, F>(interaction: &T, f: F, pool: &SqlitePool) -> Result<(), String>
 where
     M: GetMessageId,
     T: Deref<Target = M> + Debug,
@@ -658,7 +624,7 @@ where
         }
     };
 
-    let rro = match RaceRun::search_by_message_id(mid.clone(), &state.pool).await {
+    let rro = match RaceRun::search_by_message_id(mid.clone(), pool).await {
         Ok(r) => r,
         Err(e) => {
             return Err(e);
@@ -668,7 +634,7 @@ where
         Some(mut rr) => {
             f(&mut rr);
             {
-                if let Err(e) = rr.save(&state.pool).await {
+                if let Err(e) = rr.save(pool).await {
                     Err(format!("Error saving race {}: {}", rr.id, e))
                 } else {
                     Ok(())
@@ -679,13 +645,7 @@ where
     }
 }
 
-async fn handle_run_forfeit_button(
-    interaction: Box<MessageComponentInteraction>,
-    state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
-    const USER_FACING_ERROR: &str =
-        "Something went wrong forfeiting this match. Please ping FoxLisk.";
-
+fn handle_run_forfeit_button() -> InteractionResponse {
     let ir = create_modal(
         CUSTOM_ID_FORFEIT_MODAL,
         "Forfeit",
@@ -701,13 +661,7 @@ async fn handle_run_forfeit_button(
             value: None,
         })],
     );
-    state
-        .interaction_client()
-        .create_response(interaction.id, &interaction.token, &ir)
-        .exec()
-        .await
-        .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))
-        .map(|_| ())
+    ir
 }
 
 lazy_static! {
@@ -720,21 +674,22 @@ lazy_static! {
 async fn handle_run_forfeit_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str =
         "Something went wrong forfeiting this race. Please ping FoxLisk.";
+
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_FORFEIT_MODAL_INPUT,
     )
-    .ok_or(ErrorResponse::update(
+    .ok_or(ErrorResponse::new(
         USER_FACING_ERROR,
         "Error getting forfeit input from modal.",
     ))?;
     let ir = if FORFEIT_REGEX.is_match(&ut) {
-        update_race_run(&interaction, |rr| rr.forfeit(), state)
+        update_race_run(&interaction, |rr| rr.forfeit(), &state.pool)
             .await
-            .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))?;
+            .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
 
         update_resp_to_plain_content(
             "You have forfeited this match. Please let the admins know if there are any issues.",
@@ -743,7 +698,7 @@ async fn handle_run_forfeit_modal(
         let mid = match interaction.get_message_id() {
             Some(id) => id,
             None => {
-                return Err(ErrorResponse::update(
+                return Err(ErrorResponse::new(
                     USER_FACING_ERROR,
                     format!("Interaction {:?} has no message id", interaction),
                 ));
@@ -755,15 +710,9 @@ async fn handle_run_forfeit_modal(
             .and_then(|race_run| {
                 run_started_interaction_response(&race_run, Some("Forfeit canceled"))
             })
-            .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))?
+            .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?
     };
-    state
-        .interaction_client()
-        .create_response(interaction.id, &interaction.token, &ir)
-        .exec()
-        .await
-        .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e.to_string()))
-        .map(|_| ())
+    Ok(Some(ir))
 }
 
 fn create_modal(
@@ -775,7 +724,7 @@ fn create_modal(
     InteractionResponse {
         kind: InteractionResponseType::Modal,
         data: Some(InteractionResponseData {
-            components: Some(vec![Component::ActionRow(ActionRow { components })]),
+            components: Some(action_row(components)),
             content: Some(content.to_string()),
             custom_id: Some(custom_id.to_string()),
             title: Some(title.to_string()),
@@ -787,18 +736,22 @@ fn create_modal(
 async fn handle_run_finish(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "Something went wrong finishing this run. Please ping FoxLisk.";
     if let Err(e) = update_race_run(
         &interaction,
         |rr| {
             rr.finish();
         },
-        state,
+        &state.pool,
     )
     .await
     {
-        return Err(ErrorResponse::update(USER_FACING_ERROR, e));
+        // TODO: this should maybe be updating a response?
+        return Err(ErrorResponse::new(
+            USER_FACING_ERROR,
+            format!("Error persisting finished run: {}", e),
+        ));
     }
     let ir = create_modal(
         CUSTOM_ID_USER_TIME_MODAL,
@@ -815,14 +768,7 @@ async fn handle_run_finish(
             value: None,
         })],
     );
-
-    state
-        .interaction_client()
-        .create_response(interaction.id, &interaction.token, &ir)
-        .exec()
-        .await
-        .map_err(|e| ErrorResponse::update(USER_FACING_ERROR, e))
-        .map(|_| ())
+    Ok(Some(ir))
 }
 
 fn get_field_from_modal_components(
@@ -845,19 +791,19 @@ fn get_field_from_modal_components(
 async fn handle_user_time_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_USER_TIME,
     )
-    .ok_or(ErrorResponse::update(
+    .ok_or(ErrorResponse::new(
         "Something went wrong reporting your time. Please ping FoxLisk.",
         "Error getting user time form modal.",
     ))?;
-    update_race_run(&interaction, |rr| rr.report_user_time(ut), state)
+    update_race_run(&interaction, |rr| rr.report_user_time(ut), &state.pool)
         .await
         .map_err(|e| {
-            ErrorResponse::update(
+            ErrorResponse::new(
                 "Something went wrong reporting your time. Please ping FoxLisk.",
                 e,
             )
@@ -866,35 +812,21 @@ async fn handle_user_time_modal(
     let ir = InteractionResponse {
         kind: InteractionResponseType::UpdateMessage,
         data: Some(InteractionResponseData {
-            components: Some(vec![Component::ActionRow(ActionRow {
-                components: vec![interactions::button_component(
+            components: Some(
+                action_row(vec![button_component(
                     "VoD ready",
                     CUSTOM_ID_VOD_READY,
                     ButtonStyle::Success,
-                )],
-            })]),
+                )]),
+            ),
             content: Some("Please click here once your VoD is ready".to_string()),
             ..Default::default()
         }),
     };
-    state
-        .interaction_client()
-        .create_response(interaction.id, &interaction.token, &ir)
-        .exec()
-        .await
-        .map_err(|e| {
-            ErrorResponse::update(
-                "Something went wrong reporting your time. Please ping FoxLisk.",
-                e.to_string(),
-            )
-        })
-        .map(|_| ())
+    Ok(Some(ir))
 }
 
-async fn handle_vod_ready(
-    interaction: Box<MessageComponentInteraction>,
-    state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+fn handle_vod_ready() -> InteractionResponse {
     let ir = create_modal(
         CUSTOM_ID_VOD_MODAL,
         "Please enter your VoD URL",
@@ -910,70 +842,47 @@ async fn handle_vod_ready(
             value: None,
         })],
     );
-    state
-        .interaction_client()
-        .create_response(interaction.id, &interaction.token, &ir)
-        .exec()
-        .await
-        .map_err(|e| {
-            ErrorResponse::update(
-                "There was an error accepting your VoD. Please ping FoxLisk",
-                e,
-            )
-        })
-        .map(|_| ())
+    ir
 }
 
 async fn handle_vod_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     let user_input = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_VOD_MODAL_INPUT,
     )
-    .ok_or(ErrorResponse::update(
+    .ok_or(ErrorResponse::new(
         "Something went wrong reporting your VoD. Please ping FoxLisk.",
         "Error getting vod from modal.",
     ))?;
-    update_race_run(&interaction, |rr| rr.set_vod(user_input), state)
+    update_race_run(&interaction, |rr| rr.set_vod(user_input), &state.pool)
         .await
         .map_err(|e| {
-            ErrorResponse::update(
+            ErrorResponse::new(
                 "Something went wrong reporting your VoD. Please ping FoxLisk.",
-                e,
+                format!("Error saving vod reporting: {}", e),
             )
         })?;
-    let ir = interactions::plain_interaction_response(
+    let ir = plain_interaction_response(
         "Thank you, your race is completed. Please message the admins if there are any issues.",
     );
-
-    state
-        .interaction_client()
-        .create_response(interaction.id.clone(), &interaction.token, &ir)
-        .exec()
-        .await
-        .map_err(|e| {
-            ErrorResponse::update(
-                "Something went wrong reporting your VoD. Please ping FoxLisk.",
-                e.to_string(),
-            )
-        })
-        .map(|_| ())
+    Ok(Some(ir))
 }
 
 async fn handle_button_interaction(
     interaction: Box<MessageComponentInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
-        CUSTOM_ID_FORFEIT_RUN => handle_run_forfeit_button(interaction, state).await,
+        CUSTOM_ID_FORFEIT_RUN => Ok(Some(handle_run_forfeit_button())),
         CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
-        CUSTOM_ID_VOD_READY => handle_vod_ready(interaction, state).await,
+        CUSTOM_ID_VOD_READY => Ok(Some(handle_vod_ready())),
         _ => {
             println!("Unhandled button: {:?}", interaction);
-            Ok(())
+            Ok(None)
         }
     }
 }
@@ -981,29 +890,30 @@ async fn handle_button_interaction(
 async fn handle_modal_submission(
     interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction.data.custom_id.as_str() {
         CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction, state).await,
         CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction, state).await,
         CUSTOM_ID_FORFEIT_MODAL => handle_run_forfeit_modal(interaction, state).await,
         _ => {
             println!("Unhandled modal: {:?}", interaction);
-            Ok(())
+            Ok(None)
         }
     }
 }
 
+/// Handles the interaction and sends off the InteractionResponse generated (if any)
 async fn _handle_interaction(
     interaction: InteractionCreate,
     state: &Arc<DiscordState>,
-) -> Result<(), ErrorResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction.0 {
-        Interaction::ApplicationCommand(ac) => handle_application_interaction(ac, &state).await,
+        Interaction::ApplicationCommand(ac) => Ok(handle_application_interaction(ac, &state).await),
         Interaction::MessageComponent(mc) => handle_button_interaction(mc, &state).await,
         Interaction::ModalSubmit(ms) => handle_modal_submission(ms, &state).await,
         _ => {
             println!("Unhandled interaction: {:?}", interaction);
-            Ok(())
+            Ok(None)
         }
     }
 }
@@ -1011,30 +921,39 @@ async fn _handle_interaction(
 async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordState>) {
     let interaction_id = interaction.id();
     let token = interaction.token().to_string();
-    if let Err(e) = _handle_interaction(interaction, &state).await {
-        // inform user about the error
-        let ir = e.to_plain_content_resp();
-        println!("handle_interaction: about to dispatch {:?}", ir);
-        let err_ext = state
-            .interaction_client()
-            .create_response(interaction_id, &token, &ir)
-            .exec()
+
+    let (user_resp, admin_message) = match _handle_interaction(interaction, &state).await {
+        Ok(Some(ir)) => (Some(ir), None),
+        Ok(None) => (None, None),
+        Err(e) => (
+            Some(plain_interaction_response(e.user_facing_error)),
+            Some(e.internal_error),
+        ),
+    };
+
+    let mut final_message = String::new();
+    if let Some(m) = admin_message {
+        final_message.push_str(&format!("Encountered an error: {}", m));
+    }
+
+    if let Some(u) = user_resp {
+        if let Some(more_errors) = state
+            .create_response_err_to_str(interaction_id, &token, &u)
             .await
-            .map_err(|e| e.to_string())
-            .map(|_| ())
-            .err();
-        if e.internal_error.is_some() || err_ext.is_some() {
-            // inform admins about the error
-            let final_internal_error = format!(
-                "Error: {} - Internal error: {:?} |\
-                 Error creating interaction response with prior error: {:?}",
-                e.user_facing_error, e.internal_error, err_ext
-            );
-            println!("{}", final_internal_error);
-            if let Err(e) = state.webhooks.message_async(&final_internal_error).await {
-                // at some point you just have to give up
-                println!("Error reporting internal error: {}", e);
-            }
+            .err()
+        {
+            final_message.push_str(&format!(
+                "Unable to communicate error to user: {}",
+                more_errors
+            ));
+        }
+    }
+
+    if !final_message.is_empty() {
+        println!("{}", final_message);
+        if let Err(e) = state.webhooks.message_async(&final_message).await {
+            // at some point you just have to give up
+            println!("Error reporting internal error: {}", e);
         }
     }
 }
