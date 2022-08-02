@@ -7,6 +7,7 @@ pub const ADMIN_WEBHOOK_VAR: &str = "ADMIN_WEBHOOK_URL";
 pub const CLIENT_ID_VAR: &str = "CLIENT_ID";
 pub const CLIENT_SECRET_VAR: &str = "CLIENT_SECRET";
 pub const AUTHORIZE_URL_VAR: &str = "AUTHORIZE_URL";
+pub const CANCEL_RACE_TIMEOUT_VAR: &str = "CANCEL_RACE_TIMEOUT";
 
 pub const CRON_TICKS_VAR: &str = "CRON_TICK_SECS";
 

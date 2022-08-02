@@ -4,7 +4,7 @@ use crate::discord::{notify_racer, Webhooks};
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
-use crate::utils::format_secs;
+use crate::utils::{env_default, format_secs};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
@@ -175,12 +175,7 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
 }
 
 fn get_tick_duration() -> Duration {
-    Duration::from_secs(
-        std::env::var(CRON_TICKS_VAR)
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(60),
-    )
+    Duration::from_secs(env_default(CRON_TICKS_VAR, 60))
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {

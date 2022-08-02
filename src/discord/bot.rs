@@ -1,4 +1,4 @@
-use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR, WEBSITE_URL};
+use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
 use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
@@ -12,12 +12,15 @@ use crate::discord::{
 };
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
+use crate::utils::env_default;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use lazy_static::lazy_static;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::Deref;
 use std::sync::Arc;
+use tokio::time::error::Elapsed;
+use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
@@ -48,6 +51,7 @@ use twilight_model::http::interaction::{
 };
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
+use twilight_standby::future::Canceled;
 use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
@@ -321,18 +325,19 @@ fn get_opt(
 // this should be called something like "race_cancelled_update_message" since it's building an
 // "UpdateMessage" object to indicate "Race Cancelled" but that just sounds like word salad in
 // combination with update_cancelled_race_message
-fn build_message_to_indicate_race_is_cancelled(
+fn update_interaction_message_to_plain_text<'a>(
     mid: Id<MessageMarker>,
     cid: Id<ChannelMarker>,
-    state: &Arc<DiscordState>,
-) -> Result<UpdateMessage, MessageValidationError> {
+    text: &'a str,
+    state: &'a Arc<DiscordState>,
+) -> Result<UpdateMessage<'a>, MessageValidationError> {
     state
         .client
         .update_message(cid, mid)
         .attachments(&[])?
         .components(Some(&[]))?
         .embeds(Some(&[]))?
-        .content(Some("This race has been cancelled by an admin."))
+        .content(Some(text))
 }
 
 async fn update_cancelled_race_message(
@@ -343,8 +348,13 @@ async fn update_cancelled_race_message(
         .get_message_id()
         .ok_or(format!("Unable to find message associated with run"))?;
     let cid = state.get_private_channel(run.racer_id()?).await?;
-    let update =
-        build_message_to_indicate_race_is_cancelled(mid, cid, state).map_err(|e| e.to_string())?;
+    let update = update_interaction_message_to_plain_text(
+        mid,
+        cid,
+        "This race has been cancelled by an admin.",
+        state,
+    )
+    .map_err(|e| e.to_string())?;
     update
         .exec()
         .await
@@ -380,6 +390,94 @@ async fn actually_cancel_race(
     }
 
     Ok(())
+}
+
+const REALLY_CANCEL_ID: &'static str = "really_cancel";
+
+/// returns the new component interaction if the user indicates their choice, otherwise
+/// an error indicating what happened instead.
+async fn wait_for_cancel_race_decision(
+    mid: Id<MessageMarker>,
+    state: &Arc<DiscordState>,
+) -> Result<MessageComponentInteraction, String> {
+    let sb = state.standby.wait_for_component(
+        mid,
+        // I don't know why but spelling out the parameter type here seems to fix a compiler
+        // complaint
+        |_: &MessageComponentInteraction| true,
+    );
+
+    let time = env_default(CANCEL_RACE_TIMEOUT_VAR, 90);
+    match tokio::time::timeout(Duration::from_secs(time), sb).await {
+        Ok(cmp) => {
+            cmp.map_err(|c| format!("Weird internal error to do with dropping a Standby: {:?}", c))
+        }
+        Err(_timeout) => {
+            Err(format!("This cancellation has timed out, please re-run the command if you still want to cancel."))
+        }
+    }
+}
+async fn handle_cancel_race_started(
+    ac: Box<ApplicationCommand>,
+    race: Race,
+    r1: RaceRun,
+    r2: RaceRun,
+    state: &Arc<DiscordState>,
+) -> Result<(), String> {
+    let mut resp =
+        plain_interaction_response("Are you sure? One of those runs has already been started.");
+    if let Some(ref mut d) = resp.data {
+        d.components = Some(action_row(vec![
+            button_component("Really cancel race", REALLY_CANCEL_ID, ButtonStyle::Danger),
+            button_component("Do not cancel race", "dont_cancel", ButtonStyle::Secondary),
+        ]));
+    }
+    state
+        .create_response_err_to_str(ac.id.clone(), &ac.token, &resp)
+        .await?;
+    let msg_resp = state
+        .interaction_client()
+        .response(&ac.token)
+        .exec()
+        .await
+        .map_err(|e| format!("Error asking you if you were serious? lol what: {}", e))?;
+    let msg = msg_resp
+        .model()
+        .await
+        .map_err(|e| format!("Error deserializing response: {}", e))?;
+
+    match wait_for_cancel_race_decision(msg.id, state).await {
+        Ok(cmp) => {
+            // if we got a button click we have to deal with that interaction, specifically via
+            // creating an "update response"
+            let resp = if cmp.data.custom_id == REALLY_CANCEL_ID {
+                match actually_cancel_race(race, r1, r2, state).await {
+                    Ok(()) => "Race cancelled.".to_string(),
+                    Err(e) => e,
+                }
+            } else {
+                format!("Okay, not cancelling it.")
+            };
+            state
+                .create_response_err_to_str(cmp.id, &cmp.token, &update_resp_to_plain_content(resp))
+                .await
+        }
+        Err(e) => {
+            // otherwise (some kind of timeout or other error) we update the last interaction
+            state
+                .interaction_client()
+                .update_response(&ac.token)
+                .components(Some(&[]))
+                .and_then(|c| c.content(Some(&e)))
+                .map_err(|validation_error| {
+                    format!("Error building message: {}", validation_error)
+                })?
+                .exec()
+                .await
+                .map_err(|e| format!("Error updating message: {}", e))
+                .map(|_| ())
+        }
+    }
 }
 
 async fn handle_cancel_race(
@@ -424,80 +522,11 @@ async fn handle_cancel_race(
     })?;
 
     if !r1.state.is_pre_start() || !r2.state.is_pre_start() {
-        let mut resp =
-            plain_interaction_response("Are you sure? One of those runs has already been started.");
-        if let Some(ref mut d) = resp.data {
-            d.components = Some(action_row(vec![
-                button_component("Really cancel race", "really_cancel", ButtonStyle::Danger),
-                button_component("Do not cancel race", "dont_cancel", ButtonStyle::Secondary),
-            ]));
-        }
-        state
-            .interaction_client()
-            .create_response(ac.id.clone(), &ac.token, &resp)
-            .exec()
-            .await
-            .map_err(|e| ErrorResponse::create_no_internal(format!("Error blah blah {}", e)))?;
-        let msg_resp = state
-            .interaction_client()
-            .response(&ac.token)
-            .exec()
-            .await
-            .map_err(|e| {
-                ErrorResponse::create_no_internal(format!(
-                    "Error asking you if you were serious? lol what: {}",
-                    e
-                ))
-            })?;
-        let msg = msg_resp.model().await.map_err(|e| {
-            ErrorResponse::create_no_internal(format!("Error deserializing response: {}", e))
-        })?;
-        let comp = state
-            .standby
-            .wait_for_component(
-                msg.id,
-                // I don't know why but spelling out the parameter type here seems to fix a compiler
-                // complaint
-                |_: &MessageComponentInteraction| true,
-            )
-            .await
-            .map_err(|_| {
-                ErrorResponse::create_no_internal(
-                    "Weird internal error involving dropping a Standby?",
-                )
-            })?;
-
-        let resp_text = if comp.data.custom_id == "really_cancel" {
-            match actually_cancel_race(race, r1, r2, state).await {
-                Ok(()) => "Race cancelled.".to_string(),
-                Err(e) => e,
-            }
-        } else {
-            "Okay, not cancelling it".to_string()
-        };
-        /*
-        this &comp.token bit is why we have to duplicate some code here. the workflow is a
-        little confusing IMO. its like
-        > user creates an application command interaction (1)
-        < we create a response (r1) to that with a couple buttons or whatever
-        > user clicks a button (2)
-        < we must create a response (r2) that is an UPDATE and that uses the TOKEN from (2)
-
-        i.e. if we do an update using (1)'s token, we get an error (interaction already acknowledged)
-             if we do a create using (2)'s token, we get a different error (the user sees a UI
-             element claiming that their response was not acknowledged).
-        */
-        state
-            .interaction_client()
-            .create_response(
-                comp.id.clone(),
-                &comp.token,
-                &update_resp_to_plain_content(resp_text),
-            )
-            .exec()
+        handle_cancel_race_started(ac, race, r1, r2, state)
             .await
             .ok();
-        return Ok(None);
+
+        Ok(None)
     } else {
         actually_cancel_race(race, r1, r2, state)
             .await

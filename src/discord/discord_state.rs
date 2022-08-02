@@ -9,7 +9,10 @@ use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
 use twilight_http::Client;
 use twilight_model::guild::Role;
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
+use twilight_model::http::interaction::InteractionResponse;
+use twilight_model::id::marker::{
+    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, UserMarker,
+};
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
@@ -122,5 +125,29 @@ impl DiscordState {
 
     pub(crate) async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {
         Ok(self.cache.user(user_id).map(|u| u.value().clone()))
+    }
+
+    pub(crate) async fn create_response(
+        &self,
+        interaction_id: Id<InteractionMarker>,
+        token: &str,
+        resp: &InteractionResponse,
+    ) -> Result<(), twilight_http::Error> {
+        self.interaction_client()
+            .create_response(interaction_id, token, resp)
+            .exec()
+            .await
+            .map(|_| ())
+    }
+
+    pub(crate) async fn create_response_err_to_str(
+        &self,
+        interaction_id: Id<InteractionMarker>,
+        token: &str,
+        resp: &InteractionResponse,
+    ) -> Result<(), String> {
+        self.create_response(interaction_id, token, resp)
+            .await
+            .map_err(|e| e.to_string())
     }
 }

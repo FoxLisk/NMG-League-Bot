@@ -1,3 +1,6 @@
+use std::ffi::OsStr;
+use std::str::FromStr;
+
 pub fn format_secs(secs: u64) -> String {
     let mins = secs / 60;
     let hours = mins / 60;
@@ -14,5 +17,16 @@ pub fn format_secs(secs: u64) -> String {
             mins = mins % 60,
             secs = secs % 60 % 60
         )
+    }
+}
+
+pub fn env_default<K: AsRef<OsStr>, D: FromStr>(key: K, default: D) -> D {
+    if let Ok(v) = std::env::var(key) {
+        match v.parse::<D>() {
+            Ok(parsed) => parsed,
+            Err(e) => default,
+        }
+    } else {
+        default
     }
 }

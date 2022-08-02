@@ -35,10 +35,6 @@
             {{ self::header(name="Observed time") }}
             {{ self::header(name="Reported time") }}
             {{ self::header(name="Time taken to report") }}
-            {#
-            {{ self::header(name="Run UUID") }}
-            #}
-
         </tr>
     </thead>
     <tbody>
