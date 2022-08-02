@@ -1,25 +1,40 @@
+{% macro header(name) %}
+<th class="border-x border-slate-500">
+    {{ name }}
+</th>
+{% endmacro %}
+
+{% macro row_cell(data) %}
+<td class="border-x border-slate-500">
+    {{ data }}
+</td>
+{% endmacro %}
+
+{% macro run_cells(run) %}
+{{ self::row_cell(data=run.racer_name) }}
+{{ self::row_cell(data=run.filenames) }}
+{{ self::row_cell(data=run.run_state) }}
+{{ self::row_cell(data=run.vod) }}
+{{ self::row_cell(data=run.started | option_default(default="-")) }}
+{{ self::row_cell(data=run.bot_time_to_finish | option_default(default="-")) }}
+{{ self::row_cell(data=run.user_reported_time | option_default(default="-")) }}
+{{ self::row_cell(data=run.time_from_finish_to_report | option_default(default="-")) }}
+{% endmacro %}
+
 {% macro async_table(state, races, bg_class) %}
 <table class="border border-slate-500 {{ bg_class }} my-3">
     <thead>
         <tr>
-            <th class="border-x border-slate-500">
-                Run state
-            </th>
-            <th class="border-x border-slate-500">
-                Racer
-            </th>
-            <th class="border-x border-slate-500">
-                Filenames
-            </th>
-            <th class="border-x border-slate-500">
-                Run state
-            </th>
-            <th class="border-x border-slate-500">
-                VoD link
-            </th>
-            <th class="border-x border-slate-500">
-                Run UUID
-            </th>
+            {{ self::header(name="Race state") }}
+            {{ self::header(name="Race ID") }}
+            {{ self::header(name="Racer") }}
+            {{ self::header(name="Filenames") }}
+            {{ self::header(name="Run state") }}
+            {{ self::header(name="VoD Link") }}
+            {{ self::header(name="Run started") }}
+            {{ self::header(name="Observed time") }}
+            {{ self::header(name="Reported time") }}
+            {{ self::header(name="Time taken to report") }}
         </tr>
     </thead>
     <tbody>
@@ -28,39 +43,14 @@
             <th rowspan=2>
                 {{ state }}
             </th>
-            <td class="border-x border-slate-500">
-                {{ race.p1.racer_name }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p1.filenames }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p1.run_state }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p1.vod }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p1.run_uuid }}
-            </td>
+            <th rowspan=2 class="border-x border-slate-500">
+                {{ race.id }}
+            </th>
+            {{ self::run_cells(run=race.p1) }}
         </tr>
         <tr class="border-b border-slate-500">
             {# state is taken by the rowspan=2 thing #}
-            <td class="border-x border-slate-500">
-                {{ race.p2.racer_name }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p2.filenames }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p2.run_state }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p2.vod }}
-            </td>
-            <td class="border-x border-slate-500">
-                {{ race.p2.run_uuid }}
-            </td>
+            {{ self::run_cells(run=race.p2) }}
         </tr>
     {% endfor %}
     </tbody>

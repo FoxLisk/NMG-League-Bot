@@ -6,8 +6,10 @@ mod discord;
 mod models;
 mod race_cron;
 mod shutdown;
+mod utils;
 mod web;
 
+extern crate chrono;
 extern crate oauth2;
 extern crate rand;
 extern crate regex;
@@ -17,6 +19,7 @@ extern crate sqlx;
 extern crate tokio;
 extern crate twilight_http;
 extern crate twilight_model;
+extern crate twilight_standby;
 extern crate twilight_util;
 extern crate twilight_validate;
 
@@ -30,9 +33,16 @@ async fn main() {
 
     let state = discord::bot::launch(webhooks.clone(), shutdown_send.subscribe()).await;
 
-    tokio::spawn(race_cron::cron(shutdown_send.subscribe(), webhooks.clone(), state.clone()));
+    tokio::spawn(race_cron::cron(
+        shutdown_send.subscribe(),
+        webhooks.clone(),
+        state.clone(),
+    ));
 
-    tokio::spawn(web::launch_website(state.clone(), shutdown_send.subscribe()));
+    tokio::spawn(web::launch_website(
+        state.clone(),
+        shutdown_send.subscribe(),
+    ));
 
     drop(state);
     drop(webhooks);

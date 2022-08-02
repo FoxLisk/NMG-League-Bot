@@ -32,6 +32,7 @@ const CUSTOM_ID_USER_TIME: &str = "user_time";
 const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 
 const CREATE_RACE_CMD: &str = "create_race";
+const CANCEL_RACE_CMD: &str = "cancel_race";
 const ADMIN_ROLE_NAME: &'static str = "Admin";
 
 /// DM the player & save the run model if the DM sends successfully

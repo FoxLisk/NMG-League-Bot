@@ -3,7 +3,7 @@
 {% endblock %}
 <html lang="en">
 	<head>
-	    <title>{% block pagename %}{% endblock %} | NMG Legue</title>
+	    <title>{% block pagename %}{% endblock %} | NMG League</title>
 		<link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
 	    {% block scripts %}
 	    {% endblock %}

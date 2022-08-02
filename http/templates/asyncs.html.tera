@@ -7,5 +7,6 @@
     {{ macros::async_table(state="Created",   races=created,   bg_class="bg-slate-200") }}
     {{ macros::async_table(state="Finished",  races=finished,  bg_class="bg-emerald-400") }}
     {{ macros::async_table(state="Abandoned", races=abandoned, bg_class="bg-red-300") }}
+    {{ macros::async_table(state="Cancelled", races=cancelled, bg_class="bg-slate-600") }}
 </div>
 {% endblock %}

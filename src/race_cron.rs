@@ -1,35 +1,16 @@
 use crate::constants::CRON_TICKS_VAR;
-use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
+use crate::utils::{env_default, format_secs};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-
-fn format_secs(secs: u64) -> String {
-    let mins = secs / 60;
-    let hours = mins / 60;
-    if hours > 0 {
-        format!(
-            "{hours}:{mins:02}:{secs:02}",
-            hours = hours,
-            mins = mins % 60,
-            secs = secs % 60 % 60
-        )
-    } else {
-        format!(
-            "{mins:02}:{secs:02}",
-            mins = mins % 60,
-            secs = secs % 60 % 60
-        )
-    }
-}
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {
@@ -118,7 +99,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         if !msgs.is_empty() {
             let msg = format!("Race update: {}", msgs.join(", "));
             if let Err(e) = webhooks.message_async(&msg).await {
-                println!("Error notifying admins about race update: {}", msg);
+                println!("Error notifying admins about race update: Tried to tell them {}, encountered error {}", msg, e);
             }
         }
     }
@@ -194,12 +175,7 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
 }
 
 fn get_tick_duration() -> Duration {
-    Duration::from_secs(
-        std::env::var(CRON_TICKS_VAR)
-            .ok()
-            .and_then(|s| s.parse::<u64>().ok())
-            .unwrap_or(60),
-    )
+    Duration::from_secs(env_default(CRON_TICKS_VAR, 60))
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {

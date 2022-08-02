@@ -1,22 +1,28 @@
-use std::env;
-use crate::constants::{GUILD_ID_VAR};
+use crate::constants::GUILD_ID_VAR;
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use dashmap::DashMap;
 use sqlx::SqlitePool;
+use std::env;
+use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
 use twilight_http::Client;
 use twilight_model::guild::Role;
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, UserMarker};
+use twilight_model::http::interaction::InteractionResponse;
+use twilight_model::id::marker::{
+    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, UserMarker,
+};
 use twilight_model::id::Id;
 use twilight_model::user::User;
+use twilight_standby::Standby;
 
 pub(crate) struct DiscordState {
     pub cache: InMemoryCache,
     pub client: Client,
     pub pool: SqlitePool,
     pub webhooks: Webhooks,
+    pub standby: Arc<Standby>,
     // this isn't handled by the cache b/c it is not updated via Gateway events
     private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
     application_id: Id<ApplicationMarker>,
@@ -30,6 +36,7 @@ impl DiscordState {
         aid: Id<ApplicationMarker>,
         pool: SqlitePool,
         webhooks: Webhooks,
+        standby: Arc<Standby>,
     ) -> Self {
         let gid_s = env::var(GUILD_ID_VAR).unwrap();
         let gid = Id::<GuildMarker>::new(gid_s.parse::<u64>().unwrap());
@@ -38,9 +45,10 @@ impl DiscordState {
             client,
             pool,
             webhooks,
+            standby,
             application_id: aid,
             private_channels: Default::default(),
-            gid
+            gid,
         }
     }
 
@@ -94,9 +102,10 @@ impl DiscordState {
         user_id: Id<UserMarker>,
         guild_id: Id<GuildMarker>,
     ) -> Result<bool, String> {
-        let role = self
-            .get_admin_role(guild_id)
-            .ok_or(format!("Error: Cannot find admin role for guild {}", guild_id))?;
+        let role = self.get_admin_role(guild_id).ok_or(format!(
+            "Error: Cannot find admin role for guild {}",
+            guild_id
+        ))?;
         let member = self
             .cache
             .member(guild_id, user_id)
@@ -116,5 +125,29 @@ impl DiscordState {
 
     pub(crate) async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {
         Ok(self.cache.user(user_id).map(|u| u.value().clone()))
+    }
+
+    pub(crate) async fn create_response(
+        &self,
+        interaction_id: Id<InteractionMarker>,
+        token: &str,
+        resp: &InteractionResponse,
+    ) -> Result<(), twilight_http::Error> {
+        self.interaction_client()
+            .create_response(interaction_id, token, resp)
+            .exec()
+            .await
+            .map(|_| ())
+    }
+
+    pub(crate) async fn create_response_err_to_str(
+        &self,
+        interaction_id: Id<InteractionMarker>,
+        token: &str,
+        resp: &InteractionResponse,
+    ) -> Result<(), String> {
+        self.create_response(interaction_id, token, resp)
+            .await
+            .map_err(|e| e.to_string())
     }
 }
