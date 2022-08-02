@@ -524,6 +524,8 @@ async fn handle_cancel_race(
     }
 }
 
+/// this doesn't have an option to return an ErrorResponse because these interactions already occur
+/// under the watchful eyes of admins (and are, in fact, run _by_ admins)
 async fn handle_application_interaction(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
@@ -902,7 +904,6 @@ async fn handle_modal_submission(
     }
 }
 
-/// Handles the interaction and sends off the InteractionResponse generated (if any)
 async fn _handle_interaction(
     interaction: InteractionCreate,
     state: &Arc<DiscordState>,
@@ -918,13 +919,15 @@ async fn _handle_interaction(
     }
 }
 
+
+/// Handles an interaction. This attempts to dispatch to the relevant processing code, and then
+/// creates any responses as specified, and alerts admins via webhook if there is a problem.
 async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordState>) {
     let interaction_id = interaction.id();
     let token = interaction.token().to_string();
 
     let (user_resp, admin_message) = match _handle_interaction(interaction, &state).await {
-        Ok(Some(ir)) => (Some(ir), None),
-        Ok(None) => (None, None),
+        Ok(o) => (o, None),
         Err(e) => (
             Some(plain_interaction_response(e.user_facing_error)),
             Some(e.internal_error),
