@@ -4,7 +4,7 @@ use crate::discord::{notify_racer, Webhooks};
 use crate::models::race::Race;
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
-use crate::utils::{env_default, format_secs};
+use crate::utils::{env_default, format_hms};
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
@@ -16,7 +16,7 @@ fn format_finisher(run: &RaceRun) -> String {
     match run.state {
         RaceRunState::VOD_SUBMITTED => {
             let bot_time = match (run.run_started, run.run_finished) {
-                (Some(start), Some(finish)) => format_secs((finish - start) as u64),
+                (Some(start), Some(finish)) => format_hms((finish - start) as u64),
                 _ => "N/A".to_string(),
             };
             let p = run

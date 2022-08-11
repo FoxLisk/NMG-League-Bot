@@ -51,3 +51,11 @@ just have fun and be yourself :)
 
 And _absolutely_ no panics in steady-state running code. Crashing on a missing env variable on startup is totally fine,
 but once startup is complete all errors must be handled.
+
+------------
+
+# diesel stuff:
+
+`cargo install diesel_cli --no-default-features --features sqlite-bundled`
+
+can probably do `--features sqlite` on linux

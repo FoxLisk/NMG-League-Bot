@@ -5,11 +5,14 @@ mod db;
 mod discord;
 mod models;
 mod race_cron;
+mod schema;
 mod shutdown;
 mod utils;
 mod web;
 
+extern crate bb8;
 extern crate chrono;
+extern crate diesel;
 extern crate oauth2;
 extern crate rand;
 extern crate regex;
@@ -28,6 +31,7 @@ use discord::Webhooks;
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
+
     let webhooks = Webhooks::new().await.unwrap();
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
 

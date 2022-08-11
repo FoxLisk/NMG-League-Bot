@@ -1,5 +1,5 @@
 use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
-use crate::db::get_pool;
+use crate::db::{get_diesel_pool, get_pool};
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
@@ -18,8 +18,9 @@ use core::default::Default;
 use lazy_static::lazy_static;
 use sqlx::SqlitePool;
 use std::fmt::{Debug, Display, Formatter};
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use diesel::{RunQueryDsl};
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -70,11 +71,13 @@ pub(crate) async fn launch(
     let http = Client::new(token.clone());
     let cache = InMemoryCache::builder().build();
     let standby = Arc::new(Standby::new());
+    let diesel_pool = get_diesel_pool().await;
     let state = Arc::new(DiscordState::new(
         cache,
         http,
         aid,
         pool,
+        diesel_pool,
         webhooks,
         standby.clone(),
     ));
@@ -207,14 +210,18 @@ async fn _handle_create_race(
     }
 
     let new_race = NewRace::new();
-    let race = new_race
-        .save(&state.pool)
-        .await
+    let mut cxn = state.diesel_cxn().await
+        .map_err(|e| format!("Error getting database connection: {}", e))?;
+
+    let race: Race = diesel::insert_into(crate::schema::races::table)
+        .values(new_race)
+        .get_result(cxn.deref_mut())
         .map_err(|e| format!("Error saving race: {}", e))?;
+
     let (mut r1, mut r2) = race
         .select_racers(p1.clone(), p2.clone(), &state.pool)
         .await
-        .map_err(|e| format!("Error saving race: {}", e))?;
+        .map_err(|e| format!("Error saving race runs: {}", e))?;
 
     let (first, second) = {
         tokio::join!(

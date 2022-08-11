@@ -14,10 +14,15 @@ async fn main() {
             panic!();
         }
     };
-    let path = sqlite_db_path
-        .strip_prefix("sqlite://")
-        .unwrap()
-        .to_string();
+    let path =
+    if         sqlite_db_path.starts_with("sqlite://") {
+        sqlite_db_path.strip_prefix("sqlite://")
+            .unwrap()
+            .to_string()
+    } else {
+        sqlite_db_path.to_string()
+    };
+
     let parent_path = Path::new(&path).parent().unwrap();
 
     if let Err(e) = create_dir_all(&parent_path) {
