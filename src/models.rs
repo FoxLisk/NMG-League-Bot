@@ -20,13 +20,13 @@ pub(crate) fn epoch_timestamp() -> u32 {
 pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::models::{epoch_timestamp, uuid_string};
+    use crate::schema::races;
+    use diesel::prelude::{Insertable, Queryable};
     use serde::Serialize;
     use sqlx::SqlitePool;
     use std::fmt::{Display, Formatter};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
-    use diesel::prelude::{Insertable, Queryable};
-    use crate::schema::races;
 
     #[derive(sqlx::Type, Debug, Serialize, PartialEq)]
     #[allow(non_camel_case_types)]
@@ -52,7 +52,7 @@ pub(crate) mod race {
                 "FINISHED" => Ok(Self::FINISHED),
                 "ABANDONED" => Ok(Self::ABANDONED),
                 "CANCELLED_BY_ADMIN" => Ok(Self::CANCELLED_BY_ADMIN),
-                _ => Err("bzzt")
+                _ => Err("bzzt"),
             }
         }
     }
@@ -147,8 +147,6 @@ pub(crate) mod race {
             .map_err(|e| e.to_string())
         }
 
-        // pub(crate) fn
-
         async fn add_run(
             &self,
             racer_id: Id<UserMarker>,
@@ -213,7 +211,6 @@ pub(crate) mod race {
                 state: RaceState::CREATED,
             }
         }
-
     }
 }
 
@@ -222,6 +219,8 @@ pub(crate) mod race_run {
     use crate::models::uuid_string;
     use diesel::prelude::*;
 
+    use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
+    use chrono::NaiveDateTime;
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
@@ -231,10 +230,8 @@ pub(crate) mod race_run {
     use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
     use std::str::FromStr;
-    use chrono::NaiveDateTime;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
-    use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
@@ -407,14 +404,14 @@ pub(crate) mod race_run {
 
         fn try_from(value: String) -> Result<Self, Self::Error> {
             Ok(match value.as_str() {
-                "CREATED"=> Self::CREATED,
-                "CONTACTED"=> Self::CONTACTED,
-                "STARTED"=> Self::STARTED,
-                "FINISHED"=> Self::FINISHED,
-                "TIME_SUBMITTED"=> Self::TIME_SUBMITTED,
-                "VOD_SUBMITTED"=> Self::VOD_SUBMITTED,
-                "FORFEIT"=> Self::FORFEIT,
-                "CANCELLED_BY_ADMIN"=> Self::CANCELLED_BY_ADMIN,
+                "CREATED" => Self::CREATED,
+                "CONTACTED" => Self::CONTACTED,
+                "STARTED" => Self::STARTED,
+                "FINISHED" => Self::FINISHED,
+                "TIME_SUBMITTED" => Self::TIME_SUBMITTED,
+                "VOD_SUBMITTED" => Self::VOD_SUBMITTED,
+                "FORFEIT" => Self::FORFEIT,
+                "CANCELLED_BY_ADMIN" => Self::CANCELLED_BY_ADMIN,
                 _ => {
                     return Err("Not a valid RaceRunState");
                 }
@@ -540,7 +537,8 @@ pub(crate) mod race_run {
         }
 
         pub(crate) fn get_reported_at(&self) -> Option<NaiveDateTime> {
-            self.reported_at.map(|t| NaiveDateTime::from_timestamp(t, 0))
+            self.reported_at
+                .map(|t| NaiveDateTime::from_timestamp(t, 0))
         }
 
         pub(crate) fn start(&mut self) {

@@ -259,8 +259,7 @@ async fn login_page(client: &State<OauthClient>) -> Template {
 async fn discord_login(
     code: Option<String>,
     state: String,
-    #[allow(unused_variables)]
-    error_description: Option<String>,
+    #[allow(unused_variables)] error_description: Option<String>,
     client: &State<OauthClient>,
     session_manager: &State<Arc<AsyncMutex<SessionManager>>>,
     role_checker: &State<Arc<DiscordState>>,
@@ -509,7 +508,6 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
     abandoned.sort_by(|a, b| a.id.cmp(&b.id));
     cancelled.sort_by(|a, b| a.id.cmp(&b.id));
 
-
     Template::render(
         "asyncs",
         Context {
@@ -547,7 +545,6 @@ pub(crate) async fn launch_website(
     state: Arc<DiscordState>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) {
-
     let oauth_client = OauthClient::new();
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));

@@ -1,6 +1,6 @@
+use chrono::{Duration, NaiveDateTime};
 use std::ffi::OsStr;
 use std::str::FromStr;
-use chrono::{Duration, NaiveDateTime};
 
 pub fn format_hms(secs: u64) -> String {
     let mins = secs / 60;
@@ -40,22 +40,24 @@ pub fn timestamp_to_naivedatetime<T: Into<i64>>(ts: T) -> NaiveDateTime {
     NaiveDateTime::from_timestamp(ts.into(), 0)
 }
 
-pub fn time_delta_lifted(start: Option<NaiveDateTime>, end: Option<NaiveDateTime>) -> Option<Duration> {
+pub fn time_delta_lifted(
+    start: Option<NaiveDateTime>,
+    end: Option<NaiveDateTime>,
+) -> Option<Duration> {
     start.lift(end, |s, e| e.signed_duration_since(s))
 }
 
 pub fn lift_option<T, F, O>(o1: Option<T>, o2: Option<T>, f: F) -> Option<O>
-    where F: FnOnce(T, T) -> O {
-    o1.and_then(|first|
-        o2.map(|second|
-            f(first, second)
-        )
-    )
+where
+    F: FnOnce(T, T) -> O,
+{
+    o1.and_then(|first| o2.map(|second| f(first, second)))
 }
 
 trait OptExt<T, O> {
     fn lift<F>(self, other: Self, f: F) -> Option<O>
-        where F: FnOnce(T, T) -> O;
+    where
+        F: FnOnce(T, T) -> O;
 }
 
 // N.B. I'd like to also make this work on &Option<T> but idk how to get the
@@ -65,7 +67,9 @@ trait OptExt<T, O> {
 // this is probably something to do with associated types but I don't feel like digging in today.
 impl<T, O> OptExt<T, O> for Option<T> {
     fn lift<F>(self, other: Option<T>, f: F) -> Option<O>
-        where F: FnOnce(T, T) -> O {
+    where
+        F: FnOnce(T, T) -> O,
+    {
         lift_option(self, other, f)
     }
 }

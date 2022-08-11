@@ -6,21 +6,21 @@ use crate::discord::interactions::{
 };
 use crate::discord::notify_racer;
 use crate::discord::{
-    CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL,
-    CUSTOM_ID_FORFEIT_MODAL_INPUT, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME,
-    CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
+    CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
+    CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
+    CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
 use crate::utils::env_default;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
+use diesel::RunQueryDsl;
 use lazy_static::lazy_static;
 use sqlx::SqlitePool;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use diesel::{RunQueryDsl};
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -210,7 +210,9 @@ async fn _handle_create_race(
     }
 
     let new_race = NewRace::new();
-    let mut cxn = state.diesel_cxn().await
+    let mut cxn = state
+        .diesel_cxn()
+        .await
         .map_err(|e| format!("Error getting database connection: {}", e))?;
 
     let race: Race = diesel::insert_into(crate::schema::races::table)
@@ -821,13 +823,11 @@ async fn handle_user_time_modal(
     let ir = InteractionResponse {
         kind: InteractionResponseType::UpdateMessage,
         data: Some(InteractionResponseData {
-            components: Some(
-                action_row(vec![button_component(
-                    "VoD ready",
-                    CUSTOM_ID_VOD_READY,
-                    ButtonStyle::Success,
-                )]),
-            ),
+            components: Some(action_row(vec![button_component(
+                "VoD ready",
+                CUSTOM_ID_VOD_READY,
+                ButtonStyle::Success,
+            )])),
             content: Some("Please click here once your VoD is ready".to_string()),
             ..Default::default()
         }),
@@ -925,7 +925,6 @@ async fn _handle_interaction(
         }
     }
 }
-
 
 /// Handles an interaction. This attempts to dispatch to the relevant processing code, and then
 /// creates any responses as specified, and alerts admins via webhook if there is a problem.

@@ -1,10 +1,10 @@
+use async_trait::async_trait;
+use bb8::{ManageConnection, Pool};
+use diesel::{Connection, ConnectionError, SqliteConnection};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::str::FromStr;
-use bb8::{ManageConnection, Pool};
-use diesel::{Connection, ConnectionError, SqliteConnection};
 use tokio::sync::Mutex;
-use async_trait::async_trait;
 
 use lazy_static::lazy_static;
 
@@ -28,7 +28,6 @@ pub(crate) async fn get_pool() -> Result<SqlitePool, sqlx::Error> {
         .await
 }
 
-
 pub(crate) struct DieselConnectionManager {
     path: String,
 }
@@ -37,7 +36,10 @@ impl DieselConnectionManager {
     fn new_from_env() -> Self {
         let sqlite_db_path = std::env::var("DATABASE_URL").unwrap();
         let path = if sqlite_db_path.starts_with("sqlite://") {
-            sqlite_db_path.strip_prefix("sqlite://").unwrap().to_string()
+            sqlite_db_path
+                .strip_prefix("sqlite://")
+                .unwrap()
+                .to_string()
         } else {
             sqlite_db_path
         };
@@ -51,7 +53,6 @@ impl ManageConnection for DieselConnectionManager {
     type Error = ConnectionError;
 
     async fn connect(&self) -> Result<Self::Connection, Self::Error> {
-
         SqliteConnection::establish(&self.path)
     }
 

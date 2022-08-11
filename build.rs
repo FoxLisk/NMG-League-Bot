@@ -14,9 +14,9 @@ async fn main() {
             panic!();
         }
     };
-    let path =
-    if         sqlite_db_path.starts_with("sqlite://") {
-        sqlite_db_path.strip_prefix("sqlite://")
+    let path = if sqlite_db_path.starts_with("sqlite://") {
+        sqlite_db_path
+            .strip_prefix("sqlite://")
             .unwrap()
             .to_string()
     } else {
