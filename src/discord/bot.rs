@@ -221,7 +221,7 @@ async fn _handle_create_race(
         .map_err(|e| format!("Error saving race: {}", e))?;
 
     let (mut r1, mut r2) = race
-        .select_racers(p1.clone(), p2.clone(), &state.pool)
+        .select_racers(p1.clone(), p2.clone(), &mut cxn)
         .await
         .map_err(|e| format!("Error saving race runs: {}", e))?;
 

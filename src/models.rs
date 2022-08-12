@@ -25,6 +25,7 @@ pub(crate) mod race {
     use serde::Serialize;
     use sqlx::SqlitePool;
     use std::fmt::{Display, Formatter};
+    use diesel::{RunQueryDsl, SqliteConnection};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
@@ -150,10 +151,13 @@ pub(crate) mod race {
         async fn add_run(
             &self,
             racer_id: Id<UserMarker>,
-            pool: &SqlitePool,
+            cxn: &mut SqliteConnection,
         ) -> Result<RaceRun, String> {
             let nrr = NewRaceRun::new(self.id, racer_id);
-            nrr.save(pool).await
+            diesel::insert_into(crate::schema::race_runs::table)
+                .values(nrr)
+                .get_result(cxn)
+                .map_err(|e| format!("Error saving race: {}", e))
         }
 
         /// Creates RaceRuns with the appropriate users and associates them with this race
@@ -161,13 +165,13 @@ pub(crate) mod race {
             &self,
             racer_1: Id<UserMarker>,
             racer_2: Id<UserMarker>,
-            pool: &SqlitePool,
+            cxn: &mut SqliteConnection,
         ) -> Result<(RaceRun, RaceRun), String> {
             if racer_1 == racer_2 {
                 return Err("Racers must be different users!".to_string());
             }
-            let r1 = self.add_run(racer_1, pool).await?;
-            let r2 = self.add_run(racer_2, pool).await?;
+            let r1 = self.add_run(racer_1, cxn).await?;
+            let r2 = self.add_run(racer_2, cxn).await?;
             Ok((r1, r2))
         }
 
@@ -218,6 +222,7 @@ pub(crate) mod race_run {
     use crate::models::epoch_timestamp;
     use crate::models::uuid_string;
     use diesel::prelude::*;
+    use crate::schema::race_runs;
 
     use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
     use chrono::NaiveDateTime;
@@ -232,6 +237,7 @@ pub(crate) mod race_run {
     use std::str::FromStr;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
+    use crate::models::race::NewRace;
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
@@ -376,6 +382,12 @@ pub(crate) mod race_run {
         }
     }
 
+    impl From<Filenames> for String {
+        fn from(fns: Filenames) -> Self {
+            fns.to_str()
+        }
+    }
+
     #[derive(sqlx::Type, Debug, Serialize, PartialEq)]
     #[allow(non_camel_case_types)]
     pub(crate) enum RaceRunState {
@@ -416,6 +428,21 @@ pub(crate) mod race_run {
                     return Err("Not a valid RaceRunState");
                 }
             })
+        }
+    }
+
+    impl From<RaceRunState> for String {
+        fn from(r: RaceRunState) -> Self {
+            match r {
+                RaceRunState::CREATED => {"CREATED"}
+                RaceRunState::CONTACTED => {"CONTACTED"}
+                RaceRunState::STARTED => {"STARTED"}
+                RaceRunState::FINISHED => {"FINISHED"}
+                RaceRunState::TIME_SUBMITTED => {"TIME_SUBMITTED"}
+                RaceRunState::VOD_SUBMITTED => {"VOD_SUBMITTED"}
+                RaceRunState::FORFEIT => {"FORFEIT"}
+                RaceRunState::CANCELLED_BY_ADMIN => {"CANCELLED_BY_ADMIN"}
+            }.to_string()
         }
     }
 
@@ -637,12 +664,21 @@ pub(crate) mod race_run {
         }
     }
 
+    // It is impossible in Rust to `impl Into<String> for Id<UserMarker>`
+    // That means we can't insert a struct with an `Id<UserMarker>` in it, so we have to
+    // convert it ourselves.
+
+    #[derive(Insertable)]
+    #[diesel(table_name=race_runs)]
     pub(crate) struct NewRaceRun {
         race_id: i64,
         uuid: String,
-        racer_id: Id<UserMarker>,
+        racer_id: String,
+        #[diesel(serialize_as=String)]
         filenames: Filenames,
+        #[diesel(serialize_as=i64)]
         created: u32,
+        #[diesel(serialize_as=String)]
         state: RaceRunState,
     }
 
@@ -651,7 +687,7 @@ pub(crate) mod race_run {
             Self {
                 race_id,
                 uuid: uuid_string(),
-                racer_id,
+                racer_id: racer_id.to_string(),
                 filenames: Filenames::new_random(),
                 created: epoch_timestamp(),
                 state: RaceRunState::CREATED,
