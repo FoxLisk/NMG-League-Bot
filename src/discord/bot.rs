@@ -497,7 +497,7 @@ async fn _handle_cancel_race(
     if race.state != RaceState::CREATED {
         return Ok(Some(plain_interaction_response(format!(
             "It does not make sense to me to cancel a race in state {}",
-            race.state
+            String::from(race.state)
         ))));
     }
 

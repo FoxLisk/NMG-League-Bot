@@ -21,6 +21,7 @@ pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::models::{epoch_timestamp, uuid_string};
     use crate::schema::races;
+    use diesel_enum_derive::DieselEnum;
     use diesel::prelude::{Insertable, Queryable};
     use serde::Serialize;
     use sqlx::SqlitePool;
@@ -29,52 +30,13 @@ pub(crate) mod race {
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
-    #[derive(sqlx::Type, Debug, Serialize, PartialEq)]
+    #[derive(sqlx::Type, Debug, Serialize, PartialEq, DieselEnum)]
     #[allow(non_camel_case_types)]
     pub(crate) enum RaceState {
         CREATED,
         FINISHED,
         ABANDONED,
         CANCELLED_BY_ADMIN,
-    }
-
-    impl Into<String> for RaceState {
-        fn into(self) -> String {
-            self.to_string()
-        }
-    }
-
-    impl TryFrom<String> for RaceState {
-        type Error = &'static str;
-
-        fn try_from(value: String) -> Result<Self, Self::Error> {
-            match value.as_str() {
-                "CREATED" => Ok(Self::CREATED),
-                "FINISHED" => Ok(Self::FINISHED),
-                "ABANDONED" => Ok(Self::ABANDONED),
-                "CANCELLED_BY_ADMIN" => Ok(Self::CANCELLED_BY_ADMIN),
-                _ => Err("bzzt"),
-            }
-        }
-    }
-
-    impl Display for RaceState {
-        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            match self {
-                RaceState::CREATED => {
-                    write!(f, "CREATED")
-                }
-                RaceState::FINISHED => {
-                    write!(f, "FINISHED")
-                }
-                RaceState::ABANDONED => {
-                    write!(f, "ABANDONED")
-                }
-                RaceState::CANCELLED_BY_ADMIN => {
-                    write!(f, "CANCELLED_BY_ADMIN")
-                }
-            }
-        }
     }
 
     #[derive(Insertable)]
@@ -223,8 +185,8 @@ pub(crate) mod race_run {
     use crate::models::uuid_string;
     use diesel::prelude::*;
     use crate::schema::race_runs;
-
     use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
+    use diesel_enum_derive::DieselEnum;
     use chrono::NaiveDateTime;
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
@@ -388,7 +350,7 @@ pub(crate) mod race_run {
         }
     }
 
-    #[derive(sqlx::Type, Debug, Serialize, PartialEq)]
+    #[derive(sqlx::Type, Debug, Serialize, PartialEq, DieselEnum)]
     #[allow(non_camel_case_types)]
     pub(crate) enum RaceRunState {
         /// RaceRun created
@@ -409,41 +371,6 @@ pub(crate) mod race_run {
         // N.B. maybe this shouldn't be denormalized and we should just check
         // race state on every RaceRun operation?
         CANCELLED_BY_ADMIN,
-    }
-
-    impl TryFrom<String> for RaceRunState {
-        type Error = &'static str;
-
-        fn try_from(value: String) -> Result<Self, Self::Error> {
-            Ok(match value.as_str() {
-                "CREATED" => Self::CREATED,
-                "CONTACTED" => Self::CONTACTED,
-                "STARTED" => Self::STARTED,
-                "FINISHED" => Self::FINISHED,
-                "TIME_SUBMITTED" => Self::TIME_SUBMITTED,
-                "VOD_SUBMITTED" => Self::VOD_SUBMITTED,
-                "FORFEIT" => Self::FORFEIT,
-                "CANCELLED_BY_ADMIN" => Self::CANCELLED_BY_ADMIN,
-                _ => {
-                    return Err("Not a valid RaceRunState");
-                }
-            })
-        }
-    }
-
-    impl From<RaceRunState> for String {
-        fn from(r: RaceRunState) -> Self {
-            match r {
-                RaceRunState::CREATED => {"CREATED"}
-                RaceRunState::CONTACTED => {"CONTACTED"}
-                RaceRunState::STARTED => {"STARTED"}
-                RaceRunState::FINISHED => {"FINISHED"}
-                RaceRunState::TIME_SUBMITTED => {"TIME_SUBMITTED"}
-                RaceRunState::VOD_SUBMITTED => {"VOD_SUBMITTED"}
-                RaceRunState::FORFEIT => {"FORFEIT"}
-                RaceRunState::CANCELLED_BY_ADMIN => {"CANCELLED_BY_ADMIN"}
-            }.to_string()
-        }
     }
 
     impl RaceRunState {

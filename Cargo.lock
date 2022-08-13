@@ -521,6 +521,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "diesel_enum_derive"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1339,6 +1347,7 @@ dependencies = [
  "chrono",
  "dashmap",
  "diesel",
+ "diesel_enum_derive",
  "dotenv",
  "lazy_static",
  "libsqlite3-sys",

@@ -13,6 +13,7 @@ mod web;
 extern crate bb8;
 extern crate chrono;
 extern crate diesel;
+extern crate diesel_enum_derive;
 extern crate oauth2;
 extern crate rand;
 extern crate regex;
