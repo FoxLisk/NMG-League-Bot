@@ -523,6 +523,7 @@ dependencies = [
 [[package]]
 name = "diesel_enum_derive"
 version = "0.1.0"
+source = "git+https://github.com/FoxLisk/diesel_enum_derive#90495e37902f9afd9eb0b3fbaaff9d6406ef936a"
 dependencies = [
  "quote",
  "syn",
