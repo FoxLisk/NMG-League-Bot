@@ -485,7 +485,8 @@ async fn _handle_cancel_race(
         return Ok(Some(plain_interaction_response("Error parsing arguments")));
     };
 
-    let race = match Race::get_by_id(race_id, &state.pool).await {
+    let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let race = match Race::get_by_id(race_id, &mut conn).await {
         Ok(r) => r,
         Err(_e) => {
             return Ok(Some(plain_interaction_response(

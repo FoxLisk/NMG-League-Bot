@@ -23,21 +23,24 @@ pub(crate) mod race {
     use crate::schema::races;
     use diesel_enum_derive::DieselEnum;
     use diesel::prelude::{Insertable, Queryable};
+    use diesel::sql_types::Text;
     use serde::Serialize;
     use sqlx::SqlitePool;
     use std::fmt::{Display, Formatter};
-    use diesel::{RunQueryDsl, SqliteConnection};
+    use diesel::{RunQueryDsl, SqliteConnection, AsExpression};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
-    #[derive(sqlx::Type, Debug, Serialize, PartialEq, DieselEnum)]
+    #[derive(sqlx::Type, Debug, Serialize, PartialEq, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
+    #[diesel(sql_type = Text)]
     pub(crate) enum RaceState {
         CREATED,
         FINISHED,
         ABANDONED,
         CANCELLED_BY_ADMIN,
     }
+
 
     #[derive(Insertable)]
     #[diesel(table_name=races)]
@@ -60,30 +63,12 @@ pub(crate) mod race {
 
     // statics
     impl Race {
-        pub(crate) async fn active_races(pool: &SqlitePool) -> Result<Vec<Self>, String> {
-            sqlx::query_as!(
-                Self,
-                r#"SELECT id as "id: _", uuid, created as "created: _", state as "state: _"
-                FROM races
-                WHERE state=?"#,
-                RaceState::CREATED
-            )
-            .fetch_all(pool)
-            .await
-            .map_err(|e| e.to_string())
-        }
-
-        pub(crate) async fn get_by_id(id: i64, pool: &SqlitePool) -> Result<Self, String> {
-            sqlx::query_as!(
-                Self,
-                r#"SELECT id as "id: _", uuid, created as "created: _", state as "state: _"
-                    FROM races
-                    WHERE id=?"#,
-                id
-            )
-            .fetch_one(pool)
-            .await
-            .map_err(|e| e.to_string())
+        pub(crate) async fn get_by_id(id_: i64, conn: &mut SqliteConnection) -> Result<Self, String> {
+            use crate::schema::races::dsl::*;
+            use diesel::prelude::*;
+            races.filter(id.eq(id_))
+                .first(conn)
+                .map_err(|e| e.to_string())
         }
     }
 
@@ -621,37 +606,5 @@ pub(crate) mod race_run {
             }
         }
 
-        pub(crate) async fn save(self, pool: &SqlitePool) -> Result<RaceRun, String> {
-            let id_str = self.racer_id.to_string();
-            sqlx::query!(
-                "INSERT INTO race_runs (uuid, race_id, racer_id, filenames, created, state)
-                 VALUES(?, ?, ?, ?, ?, ?);
-                SELECT last_insert_rowid() as rowid;",
-                self.uuid,
-                self.race_id,
-                id_str,
-                self.filenames,
-                self.created,
-                self.state
-            )
-            .fetch_one(pool)
-            .await
-            .map(|row| RaceRun {
-                id: row.rowid as i64,
-                uuid: self.uuid,
-                race_id: self.race_id,
-                racer_id: self.racer_id.to_string(),
-                filenames: self.filenames.to_str(),
-                created: self.created,
-                state: self.state,
-                message_id: None,
-                run_started: None,
-                run_finished: None,
-                reported_run_time: None,
-                reported_at: None,
-                vod: None,
-            })
-            .map_err(|e| e.to_string())
-        }
     }
 }

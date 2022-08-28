@@ -1,16 +1,19 @@
 use crate::constants::CRON_TICKS_VAR;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
-use crate::models::race::Race;
+use crate::models::race::{Race, RaceState};
 use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::shutdown::Shutdown;
 use crate::utils::{env_default, format_hms};
+use crate::schema::races;
+use diesel::prelude::*;
 use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
+use std::ops::DerefMut;
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {
@@ -161,11 +164,21 @@ async fn handle_finished_race(
 
 async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
     println!("Sweep...");
-    let active_races = match Race::active_races(&state.pool).await {
-        Ok(rs) => rs,
-        Err(e) => {
-            println!("Error fetching active races: {}", e);
-            return;
+    let active_races: Vec<Race> = match state.diesel_cxn().await
+        .map(|mut cxn| {
+           races::table.filter(races::dsl::state.eq(RaceState::CREATED))
+               .load::<Race>(cxn.deref_mut())
+        }) {
+            Ok(qr) => match qr {
+                Ok(rs) => rs,
+                Err(e) => {
+                    println!("Error fetching active races: {}", e);
+                    return;
+                }
+            },
+            Err(e) => {
+                println!("Error fetching active races: {}", e);
+                return;
         }
     };
     println!("Handling {} races", active_races.len());
