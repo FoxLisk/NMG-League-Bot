@@ -22,16 +22,16 @@ pub(crate) mod race {
     use crate::models::{epoch_timestamp, uuid_string};
     use crate::schema::races;
     use diesel_enum_derive::DieselEnum;
-    use diesel::prelude::{Insertable, Queryable};
+    use diesel::prelude::{Insertable, Queryable, Identifiable, AsChangeset};
     use diesel::sql_types::Text;
     use serde::Serialize;
-    use sqlx::SqlitePool;
+    use sqlx::{Sqlite, SqlitePool};
     use std::fmt::{Display, Formatter};
     use diesel::{RunQueryDsl, SqliteConnection, AsExpression};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
-    #[derive(sqlx::Type, Debug, Serialize, PartialEq, DieselEnum, AsExpression)]
+    #[derive(sqlx::Type, Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
     #[diesel(sql_type = Text)]
     pub(crate) enum RaceState {
@@ -51,7 +51,7 @@ pub(crate) mod race {
         state: RaceState,
     }
 
-    #[derive(Queryable)]
+    #[derive(Queryable, Clone)]
     pub(crate) struct Race {
         pub(crate) id: i64,
         pub(crate) uuid: String,
@@ -59,6 +59,26 @@ pub(crate) mod race {
         pub(crate) created: u32,
         #[diesel(deserialize_as=String)]
         pub(crate) state: RaceState,
+    }
+
+    #[derive(Identifiable, AsChangeset)]
+    #[table_name="races"]
+    struct UpdateRace {
+        id: i64,
+        uuid: String,
+        created: i64,
+        state: String,
+    }
+
+    impl From<Race> for UpdateRace {
+        fn from(r: Race) -> Self {
+            Self {
+                id: r.id,
+                uuid: r.uuid,
+                created: r.created as i64,
+                state: r.state.into()
+            }
+        }
     }
 
     // statics
@@ -81,18 +101,12 @@ pub(crate) mod race {
             self.state = RaceState::ABANDONED;
         }
 
-        pub(crate) async fn save(&self, pool: &SqlitePool) -> Result<(), String> {
-            sqlx::query!(
-                "UPDATE races
-                SET state=?
-                WHERE id=?",
-                self.state,
-                self.id
-            )
-            .execute(pool)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        /// clones self
+        pub(crate) async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
+            let update = UpdateRace::from(self.clone());
+            diesel::update(&update).set(&update).execute(conn)
+                .map_err(|e| e.to_string())
+                .map(|_|())
         }
 
         async fn add_run(
