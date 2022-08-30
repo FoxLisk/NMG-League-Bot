@@ -5,7 +5,6 @@ use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
-use sqlx::SqlitePool;
 use std::env;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -24,7 +23,6 @@ use twilight_standby::Standby;
 pub(crate) struct DiscordState {
     pub cache: InMemoryCache,
     pub client: Client,
-    pub pool: SqlitePool,
     diesel_pool: Pool<DieselConnectionManager>,
     pub webhooks: Webhooks,
     pub standby: Arc<Standby>,
@@ -39,7 +37,6 @@ impl DiscordState {
         cache: InMemoryCache,
         client: Client,
         aid: Id<ApplicationMarker>,
-        pool: SqlitePool,
         diesel_pool: Pool<DieselConnectionManager>,
         webhooks: Webhooks,
         standby: Arc<Standby>,
@@ -49,7 +46,6 @@ impl DiscordState {
         Self {
             cache,
             client,
-            pool,
             diesel_pool,
             webhooks,
             standby,

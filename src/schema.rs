@@ -1,12 +1,8 @@
-use diesel::{allow_tables_to_appear_in_same_query, joinable, table};
 table! {
-    _sqlx_migrations (version) {
-        version -> Nullable<BigInt>,
-        description -> Text,
-        installed_on -> Timestamp,
-        success -> Bool,
-        checksum -> Binary,
-        execution_time -> BigInt,
+    players (id) {
+        id -> Integer,
+        name -> Text,
+        discord_id -> BigInt,
     }
 }
 
@@ -39,4 +35,8 @@ table! {
 
 joinable!(race_runs -> races (race_id));
 
-allow_tables_to_appear_in_same_query!(_sqlx_migrations, race_runs, races,);
+allow_tables_to_appear_in_same_query!(
+    players,
+    race_runs,
+    races,
+);

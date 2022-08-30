@@ -1,3 +1,5 @@
+mod player;
+
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
 }
@@ -25,13 +27,11 @@ pub(crate) mod race {
     use diesel::prelude::{Insertable, Queryable, Identifiable, AsChangeset};
     use diesel::sql_types::Text;
     use serde::Serialize;
-    use sqlx::{Sqlite, SqlitePool};
-    use std::fmt::{Display, Formatter};
     use diesel::{RunQueryDsl, SqliteConnection, AsExpression};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
-    #[derive(sqlx::Type, Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
+    #[derive(Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
     #[diesel(sql_type = Text)]
     pub(crate) enum RaceState {
@@ -51,7 +51,7 @@ pub(crate) mod race {
         state: RaceState,
     }
 
-    #[derive(Queryable, Clone)]
+    #[derive(Queryable, Clone, Identifiable)]
     pub(crate) struct Race {
         pub(crate) id: i64,
         pub(crate) uuid: String,
@@ -138,33 +138,36 @@ pub(crate) mod race {
 
         /// Cancels this race and its associated RaceRun
         /// This updates the database
-        pub(crate) async fn cancel(&self, pool: &SqlitePool) -> Result<(), String> {
-            sqlx::query!(
-                "\
-                UPDATE races
-                SET state=?
-                WHERE id=?;
+        pub(crate) async fn cancel(&self, conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
+            use crate::schema::races::dsl::state;
+            use crate::schema::race_runs::dsl::{race_id, state as run_state};
+            use diesel::prelude::*;
 
-                UPDATE race_runs
-                SET state=?
-                WHERE race_id=?;
-                ",
-                RaceState::CANCELLED_BY_ADMIN,
-                self.id,
-                RaceRunState::CANCELLED_BY_ADMIN,
-                self.id,
+            conn.transaction(
+                |conn| {
+                    diesel::update(self)
+                        .set(state.eq(
+                            String::from(RaceState::CANCELLED_BY_ADMIN)
+                        ))
+                        .execute(conn)
+                        .map(|_| ())?;
+                    diesel::update(
+                        crate::schema::race_runs::table
+                            .filter(race_id.eq(self.id))
+                    ).set(run_state.eq(
+                        String::from(RaceRunState::CANCELLED_BY_ADMIN)
+                    ))
+                    .execute(conn)
+                    .map(|_| ())
+                }
             )
-            .execute(pool)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
         }
 
         pub(crate) async fn get_runs(
             &self,
-            pool: &SqlitePool,
+            conn: &mut SqliteConnection,
         ) -> Result<(RaceRun, RaceRun), String> {
-            RaceRun::get_runs(self.id, pool).await
+            RaceRun::get_runs(self.id, conn).await
         }
     }
 
@@ -191,14 +194,10 @@ pub(crate) mod race_run {
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
     use serde::Serialize;
-    use sqlx::database::HasArguments;
-    use sqlx::encode::IsNull;
-    use sqlx::{Database, Encode, Sqlite, SqlitePool, Type};
     use std::fmt::Formatter;
     use std::str::FromStr;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
-    use crate::models::race::NewRace;
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
@@ -325,31 +324,13 @@ pub(crate) mod race_run {
         }
     }
 
-    impl Type<Sqlite> for Filenames {
-        fn type_info() -> <Sqlite as Database>::TypeInfo {
-            <&str as Type<Sqlite>>::type_info()
-        }
-    }
-
-    impl<'q> Encode<'q, Sqlite> for Filenames {
-        fn encode_by_ref(&self, buf: &mut <Sqlite as HasArguments<'q>>::ArgumentBuffer) -> IsNull {
-            let mut s = String::with_capacity(10);
-            s.push(self.one);
-            s.push(' ');
-            s.extend(self.three);
-            s.push(' ');
-            s.extend(self.four);
-            Encode::encode_by_ref(&s, buf)
-        }
-    }
-
     impl From<Filenames> for String {
         fn from(fns: Filenames) -> Self {
             fns.to_str()
         }
     }
 
-    #[derive(sqlx::Type, Debug, Serialize, PartialEq, DieselEnum)]
+    #[derive(Debug, Serialize, PartialEq, DieselEnum, Clone)]
     #[allow(non_camel_case_types)]
     pub(crate) enum RaceRunState {
         /// RaceRun created
@@ -388,7 +369,7 @@ pub(crate) mod race_run {
         }
     }
 
-    #[derive(Queryable)]
+    #[derive(Clone, Queryable, Identifiable)]
     pub(crate) struct RaceRun {
         pub(crate) id: i64,
         pub(crate) uuid: String,
@@ -399,7 +380,6 @@ pub(crate) mod race_run {
         created: u32,
         #[diesel(deserialize_as=String)]
         pub(crate) state: RaceRunState,
-
         pub(crate) run_started: Option<i64>,
         pub(crate) run_finished: Option<i64>,
         pub(crate) reported_run_time: Option<String>,
@@ -408,29 +388,55 @@ pub(crate) mod race_run {
         pub(crate) vod: Option<String>,
     }
 
+
+    #[derive(Identifiable, AsChangeset)]
+    #[table_name="race_runs"]
+    struct UpdateRaceRun {
+        id: i64,
+        uuid: String,
+        race_id: i64,
+        racer_id: String,
+        filenames: String,
+        created: i64,
+        state: String,
+        run_started: Option<i64>,
+        run_finished: Option<i64>,
+        reported_run_time: Option<String>,
+        reported_at: Option<i64>,
+        message_id: Option<String>,
+        vod: Option<String>,
+    }
+
+    impl From<RaceRun> for UpdateRaceRun {
+        fn from(rr: RaceRun) -> Self {
+            Self {
+                id: rr.id,
+                uuid: rr.uuid,
+                race_id: rr.race_id,
+                racer_id: rr.racer_id,
+                filenames: rr.filenames,
+                created: rr.created as i64,
+                state: String::from(rr.state),
+                run_started: rr.run_started,
+                run_finished: rr.run_finished,
+                reported_run_time: rr.reported_run_time,
+                reported_at: rr.reported_at,
+                message_id: rr.message_id,
+                vod: rr.vod
+            }
+        }
+    }
+
     // statics
     impl RaceRun {
         pub(crate) async fn get_runs(
-            race_id: i64,
-            pool: &SqlitePool,
+            race_id_: i64,
+            conn: &mut SqliteConnection
         ) -> Result<(RaceRun, RaceRun), String> {
-            let mut runs = sqlx::query_as!(
-                RaceRun,
-                r#"SELECT id, uuid, race_id, racer_id, filenames,
-                created as "created: _",
-                state as "state: _",
-                run_started as "run_started: _",
-                run_finished as "run_finished: _",
-                reported_run_time,
-                reported_at as "reported_at: _",
-                vod,
-                message_id
-                 FROM race_runs WHERE race_id=?"#,
-                race_id,
-            )
-            .fetch_all(pool)
-            .await
-            .map_err(|e| e.to_string())?;
+            use crate::schema::race_runs::dsl::*;
+            let mut runs: Vec<RaceRun> = race_runs.filter(race_id.eq(race_id_))
+                .load(conn)
+                .map_err(|e| e.to_string())?;
             if runs.len() == 2 {
                 Ok((runs.pop().unwrap(), runs.pop().unwrap()))
             } else {
@@ -522,32 +528,36 @@ pub(crate) mod race_run {
             self.vod = Some(vod);
         }
 
-        pub(crate) async fn save(&self, pool: &SqlitePool) -> Result<(), String> {
-            let racer_id_str = self.racer_id.to_string();
-            let mid_str = self.message_id.as_ref().map(|m| m.to_string());
-            sqlx::query!(
-                "UPDATE race_runs
-                SET
-                    race_id=?, racer_id=?, filenames=?, state=?, message_id=?,
-                    run_started=?, run_finished=?, reported_at=?, reported_run_time=?,
-                    vod=?
-                 WHERE id=?;",
-                self.race_id,
-                racer_id_str,
-                self.filenames,
-                self.state,
-                mid_str,
-                self.run_started,
-                self.run_finished,
-                self.reported_at,
-                self.reported_run_time,
-                self.vod,
-                self.id
-            )
-            .execute(pool)
-            .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+        pub(crate) async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
+            let update = UpdateRaceRun::from(self.clone());
+            diesel::update(self)
+                .set(update)
+                .execute(conn)
+                .map(|_|())
+                .map_err(|e| e.to_string())
+            // sqlx::query!(
+            //     "UPDATE race_runs
+            //     SET
+            //         race_id=?, racer_id=?, filenames=?, state=?, message_id=?,
+            //         run_started=?, run_finished=?, reported_at=?, reported_run_time=?,
+            //         vod=?
+            //      WHERE id=?;",
+            //     self.race_id,
+            //     racer_id_str,
+            //     self.filenames,
+            //     self.state,
+            //     mid_str,
+            //     self.run_started,
+            //     self.run_finished,
+            //     self.reported_at,
+            //     self.reported_run_time,
+            //     self.vod,
+            //     self.id
+            // )
+            // .execute(pool)
+            // .await
+            // .map(|_| ())
+            // .map_err(|e| e.to_string())
         }
 
         pub(crate) fn set_message_id(&mut self, message_id: u64) {
@@ -556,37 +566,21 @@ pub(crate) mod race_run {
 
         pub(crate) async fn get_by_message_id(
             message_id: Id<MessageMarker>,
-            pool: &SqlitePool,
+            conn: &mut SqliteConnection,
         ) -> Result<Self, String> {
-            Self::search_by_message_id(message_id.clone(), pool)
+            Self::search_by_message_id(message_id.clone(), conn)
                 .await
                 .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
         }
 
         pub(crate) async fn search_by_message_id(
-            message_id: Id<MessageMarker>,
-            pool: &SqlitePool,
+            message_id_: Id<MessageMarker>,
+            conn: &mut SqliteConnection,
         ) -> Result<Option<Self>, String> {
-            let mid_str = message_id.to_string();
-            sqlx::query_as!(
-                Self,
-                r#"SELECT
-                id, uuid, race_id, racer_id, filenames,
-                created as "created: _",
-                state as "state: _",
-                run_started as "run_started: _",
-                run_finished as "run_finished: _",
-                reported_run_time,
-                reported_at as "reported_at: _",
-                vod,
-                message_id
-                FROM race_runs
-                WHERE message_id = ?"#,
-                mid_str
-            )
-            .fetch_optional(pool)
-            .await
-            .map_err(|e| e.to_string())
+            use crate::schema::race_runs::dsl::*;
+            let mut runs: Vec<Self> = race_runs.filter(message_id.eq(message_id_.to_string()))
+                .load(conn).map_err(|e| e.to_string())?;
+            Ok(runs.pop())
         }
     }
 

@@ -1,5 +1,5 @@
 use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
-use crate::db::{get_diesel_pool, get_pool};
+use crate::db::{get_diesel_pool,};
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
@@ -15,9 +15,8 @@ use crate::models::race_run::RaceRun;
 use crate::utils::env_default;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use diesel::RunQueryDsl;
+use diesel::{RunQueryDsl, SqliteConnection};
 use lazy_static::lazy_static;
-use sqlx::SqlitePool;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
@@ -66,7 +65,6 @@ pub(crate) async fn launch(
     let token = std::env::var(TOKEN_VAR).unwrap();
     let aid_str = std::env::var(APPLICATION_ID_VAR).unwrap();
     let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
-    let pool = get_pool().await.unwrap();
 
     let http = Client::new(token.clone());
     let cache = InMemoryCache::builder().build();
@@ -76,7 +74,6 @@ pub(crate) async fn launch(
         cache,
         http,
         aid,
-        pool,
         diesel_pool,
         webhooks,
         standby.clone(),
@@ -347,7 +344,8 @@ async fn actually_cancel_race(
     r2: RaceRun,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
-    race.cancel(&state.pool)
+    let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    race.cancel(&mut conn)
         .await
         .map_err(|e| format!("Error cancelling race: {}", e))?;
 
@@ -502,7 +500,7 @@ async fn _handle_cancel_race(
         ))));
     }
 
-    let (r1, r2) = match RaceRun::get_runs(race.id, &state.pool).await {
+    let (r1, r2) = match RaceRun::get_runs(race.id, &mut conn).await {
         Ok(rs) => rs,
         Err(e) => {
             return Ok(Some(plain_interaction_response(format!(
@@ -602,11 +600,12 @@ async fn handle_run_start(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "There was an error starting your race. Please ping FoxLisk.";
-    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &state.pool)
+    let mut conn = state.diesel_cxn().await.map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &mut conn)
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     rr.start();
-    match rr.save(&state.pool).await {
+    match rr.save(&mut conn).await {
         Ok(_) => Ok(Some(run_started_interaction_response(&rr, None).map_err(
             |e| {
                 ErrorResponse::new(
@@ -623,7 +622,7 @@ async fn handle_run_start(
 }
 
 // TODO: this should take a message id, this method signature is bullshit
-async fn update_race_run<M, T, F>(interaction: &T, f: F, pool: &SqlitePool) -> Result<(), String>
+async fn update_race_run<M, T, F>(interaction: &T, f: F, conn: &mut SqliteConnection) -> Result<(), String>
 where
     M: GetMessageId,
     T: Deref<Target = M> + Debug,
@@ -636,7 +635,7 @@ where
         }
     };
 
-    let rro = match RaceRun::search_by_message_id(mid.clone(), pool).await {
+    let rro = match RaceRun::search_by_message_id(mid.clone(), conn).await {
         Ok(r) => r,
         Err(e) => {
             return Err(e);
@@ -646,7 +645,7 @@ where
         Some(mut rr) => {
             f(&mut rr);
             {
-                if let Err(e) = rr.save(pool).await {
+                if let Err(e) = rr.save(conn).await {
                     Err(format!("Error saving race {}: {}", rr.id, e))
                 } else {
                     Ok(())
@@ -698,8 +697,9 @@ async fn handle_run_forfeit_modal(
         USER_FACING_ERROR,
         "Error getting forfeit input from modal.",
     ))?;
+    let mut conn = state.diesel_cxn().await.map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     let ir = if FORFEIT_REGEX.is_match(&ut) {
-        update_race_run(&interaction, |rr| rr.forfeit(), &state.pool)
+        update_race_run(&interaction, |rr| rr.forfeit(),  &mut conn)
             .await
             .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
 
@@ -717,7 +717,7 @@ async fn handle_run_forfeit_modal(
             }
         };
 
-        RaceRun::get_by_message_id(mid, &state.pool)
+        RaceRun::get_by_message_id(mid, &mut conn)
             .await
             .and_then(|race_run| {
                 run_started_interaction_response(&race_run, Some("Forfeit canceled"))
@@ -750,12 +750,13 @@ async fn handle_run_finish(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "Something went wrong finishing this run. Please ping FoxLisk.";
+    let mut conn = state.diesel_cxn().await.map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     if let Err(e) = update_race_run(
         &interaction,
         |rr| {
             rr.finish();
         },
-        &state.pool,
+        &mut conn,
     )
     .await
     {
@@ -804,15 +805,19 @@ async fn handle_user_time_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    const USER_FACING_ERROR: &str = "Something went wrong reporting your time. Please ping FoxLisk.";
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_USER_TIME,
     )
     .ok_or(ErrorResponse::new(
-        "Something went wrong reporting your time. Please ping FoxLisk.",
+        USER_FACING_ERROR,
         "Error getting user time form modal.",
     ))?;
-    update_race_run(&interaction, |rr| rr.report_user_time(ut), &state.pool)
+    let mut conn = state.diesel_cxn().await.map_err(
+        |e| ErrorResponse::new(USER_FACING_ERROR, e)
+    )?;
+    update_race_run(&interaction, |rr| rr.report_user_time(ut), &mut conn)
         .await
         .map_err(|e| {
             ErrorResponse::new(
@@ -859,15 +864,20 @@ async fn handle_vod_modal(
     mut interaction: Box<ModalSubmitInteraction>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    const USER_FACING_ERROR: &str = "Something went wrong reporting your VoD. Please ping FoxLisk.";
     let user_input = get_field_from_modal_components(
         std::mem::take(&mut interaction.data.components),
         CUSTOM_ID_VOD_MODAL_INPUT,
     )
     .ok_or(ErrorResponse::new(
-        "Something went wrong reporting your VoD. Please ping FoxLisk.",
+        USER_FACING_ERROR,
         "Error getting vod from modal.",
     ))?;
-    update_race_run(&interaction, |rr| rr.set_vod(user_input), &state.pool)
+    let mut conn = state.diesel_cxn().await.map_err(
+        |e| ErrorResponse::new(USER_FACING_ERROR, e)
+    )?;
+
+    update_race_run(&interaction, |rr| rr.set_vod(user_input),  &mut conn)
         .await
         .map_err(|e| {
             ErrorResponse::new(

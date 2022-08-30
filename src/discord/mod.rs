@@ -13,7 +13,6 @@ pub(crate) mod discord_state;
 mod interactions;
 
 extern crate rand;
-extern crate sqlx;
 extern crate tokio;
 
 const CUSTOM_ID_START_RUN: &str = "start_run";
@@ -45,7 +44,8 @@ pub(crate) async fn notify_racer(
     if Some(uid) == state.cache.current_user().map(|cu| cu.id) {
         println!("Not sending messages to myself");
         race_run.contact_succeeded();
-        race_run.save(&state.pool).await?;
+        let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+        race_run.save(&mut conn).await?;
         return Ok(());
     }
     let dm = state.get_private_channel(uid).await?;
@@ -78,7 +78,8 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         let msg = resp.model().await.map_err(|e| e.to_string())?;
         race_run.set_message_id(msg.id.get());
         race_run.contact_succeeded();
-        race_run.save(&state.pool).await
+        let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+        race_run.save(&mut conn).await
     } else {
         Err(format!("Error sending message: {}", resp.status()))
     }

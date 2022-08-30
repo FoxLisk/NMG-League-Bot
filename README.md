@@ -59,3 +59,10 @@ but once startup is complete all errors must be handled.
 `cargo install diesel_cli --no-default-features --features sqlite-bundled`
 
 can probably do `--features sqlite` on linux
+
+some commands
+```
+diesel migration generate --migration-dir diesel-migrations <migration_name>
+
+diesel print-schema --database-url .\db\sqlite-diesel.db3
+```

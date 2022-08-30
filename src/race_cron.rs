@@ -7,7 +7,6 @@ use crate::shutdown::Shutdown;
 use crate::utils::{env_default, format_hms};
 use crate::schema::races;
 use diesel::prelude::*;
-use sqlx::SqlitePool;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
@@ -75,7 +74,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
             return;
         }
     };
-    let (mut r1, mut r2) = match race.get_runs(&state.pool).await {
+    let (mut r1, mut r2) = match race.get_runs(&mut conn).await {
         Ok(r) => r,
         Err(e) => {
             println!("Error fetching runs for race {}: {}", race.uuid, e);
@@ -87,7 +86,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         }
     };
     if r1.is_finished() && r2.is_finished() {
-        handle_finished_race(&mut race, &r1, &r2, &state.pool, &mut conn,webhooks).await
+        handle_finished_race(&mut race, &r1, &r2, &mut conn,webhooks).await
     } else {
         let mut msgs = Vec::with_capacity(2);
         if r1.state.is_created() {
@@ -119,7 +118,6 @@ async fn handle_finished_race(
     race: &mut Race,
     r1: &RaceRun,
     r2: &RaceRun,
-    pool: &SqlitePool,
     conn: &mut SqliteConnection,
     webhooks: &Webhooks,
 ) {
