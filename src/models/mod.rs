@@ -53,7 +53,7 @@ pub(crate) mod race {
 
     #[derive(Queryable, Clone, Identifiable)]
     pub(crate) struct Race {
-        pub(crate) id: i64,
+        pub(crate) id: i32,
         pub(crate) uuid: String,
         #[diesel(deserialize_as=i64)]
         pub(crate) created: u32,
@@ -64,7 +64,7 @@ pub(crate) mod race {
     #[derive(Identifiable, AsChangeset)]
     #[table_name="races"]
     struct UpdateRace {
-        id: i64,
+        id: i32,
         uuid: String,
         created: i64,
         state: String,
@@ -83,7 +83,7 @@ pub(crate) mod race {
 
     // statics
     impl Race {
-        pub(crate) async fn get_by_id(id_: i64, conn: &mut SqliteConnection) -> Result<Self, String> {
+        pub(crate) async fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
             use crate::schema::races::dsl::*;
             use diesel::prelude::*;
             races.filter(id.eq(id_))
@@ -371,9 +371,9 @@ pub(crate) mod race_run {
 
     #[derive(Clone, Queryable, Identifiable)]
     pub(crate) struct RaceRun {
-        pub(crate) id: i64,
+        pub(crate) id: i32,
         pub(crate) uuid: String,
-        race_id: i64,
+        race_id: i32,
         racer_id: String,
         filenames: String,
         #[diesel(deserialize_as=i64)]
@@ -392,9 +392,9 @@ pub(crate) mod race_run {
     #[derive(Identifiable, AsChangeset)]
     #[table_name="race_runs"]
     struct UpdateRaceRun {
-        id: i64,
+        id: i32,
         uuid: String,
-        race_id: i64,
+        race_id: i32,
         racer_id: String,
         filenames: String,
         created: i64,
@@ -430,7 +430,7 @@ pub(crate) mod race_run {
     // statics
     impl RaceRun {
         pub(crate) async fn get_runs(
-            race_id_: i64,
+            race_id_: i32,
             conn: &mut SqliteConnection
         ) -> Result<(RaceRun, RaceRun), String> {
             use crate::schema::race_runs::dsl::*;
@@ -535,29 +535,6 @@ pub(crate) mod race_run {
                 .execute(conn)
                 .map(|_|())
                 .map_err(|e| e.to_string())
-            // sqlx::query!(
-            //     "UPDATE race_runs
-            //     SET
-            //         race_id=?, racer_id=?, filenames=?, state=?, message_id=?,
-            //         run_started=?, run_finished=?, reported_at=?, reported_run_time=?,
-            //         vod=?
-            //      WHERE id=?;",
-            //     self.race_id,
-            //     racer_id_str,
-            //     self.filenames,
-            //     self.state,
-            //     mid_str,
-            //     self.run_started,
-            //     self.run_finished,
-            //     self.reported_at,
-            //     self.reported_run_time,
-            //     self.vod,
-            //     self.id
-            // )
-            // .execute(pool)
-            // .await
-            // .map(|_| ())
-            // .map_err(|e| e.to_string())
         }
 
         pub(crate) fn set_message_id(&mut self, message_id: u64) {
@@ -591,7 +568,7 @@ pub(crate) mod race_run {
     #[derive(Insertable)]
     #[diesel(table_name=race_runs)]
     pub(crate) struct NewRaceRun {
-        race_id: i64,
+        race_id: i32,
         uuid: String,
         racer_id: String,
         #[diesel(serialize_as=String)]
@@ -603,7 +580,7 @@ pub(crate) mod race_run {
     }
 
     impl NewRaceRun {
-        pub(crate) fn new(race_id: i64, racer_id: Id<UserMarker>) -> Self {
+        pub(crate) fn new(race_id: i32, racer_id: Id<UserMarker>) -> Self {
             Self {
                 race_id,
                 uuid: uuid_string(),

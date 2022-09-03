@@ -2,7 +2,7 @@
 CREATE TABLE IF NOT EXISTS races (
     id           INTEGER PRIMARY KEY NOT NULL,
     uuid         TEXT UNIQUE NOT NULL,
-    created      INTEGER NOT NULL,
+    created      BIGINT NOT NULL,
     state        TEXT NOT NULL
 );
 
@@ -13,12 +13,12 @@ CREATE TABLE IF NOT EXISTS race_runs (
     race_id           INTEGER NOT NULL,
     racer_id          TEXT NOT NULL,
     filenames         TEXT NOT NULL,
-    created           INTEGER NOT NULL,
+    created           BIGINT NOT NULL,
     state             TEXT NOT NULL,
-    run_started       INTEGER NULL,
-    run_finished      INTEGER NULL,
+    run_started       BIGINT NULL,
+    run_finished      BIGINT NULL,
     reported_run_time TEXT NULL,
-    reported_at       INTEGER NULL,
+    reported_at       BIGINT NULL,
     message_id        TEXT NULL,
     vod               TEXT NULL,
 

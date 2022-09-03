@@ -8,9 +8,9 @@ table! {
 
 table! {
     race_runs (id) {
-        id -> BigInt,
+        id -> Integer,
         uuid -> Text,
-        race_id -> BigInt,
+        race_id -> Integer,
         racer_id -> Text,
         filenames -> Text,
         created -> BigInt,
@@ -26,7 +26,7 @@ table! {
 
 table! {
     races (id) {
-        id -> BigInt,
+        id -> Integer,
         uuid -> Text,
         created -> BigInt,
         state -> Text,

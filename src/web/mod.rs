@@ -381,7 +381,7 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
     }
 
     struct ViewRaceBuilder {
-        id: i64,
+        id: i32,
         state: RaceState,
         p1: Option<ViewRaceRun>,
         p2: Option<ViewRaceRun>,
@@ -389,7 +389,7 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
 
     #[derive(Serialize)]
     struct ViewRace {
-        id: i64,
+        id: i32,
         state: RaceState,
         p1: ViewRaceRun,
         p2: ViewRaceRun,
@@ -440,7 +440,7 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
         }
     }
 
-    let mut race_builders: HashMap<i64, ViewRaceBuilder> = Default::default();
+    let mut race_builders: HashMap<i32, ViewRaceBuilder> = Default::default();
 
     for (race, run) in results {
         let vr = race_builders

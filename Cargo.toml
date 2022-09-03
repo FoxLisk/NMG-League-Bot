@@ -46,6 +46,5 @@ rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
 diesel_enum_derive = {git = "https://github.com/FoxLisk/diesel_enum_derive"}
 
 [build-dependencies]
-sqlx = {version = "=0.5.5", features = [ "runtime-tokio-rustls" , "sqlite"]}
 tokio = { version = "1.19.0", features = ["rt-multi-thread", "macros"]}
 dotenv = "0.15.0"

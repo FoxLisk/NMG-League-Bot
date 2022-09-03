@@ -484,7 +484,7 @@ async fn _handle_cancel_race(
     };
 
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let race = match Race::get_by_id(race_id, &mut conn).await {
+    let race = match Race::get_by_id(race_id as i32, &mut conn).await {
         Ok(r) => r,
         Err(_e) => {
             return Ok(Some(plain_interaction_response(
