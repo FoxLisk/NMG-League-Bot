@@ -34,6 +34,8 @@ const CREATE_RACE_CMD: &str = "create_race";
 const CANCEL_RACE_CMD: &str = "cancel_race";
 const ADMIN_ROLE_NAME: &'static str = "Admin";
 
+const REGISTER_CMD: &str = "register";
+
 /// DM the player & save the run model if the DM sends successfully
 pub(crate) async fn notify_racer(
     race_run: &mut RaceRun,

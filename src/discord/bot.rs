@@ -4,7 +4,7 @@ use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::notify_racer;
+use crate::discord::{notify_racer, REGISTER_CMD};
 use crate::discord::{
     CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
@@ -15,11 +15,13 @@ use crate::models::race_run::RaceRun;
 use crate::utils::env_default;
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use diesel::{RunQueryDsl, SqliteConnection};
+use diesel::{QueryResult, RunQueryDsl, SqliteConnection};
+use diesel::prelude::*;
 use lazy_static::lazy_static;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use diesel::result::{DatabaseErrorKind, Error};
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -55,6 +57,7 @@ use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
+use crate::models::player::NewPlayer;
 
 use super::CREATE_RACE_CMD;
 
@@ -532,6 +535,52 @@ async fn handle_cancel_race(
     }
 }
 
+// TODO: make this (and handle_application_interaction in general) have error handling
+async fn _handle_register(
+    mut ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, String> {
+    let opt = get_opt("restream_ok", &mut ac.data.options, CommandOptionType::Boolean)?;
+    let ok = if let CommandOptionValue::Boolean(val) = opt.value {
+        val
+    } else {
+        return Err("Error: invalid option type".to_string());
+    };
+    let m = ac.member.ok_or("No member for /register command?".to_string())?;
+    let u = m.user.ok_or(format!("No user for member for /register command"))?;
+    let p = NewPlayer {
+        name: u.name,
+        discord_id: u.id.to_string(),
+        restreams_ok: ok,
+    };
+
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let res = diesel::insert_into(crate::schema::players::table)
+        .values(p)
+        .execute(cxn.deref_mut());
+    match res {
+        Ok(_) => {Ok(Some(plain_interaction_response("Registered! Thank you.")))}
+        Err(e) => {
+            if let Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _) = e {
+                Ok(Some(plain_interaction_response("You are already registered :)")))
+            } else {
+                Err(e.to_string())
+            }
+        }
+    }
+
+}
+
+async fn handle_register(
+    ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Option<InteractionResponse> {
+    match _handle_register(ac, state).await {
+        Ok(ir) => ir,
+        Err(e) => Some(plain_interaction_response(e))
+    }
+}
+
 /// this doesn't have an option to return an ErrorResponse because these interactions already occur
 /// under the watchful eyes of admins (and are, in fact, run _by_ admins)
 async fn handle_application_interaction(
@@ -541,6 +590,7 @@ async fn handle_application_interaction(
     match ac.data.name.as_str() {
         CREATE_RACE_CMD => Some(handle_create_race(ac, state).await),
         CANCEL_RACE_CMD => handle_cancel_race(ac, state).await,
+        REGISTER_CMD => handle_register(ac, state).await,
         _ => {
             println!("Unhandled application command: {}", ac.data.name);
             None
@@ -1023,7 +1073,25 @@ async fn set_application_commands(
     }))
     .build();
 
-    let commands = vec![create_race, cancel_race];
+    let register = CommandBuilder::new(
+        REGISTER_CMD.to_string(),
+            "Register with League. This does not commit you to anything, \
+            just gets you in the system.".to_string(),
+        CommandType::ChatInput
+    ).option(
+        CommandOption::Boolean(
+            BaseCommandOptionData {
+                description: "Are you okay with being restreamed?".to_string(),
+                description_localizations: None,
+                name: "restream_ok".to_string(),
+                name_localizations: None,
+                required: true
+            }
+        )
+    ).build();
+
+
+    let commands = vec![create_race, cancel_race, register];
 
     let resp = state
         .interaction_client()

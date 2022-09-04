@@ -2,7 +2,8 @@ table! {
     players (id) {
         id -> Integer,
         name -> Text,
-        discord_id -> BigInt,
+        discord_id -> Text,
+        restreams_ok -> Integer,
     }
 }
 

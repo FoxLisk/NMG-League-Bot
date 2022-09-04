@@ -1,7 +1,6 @@
 use async_trait::async_trait;
 use bb8::{ManageConnection, Pool};
 use diesel::{Connection, ConnectionError, SqliteConnection};
-use std::str::FromStr;
 use tokio::sync::Mutex;
 
 use lazy_static::lazy_static;
