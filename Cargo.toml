@@ -11,7 +11,10 @@ no_auth_website = []
 [dependencies]
 tokio = { version = "1.19.0", features = ["macros", "rt-multi-thread", "sync", "fs", "io-util", "signal"]}
 tokio-stream = "0.1.9"
-sqlx = {version = "0.5.13", features = [ "runtime-tokio-rustls" , "sqlite"]}
+
+diesel = {version = "2.0.0-rc.1", features = ["sqlite", "numeric", "returning_clauses_for_sqlite_3_35"]}
+diesel_migrations = "2.0.0-rc.1"
+libsqlite3-sys = { version = "=0.24.2", features = ["bundled"]}
 dotenv = "0.15.0"
 uuid = {version = "1.1.1", features = ["v4"] }
 rand = "0.8"
@@ -21,23 +24,27 @@ oauth2 = "4.2.0"
 aliri_braid = "0.1.10"
 serde = "1"
 chrono = "0.4"
+bb8 = "0.8.0"
+async-trait = "0.1"
 
 twilight-http = "0.11.0"
 twilight-model = "=0.11.0"
 twilight-validate = "0.11.0"
 twilight-mention = "0.11.0"
 twilight-cache-inmemory = "0.11.0"
-twilight-gateway = "0.11.0"
+twilight-gateway = { version = "0.11.0", features=["rustls-webpki-roots"] }
 twilight-util = { version = "0.11.0", features = ["builder", "link"]}
 twilight-standby = "=0.11.0"
+
+rustls = "0.20"
+rustls-native-certs = "0.6.2"
 
 dashmap = "5.3.4"
 
 rocket = { version = "0.5.0-rc.2", features = ["json"] }
 rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
-
+diesel_enum_derive = {git = "https://github.com/FoxLisk/diesel_enum_derive"}
 
 [build-dependencies]
-sqlx = {version = "0.5.13", features = [ "runtime-tokio-rustls" , "sqlite"]}
 tokio = { version = "1.19.0", features = ["rt-multi-thread", "macros"]}
 dotenv = "0.15.0"

@@ -4,6 +4,11 @@
 {% block pagename %}Async Status{% endblock %}
 {% block body %}
 <div>
+    {% if error %}
+        <div class="bg-red-500">
+            An error occurred: {{ error }}
+        </div>
+    {% endif %}
     {{ macros::async_table(state="Created",   races=created,   bg_class="bg-slate-200") }}
     {{ macros::async_table(state="Finished",  races=finished,  bg_class="bg-emerald-400") }}
     {{ macros::async_table(state="Abandoned", races=abandoned, bg_class="bg-red-300") }}

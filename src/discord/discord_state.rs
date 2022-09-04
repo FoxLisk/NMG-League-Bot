@@ -1,9 +1,12 @@
 use crate::constants::GUILD_ID_VAR;
+use crate::db::DieselConnectionManager;
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
+use bb8::{Pool, RunError};
 use dashmap::DashMap;
-use sqlx::SqlitePool;
+use diesel::ConnectionError;
 use std::env;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
@@ -20,7 +23,7 @@ use twilight_standby::Standby;
 pub(crate) struct DiscordState {
     pub cache: InMemoryCache,
     pub client: Client,
-    pub pool: SqlitePool,
+    diesel_pool: Pool<DieselConnectionManager>,
     pub webhooks: Webhooks,
     pub standby: Arc<Standby>,
     // this isn't handled by the cache b/c it is not updated via Gateway events
@@ -34,7 +37,7 @@ impl DiscordState {
         cache: InMemoryCache,
         client: Client,
         aid: Id<ApplicationMarker>,
-        pool: SqlitePool,
+        diesel_pool: Pool<DieselConnectionManager>,
         webhooks: Webhooks,
         standby: Arc<Standby>,
     ) -> Self {
@@ -43,7 +46,7 @@ impl DiscordState {
         Self {
             cache,
             client,
-            pool,
+            diesel_pool,
             webhooks,
             standby,
             application_id: aid,
@@ -149,5 +152,14 @@ impl DiscordState {
         self.create_response(interaction_id, token, resp)
             .await
             .map_err(|e| e.to_string())
+    }
+
+    pub(crate) async fn diesel_cxn<'a>(
+        &'a self,
+    ) -> Result<impl DerefMut<Target = diesel::SqliteConnection> + 'a, RunError<ConnectionError>>
+    {
+        // return Err(RunError::User(ConnectionError::BadConnection("asdf".to_string())));
+        let pc = self.diesel_pool.get().await;
+        pc
     }
 }

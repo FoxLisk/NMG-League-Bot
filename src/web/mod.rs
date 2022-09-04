@@ -19,23 +19,21 @@ use rocket::{get, Request, State};
 use rocket_dyn_templates::Template;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Duration, Instant};
-use tokio_stream::StreamExt;
 
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
 };
-use crate::db::get_pool;
 use crate::discord::discord_state::DiscordState;
-use crate::models::race_run::RaceRunState;
+use crate::models::race::{Race, RaceState};
+use crate::models::race_run::{RaceRun, RaceRunState};
+use crate::schema;
 use crate::shutdown::Shutdown;
-use crate::utils::format_secs;
 use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
-use chrono::NaiveDateTime;
+use diesel::prelude::*;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
-use sqlx::SqlitePool;
-use std::str::FromStr;
+use std::ops::DerefMut;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 
@@ -261,7 +259,7 @@ async fn login_page(client: &State<OauthClient>) -> Template {
 async fn discord_login(
     code: Option<String>,
     state: String,
-    error_description: Option<String>,
+    #[allow(unused_variables)] error_description: Option<String>,
     client: &State<OauthClient>,
     session_manager: &State<Arc<AsyncMutex<SessionManager>>>,
     role_checker: &State<Arc<DiscordState>>,
@@ -333,179 +331,187 @@ async fn discord_login(
 
 const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
-// TODO: this code is fucking annoying
+// N.B. this should either not be called DiscordState, or we should manage a separate
+// connection pool for the website
 #[get("/asyncs")]
-async fn async_view(
-    _a: Admin,
-    pool: &State<SqlitePool>,
-    discord_state: &State<Arc<DiscordState>>,
-) -> Template {
-    let mut qr = sqlx::query!(
-        r#"SELECT
-            race_id,
-            rr.uuid as rr_uuid,
-            racer_id,
-            filenames,
-            rr.state as "rr_state: RaceRunState",
-            vod,
-            r.state as "race_state!",
-            r.created,
-            rr.run_started,
-            rr.run_finished,
-            rr.reported_run_time,
-            rr.reported_at
-        FROM race_runs rr
-        LEFT JOIN races r
-        ON rr.race_id = r.id
-        ORDER BY r.created DESC;"#
-    )
-    .fetch(pool.inner());
+async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Template {
+    let mut cxn = match discord_state.diesel_cxn().await {
+        Ok(c) => c,
+        Err(e) => {
+            return Template::render("asyncs", Context::error(e.to_string()));
+        }
+    };
+    let query = schema::races::table.inner_join(schema::race_runs::table);
+    let results: Vec<(Race, RaceRun)> = match query.load::<(Race, RaceRun)>(cxn.deref_mut()) {
+        Ok(r) => r,
+        Err(e) => {
+            return Template::render("asyncs", Context::error(e.to_string()));
+        }
+    };
+
+    #[derive(Serialize, Default)]
+    struct Context {
+        error: Option<String>,
+        finished: Vec<ViewRace>,
+        created: Vec<ViewRace>,
+        abandoned: Vec<ViewRace>,
+        cancelled: Vec<ViewRace>,
+    }
+
+    impl Context {
+        fn error(s: String) -> Self {
+            Self {
+                error: Some(s),
+                ..Default::default()
+            }
+        }
+    }
 
     #[derive(Serialize)]
-    struct Run {
-        race_id: i64,
+    struct ViewRaceRun {
         run_uuid: String,
         racer_name: String,
         filenames: String,
         run_state: RaceRunState,
         vod: Option<String>,
-        created: i64,
         started: Option<String>,
         bot_time_to_finish: Option<String>,
         user_reported_time: Option<String>,
         time_from_finish_to_report: Option<String>,
     }
 
-    #[derive(Serialize)]
-    struct Race {
-        id: i64,
-        state: String,
-        p1: Run,
-        p2: Run,
+    struct ViewRaceBuilder {
+        id: i32,
+        state: RaceState,
+        p1: Option<ViewRaceRun>,
+        p2: Option<ViewRaceRun>,
     }
 
-    let mut runs = HashMap::<i64, Vec<Run>>::new();
-    let mut race_state = HashMap::<i64, String>::new();
+    #[derive(Serialize)]
+    struct ViewRace {
+        id: i32,
+        state: RaceState,
+        p1: ViewRaceRun,
+        p2: ViewRaceRun,
+    }
 
-    while let Some(row_res) = qr.next().await {
-        let row = match row_res {
-            Ok(r) => r,
+    impl ViewRaceBuilder {
+        fn from_race(r: Race) -> Self {
+            Self {
+                id: r.id,
+                state: r.state,
+                p1: None,
+                p2: None,
+            }
+        }
+
+        fn add_run(&mut self, vrr: ViewRaceRun) -> Result<(), ()> {
+            if self.p1.is_none() {
+                self.p1 = Some(vrr);
+                Ok(())
+            } else if self.p2.is_none() {
+                self.p2 = Some(vrr);
+                Ok(())
+            } else {
+                Err(())
+            }
+        }
+
+        fn build(self) -> Result<ViewRace, ()> {
+            // does this do a bunch of memory copying?
+            // it doesn't matter but i am kind of curious
+            let p1 = self.p1.ok_or(())?;
+            let p2 = self.p2.ok_or(())?;
+            if p1.run_uuid.lt(&p2.run_uuid) {
+                Ok(ViewRace {
+                    id: self.id,
+                    state: self.state,
+                    p1,
+                    p2,
+                })
+            } else {
+                Ok(ViewRace {
+                    id: self.id,
+                    state: self.state,
+                    p1: p2,
+                    p2: p1,
+                })
+            }
+        }
+    }
+
+    let mut race_builders: HashMap<i32, ViewRaceBuilder> = Default::default();
+
+    for (race, run) in results {
+        let vr = race_builders
+            .entry(race.id)
+            .or_insert(ViewRaceBuilder::from_race(race));
+        let username = match run.racer_id() {
+            Ok(uid) => discord_state
+                .get_user(uid)
+                .await
+                .ok()
+                .flatten()
+                .map(|u| u.name)
+                .unwrap_or("Unknown".to_string()),
             Err(e) => {
-                println!("Async view: error fetching row: {}", e);
-                continue;
+                println!("Error parsing racer id {}", e);
+                "Unknown".to_string()
             }
         };
-        let uid = match Id::<UserMarker>::from_str(&row.racer_id) {
-            Ok(u) => u,
-            Err(e) => {
-                println!("Error parsing racer id {}: {}", row.racer_id, e);
-                continue;
-            }
-        };
-        let username = discord_state
-            .get_user(uid)
-            .await
-            .ok()
-            .flatten()
-            .map(|u| u.name)
-            .unwrap_or("Unknown".to_string());
-        let start_dt: Option<NaiveDateTime> =
-            row.run_started.map(|t| NaiveDateTime::from_timestamp(t, 0));
-        let finish_dt: Option<NaiveDateTime> = row
-            .run_finished
-            .map(|t| NaiveDateTime::from_timestamp(t, 0));
-        let reported_dt: Option<NaiveDateTime> =
-            row.reported_at.map(|t| NaiveDateTime::from_timestamp(t, 0));
-
-        let bot_time_to_finish = finish_dt.and_then(|edt| {
-            start_dt.map(|sdt| {
-                let elapsed = edt.signed_duration_since(sdt);
-                format_secs(elapsed.num_seconds() as u64)
-            })
-        });
-
-        let time_from_finish_to_report = reported_dt.and_then(|rdt| {
-            finish_dt.map(|fdt| {
-                let elapsed = rdt.signed_duration_since(fdt);
-                format_secs(elapsed.num_seconds() as u64)
-            })
-        });
-
-        let run = Run {
-            race_id: row.race_id,
-            run_uuid: row.rr_uuid,
+        let started = run
+            .get_started_at()
+            .map(|s| s.format(DATETIME_FORMAT).to_string());
+        let bot_time_to_finish = run.get_time_to_finish();
+        let time_from_finish_to_report = run.get_time_from_finish_to_report();
+        let fns = run
+            .filenames()
+            .map(|f| f.to_string())
+            .unwrap_or("unknown error".to_string());
+        let vrr = ViewRaceRun {
+            run_uuid: run.uuid,
             racer_name: username,
-            filenames: row.filenames,
-            vod: row.vod,
-            run_state: row.rr_state,
-            created: row.created,
-            started: start_dt.map(|s| s.format(DATETIME_FORMAT).to_string()),
+            filenames: fns,
+            run_state: run.state,
+            vod: run.vod,
+            started,
             bot_time_to_finish,
-            user_reported_time: row.reported_run_time,
+            user_reported_time: run.reported_run_time,
             time_from_finish_to_report,
         };
-        runs.entry(row.race_id).or_insert(vec![]).push(run);
-        race_state.insert(row.race_id, row.race_state);
+        vr.add_run(vrr).ok();
     }
-    let mut races = HashMap::<String, Vec<Race>>::new();
-    for (id, mut runs) in runs.into_iter() {
-        let state = match race_state.remove(&id) {
-            Some(s) => s,
-            None => {
-                println!("Run found for missing race?");
+
+    let mut finished = vec![];
+    let mut created = vec![];
+    let mut abandoned = vec![];
+    let mut cancelled = vec![];
+
+    for vrb in race_builders.into_values() {
+        let vr = match vrb.build() {
+            Ok(vr_) => vr_,
+            Err(_) => {
                 continue;
             }
         };
-        runs.sort_by(|a, b| a.racer_name.cmp(&b.racer_name));
-        let p1 = match runs.pop() {
-            Some(r) => r,
-            None => {
-                println!("Not enough runs for race {}", id);
-                continue;
-            }
+        let destination = match vr.state {
+            RaceState::CREATED => &mut created,
+            RaceState::FINISHED => &mut finished,
+            RaceState::ABANDONED => &mut abandoned,
+            RaceState::CANCELLED_BY_ADMIN => &mut cancelled,
         };
-        let p2 = match runs.pop() {
-            Some(r) => r,
-            None => {
-                println!("Not enough runs for race {}", id);
-                continue;
-            }
-        };
-        races.entry(state.clone()).or_insert(vec![]).push(Race {
-            id: p1.race_id,
-            state,
-            p1,
-            p2,
-        });
+        destination.push(vr);
     }
 
-    for v in races.values_mut() {
-        v.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
-    }
-
-    let mut finished = races.remove("FINISHED").unwrap_or(vec![]);
-    finished.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
-
-    let mut created = races.remove("CREATED").unwrap_or(vec![]);
-    created.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
-
-    let mut abandoned = races.remove("ABANDONED").unwrap_or(vec![]);
-    abandoned.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
-
-    let mut cancelled = races.remove("CANCELLED_BY_ADMIN").unwrap_or(vec![]);
-    cancelled.sort_by(|a, b| a.p1.created.cmp(&b.p1.created));
-
-    #[derive(Serialize)]
-    struct Context {
-        finished: Vec<Race>,
-        created: Vec<Race>,
-        abandoned: Vec<Race>,
-        cancelled: Vec<Race>,
-    }
+    finished.sort_by(|a, b| a.id.cmp(&b.id));
+    created.sort_by(|a, b| a.id.cmp(&b.id));
+    abandoned.sort_by(|a, b| a.id.cmp(&b.id));
+    cancelled.sort_by(|a, b| a.id.cmp(&b.id));
 
     Template::render(
         "asyncs",
         Context {
+            error: None,
             finished,
             created,
             abandoned,
@@ -539,8 +545,6 @@ pub(crate) async fn launch_website(
     state: Arc<DiscordState>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) {
-    let pool = get_pool().await.unwrap();
-
     let oauth_client = OauthClient::new();
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
@@ -562,8 +566,7 @@ pub(crate) async fn launch_website(
         }))
         .manage(state)
         .manage(session_manager)
-        .manage(oauth_client)
-        .manage(pool);
+        .manage(oauth_client);
 
     let ignited = rocket.ignite().await.unwrap();
     println!("Rocket config: {:?}", ignited.config());
@@ -579,7 +582,7 @@ pub(crate) async fn launch_website(
         if let Err(_) = tokio::time::timeout(Duration::from_secs(5), jh).await {
             println!("Rocket didn't shutdown in a timely manner, dropping anyway");
         } else {
-            println!("Rocket did shutdown in a timely manner, actually");
+            println!("Rocket shut down promptly");
         }
     });
 }

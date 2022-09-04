@@ -1,3 +1,4 @@
+use diesel_migrations::MigrationHarness;
 use shutdown::Shutdown;
 
 mod constants;
@@ -5,17 +6,21 @@ mod db;
 mod discord;
 mod models;
 mod race_cron;
+mod schema;
 mod shutdown;
 mod utils;
 mod web;
 
+extern crate bb8;
 extern crate chrono;
+#[macro_use]
+extern crate diesel;
+extern crate diesel_enum_derive;
 extern crate oauth2;
 extern crate rand;
 extern crate regex;
 extern crate rocket;
 extern crate rocket_dyn_templates;
-extern crate sqlx;
 extern crate tokio;
 extern crate twilight_http;
 extern crate twilight_model;
@@ -28,10 +33,19 @@ use discord::Webhooks;
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
+
     let webhooks = Webhooks::new().await.unwrap();
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
 
     let state = discord::bot::launch(webhooks.clone(), shutdown_send.subscribe()).await;
+
+    {
+        let mut conn = state.diesel_cxn().await.unwrap();
+        let migrations =
+            diesel_migrations::FileBasedMigrations::from_path("diesel-migrations").unwrap();
+        let res = conn.run_pending_migrations(migrations).unwrap();
+        println!("Migrations: {:?}", res);
+    }
 
     tokio::spawn(race_cron::cron(
         shutdown_send.subscribe(),

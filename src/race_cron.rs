@@ -1,11 +1,13 @@
 use crate::constants::CRON_TICKS_VAR;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
-use crate::models::race::Race;
+use crate::models::race::{Race, RaceState};
 use crate::models::race_run::{RaceRun, RaceRunState};
+use crate::schema::races;
 use crate::shutdown::Shutdown;
-use crate::utils::{env_default, format_secs};
-use sqlx::SqlitePool;
+use crate::utils::{env_default, format_hms};
+use diesel::prelude::*;
+use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
@@ -16,7 +18,7 @@ fn format_finisher(run: &RaceRun) -> String {
     match run.state {
         RaceRunState::VOD_SUBMITTED => {
             let bot_time = match (run.run_started, run.run_finished) {
-                (Some(start), Some(finish)) => format_secs((finish - start) as u64),
+                (Some(start), Some(finish)) => format_hms((finish - start) as u64),
                 _ => "N/A".to_string(),
             };
             let p = run
@@ -65,19 +67,26 @@ impl<T> Fold<T> for Result<T, T> {
 }
 
 async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webhooks) {
-    let (mut r1, mut r2) = match race.get_runs(&state.pool).await {
+    let mut conn = match state.diesel_cxn().await {
+        Ok(c) => c,
+        Err(e) => {
+            println!("Error getting diesel connection: {:?}", e);
+            return;
+        }
+    };
+    let (mut r1, mut r2) = match race.get_runs(&mut conn).await {
         Ok(r) => r,
         Err(e) => {
             println!("Error fetching runs for race {}: {}", race.uuid, e);
             race.abandon();
-            if let Err(e) = race.save(&state.pool).await {
+            if let Err(e) = race.save(&mut conn).await {
                 println!("Error abandoning race {}: {}", race.uuid, e);
             }
             return;
         }
     };
     if r1.is_finished() && r2.is_finished() {
-        handle_finished_race(&mut race, &r1, &r2, &state.pool, webhooks).await
+        handle_finished_race(&mut race, &r1, &r2, &mut conn, webhooks).await
     } else {
         let mut msgs = Vec::with_capacity(2);
         if r1.state.is_created() {
@@ -109,7 +118,7 @@ async fn handle_finished_race(
     race: &mut Race,
     r1: &RaceRun,
     r2: &RaceRun,
-    pool: &SqlitePool,
+    conn: &mut SqliteConnection,
     webhooks: &Webhooks,
 ) {
     let s = format!(
@@ -153,7 +162,7 @@ async fn handle_finished_race(
         println!("Error executing webhook: {}", e);
     }
     race.finish();
-    if let Err(e) = race.save(pool).await {
+    if let Err(e) = race.save(conn).await {
         println!("Error saving finished race: {}", e);
         // TODO: report this, too, probably
     }
@@ -161,8 +170,18 @@ async fn handle_finished_race(
 
 async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
     println!("Sweep...");
-    let active_races = match Race::active_races(&state.pool).await {
-        Ok(rs) => rs,
+    let active_races: Vec<Race> = match state.diesel_cxn().await.map(|mut cxn| {
+        races::table
+            .filter(races::dsl::state.eq(RaceState::CREATED))
+            .load::<Race>(cxn.deref_mut())
+    }) {
+        Ok(qr) => match qr {
+            Ok(rs) => rs,
+            Err(e) => {
+                println!("Error fetching active races: {}", e);
+                return;
+            }
+        },
         Err(e) => {
             println!("Error fetching active races: {}", e);
             return;
