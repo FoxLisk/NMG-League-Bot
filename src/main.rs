@@ -41,7 +41,8 @@ async fn main() {
 
     {
         let mut conn = state.diesel_cxn().await.unwrap();
-        let migrations = diesel_migrations::FileBasedMigrations::from_path("diesel-migrations").unwrap();
+        let migrations =
+            diesel_migrations::FileBasedMigrations::from_path("diesel-migrations").unwrap();
         let res = conn.run_pending_migrations(migrations).unwrap();
         println!("Migrations: {:?}", res);
     }

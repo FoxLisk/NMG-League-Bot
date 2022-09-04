@@ -7,7 +7,7 @@ pub struct Player {
     pub id: i32,
     pub name: String,
     pub discord_id: String,
-    restreams_ok: i32
+    restreams_ok: i32,
 }
 
 impl Player {

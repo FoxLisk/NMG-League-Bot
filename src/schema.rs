@@ -36,8 +36,4 @@ table! {
 
 joinable!(race_runs -> races (race_id));
 
-allow_tables_to_appear_in_same_query!(
-    players,
-    race_runs,
-    races,
-);
+allow_tables_to_appear_in_same_query!(players, race_runs, races,);

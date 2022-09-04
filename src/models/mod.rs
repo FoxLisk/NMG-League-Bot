@@ -23,11 +23,11 @@ pub(crate) mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::models::{epoch_timestamp, uuid_string};
     use crate::schema::races;
-    use diesel_enum_derive::DieselEnum;
-    use diesel::prelude::{Insertable, Queryable, Identifiable, AsChangeset};
+    use diesel::prelude::{AsChangeset, Identifiable, Insertable, Queryable};
     use diesel::sql_types::Text;
+    use diesel::{AsExpression, RunQueryDsl, SqliteConnection};
+    use diesel_enum_derive::DieselEnum;
     use serde::Serialize;
-    use diesel::{RunQueryDsl, SqliteConnection, AsExpression};
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
 
@@ -40,7 +40,6 @@ pub(crate) mod race {
         ABANDONED,
         CANCELLED_BY_ADMIN,
     }
-
 
     #[derive(Insertable)]
     #[diesel(table_name=races)]
@@ -62,7 +61,7 @@ pub(crate) mod race {
     }
 
     #[derive(Identifiable, AsChangeset)]
-    #[table_name="races"]
+    #[table_name = "races"]
     struct UpdateRace {
         id: i32,
         uuid: String,
@@ -76,17 +75,21 @@ pub(crate) mod race {
                 id: r.id,
                 uuid: r.uuid,
                 created: r.created as i64,
-                state: r.state.into()
+                state: r.state.into(),
             }
         }
     }
 
     // statics
     impl Race {
-        pub(crate) async fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
+        pub(crate) async fn get_by_id(
+            id_: i32,
+            conn: &mut SqliteConnection,
+        ) -> Result<Self, String> {
             use crate::schema::races::dsl::*;
             use diesel::prelude::*;
-            races.filter(id.eq(id_))
+            races
+                .filter(id.eq(id_))
                 .first(conn)
                 .map_err(|e| e.to_string())
         }
@@ -104,9 +107,11 @@ pub(crate) mod race {
         /// clones self
         pub(crate) async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
             let update = UpdateRace::from(self.clone());
-            diesel::update(&update).set(&update).execute(conn)
+            diesel::update(&update)
+                .set(&update)
+                .execute(conn)
                 .map_err(|e| e.to_string())
-                .map(|_|())
+                .map(|_| ())
         }
 
         async fn add_run(
@@ -138,29 +143,24 @@ pub(crate) mod race {
 
         /// Cancels this race and its associated RaceRun
         /// This updates the database
-        pub(crate) async fn cancel(&self, conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
-            use crate::schema::races::dsl::state;
+        pub(crate) async fn cancel(
+            &self,
+            conn: &mut SqliteConnection,
+        ) -> Result<(), diesel::result::Error> {
             use crate::schema::race_runs::dsl::{race_id, state as run_state};
+            use crate::schema::races::dsl::state;
             use diesel::prelude::*;
 
-            conn.transaction(
-                |conn| {
-                    diesel::update(self)
-                        .set(state.eq(
-                            String::from(RaceState::CANCELLED_BY_ADMIN)
-                        ))
-                        .execute(conn)
-                        .map(|_| ())?;
-                    diesel::update(
-                        crate::schema::race_runs::table
-                            .filter(race_id.eq(self.id))
-                    ).set(run_state.eq(
-                        String::from(RaceRunState::CANCELLED_BY_ADMIN)
-                    ))
+            conn.transaction(|conn| {
+                diesel::update(self)
+                    .set(state.eq(String::from(RaceState::CANCELLED_BY_ADMIN)))
+                    .execute(conn)
+                    .map(|_| ())?;
+                diesel::update(crate::schema::race_runs::table.filter(race_id.eq(self.id)))
+                    .set(run_state.eq(String::from(RaceRunState::CANCELLED_BY_ADMIN)))
                     .execute(conn)
                     .map(|_| ())
-                }
-            )
+            })
         }
 
         pub(crate) async fn get_runs(
@@ -185,11 +185,11 @@ pub(crate) mod race {
 pub(crate) mod race_run {
     use crate::models::epoch_timestamp;
     use crate::models::uuid_string;
-    use diesel::prelude::*;
     use crate::schema::race_runs;
     use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
-    use diesel_enum_derive::DieselEnum;
     use chrono::NaiveDateTime;
+    use diesel::prelude::*;
+    use diesel_enum_derive::DieselEnum;
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
     use rand::{thread_rng, Rng};
@@ -388,9 +388,8 @@ pub(crate) mod race_run {
         pub(crate) vod: Option<String>,
     }
 
-
     #[derive(Identifiable, AsChangeset)]
-    #[table_name="race_runs"]
+    #[table_name = "race_runs"]
     struct UpdateRaceRun {
         id: i32,
         uuid: String,
@@ -422,7 +421,7 @@ pub(crate) mod race_run {
                 reported_run_time: rr.reported_run_time,
                 reported_at: rr.reported_at,
                 message_id: rr.message_id,
-                vod: rr.vod
+                vod: rr.vod,
             }
         }
     }
@@ -431,10 +430,11 @@ pub(crate) mod race_run {
     impl RaceRun {
         pub(crate) async fn get_runs(
             race_id_: i32,
-            conn: &mut SqliteConnection
+            conn: &mut SqliteConnection,
         ) -> Result<(RaceRun, RaceRun), String> {
             use crate::schema::race_runs::dsl::*;
-            let mut runs: Vec<RaceRun> = race_runs.filter(race_id.eq(race_id_))
+            let mut runs: Vec<RaceRun> = race_runs
+                .filter(race_id.eq(race_id_))
                 .load(conn)
                 .map_err(|e| e.to_string())?;
             if runs.len() == 2 {
@@ -533,7 +533,7 @@ pub(crate) mod race_run {
             diesel::update(self)
                 .set(update)
                 .execute(conn)
-                .map(|_|())
+                .map(|_| ())
                 .map_err(|e| e.to_string())
         }
 
@@ -555,8 +555,10 @@ pub(crate) mod race_run {
             conn: &mut SqliteConnection,
         ) -> Result<Option<Self>, String> {
             use crate::schema::race_runs::dsl::*;
-            let mut runs: Vec<Self> = race_runs.filter(message_id.eq(message_id_.to_string()))
-                .load(conn).map_err(|e| e.to_string())?;
+            let mut runs: Vec<Self> = race_runs
+                .filter(message_id.eq(message_id_.to_string()))
+                .load(conn)
+                .map_err(|e| e.to_string())?;
             Ok(runs.pop())
         }
     }
@@ -590,6 +592,5 @@ pub(crate) mod race_run {
                 state: RaceRunState::CREATED,
             }
         }
-
     }
 }
