@@ -2,3 +2,4 @@
 .env
 db/*
 http/static/css/tailwind.css
+*.db3
