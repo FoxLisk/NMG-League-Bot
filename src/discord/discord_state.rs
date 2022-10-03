@@ -11,6 +11,7 @@ use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
 use twilight_http::Client;
+use twilight_model::application::interaction::ApplicationCommand;
 use twilight_model::guild::Role;
 use twilight_model::http::interaction::InteractionResponse;
 use twilight_model::id::marker::{
@@ -141,6 +142,20 @@ impl DiscordState {
             .exec()
             .await
             .map(|_| ())
+    }
+
+    pub(crate) async fn application_command_run_by_admin(
+        &self,
+        ac: &Box<ApplicationCommand>,
+    ) -> Result<bool, String> {
+        let gid = ac
+            .guild_id
+            .ok_or("Create race called outside of guild context".to_string())?;
+        let uid = ac
+            .author_id()
+            .ok_or("Create race called by no one ????".to_string())?;
+
+        self.has_admin_role(uid, gid).await
     }
 
     pub(crate) async fn create_response_err_to_str(

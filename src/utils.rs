@@ -73,3 +73,16 @@ impl<T, O> OptExt<T, O> for Option<T> {
         lift_option(self, other, f)
     }
 }
+
+pub trait ResultFold<T> {
+    fn fold(self) -> T;
+}
+
+impl<T> ResultFold<T> for Result<T, T> {
+    fn fold(self) -> T {
+        match self {
+            Ok(t) => {t}
+            Err(e) => {e}
+        }
+    }
+}

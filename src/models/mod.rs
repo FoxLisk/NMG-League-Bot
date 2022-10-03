@@ -1,4 +1,5 @@
 pub mod player;
+pub mod season;
 
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()

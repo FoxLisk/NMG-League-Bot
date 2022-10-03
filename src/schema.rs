@@ -37,10 +37,20 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    seasons (id) {
+        id -> Integer,
+        started -> BigInt,
+        finished -> Nullable<BigInt>,
+        format -> Text,
+    }
+}
+
 diesel::joinable!(race_runs -> races (race_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     players,
     race_runs,
     races,
+    seasons,
 );

@@ -4,7 +4,7 @@ use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, REGISTER_CMD};
+use crate::discord::{notify_racer, REGISTER_CMD, START_SEASON_CMD};
 use crate::discord::{
     CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
@@ -13,7 +13,7 @@ use crate::discord::{
 use crate::models::player::NewPlayer;
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
-use crate::utils::env_default;
+use crate::utils::{env_default, ResultFold};
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use diesel::result::{DatabaseErrorKind, Error};
@@ -55,6 +55,7 @@ use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
+use crate::models::season::NewSeason;
 
 use super::CREATE_RACE_CMD;
 
@@ -172,14 +173,7 @@ async fn _handle_create_race(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let gid = ac
-        .guild_id
-        .ok_or("Create race called outside of guild context".to_string())?;
-    let uid = ac
-        .author_id()
-        .ok_or("Create race called by no one ????".to_string())?;
-
-    if !state.has_admin_role(uid, gid).await? {
+    if !state.application_command_run_by_admin(&ac).await? {
         return Err("Unprivileged user attempted to create race".to_string());
     }
 
@@ -256,6 +250,50 @@ async fn _handle_create_race(
         ))),
     }
 }
+
+
+async fn _handle_start_season(
+    mut ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    if !state.application_command_run_by_admin(&ac).await? {
+        return Err("You are not authorized for this.".to_string());
+    }
+
+    let format_opt = get_opt(
+        "format",
+        &mut ac.data.options,
+        CommandOptionType::String
+    )?;
+    let format = if let CommandOptionValue::String(s) = format_opt.value {
+        s
+    } else {
+        return Err("Missing format option".to_string());
+    };
+
+    let ns = NewSeason::new(format);
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    diesel::insert_into(crate::schema::seasons::table)
+        .values(ns)
+        .execute(cxn.deref_mut())
+        .map_err(|e| e.to_string())?;
+    Ok(
+        plain_interaction_response("Season created!")
+    )
+}
+
+
+async fn handle_start_season(
+    ac: Box<ApplicationCommand>,
+    state: &Arc<DiscordState>,
+) -> Option<InteractionResponse> {
+    Some(
+        _handle_start_season(ac, state).await
+        .map_err(|e| plain_interaction_response(e))
+        .fold()
+    )
+}
+
 
 async fn handle_create_race(
     ac: Box<ApplicationCommand>,
@@ -464,7 +502,14 @@ async fn _handle_cancel_race(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
-    let opt = get_opt("race_id", &mut ac.data.options, CommandOptionType::Integer)?;
+
+    if !state.application_command_run_by_admin(&ac).await? {
+        return Err("You are not authorized for this.".to_string());
+    }
+
+    let opt = get_opt(
+        "race_id", &mut ac.data.options, CommandOptionType::Integer
+    )?;
     if !ac.data.options.is_empty() {
         return Err(format!(
             "I'm very confused: {} had an unexpected option",
@@ -615,6 +660,7 @@ async fn handle_application_interaction(
         CREATE_RACE_CMD => Ok(Some(handle_create_race(ac, state).await)),
         CANCEL_RACE_CMD => Ok(handle_cancel_race(ac, state).await),
         REGISTER_CMD => handle_register(ac, state).await,
+        START_SEASON_CMD => Ok(handle_start_season(ac, state).await),
         _ => {
             println!("Unhandled application command: {}", ac.data.name);
             Ok(None)
@@ -1140,7 +1186,26 @@ async fn set_application_commands(
         ))
     .build();
 
-    let commands = vec![create_race, cancel_race, register];
+    let start_season =  CommandBuilder::new(
+        START_SEASON_CMD.to_string(),
+        "Start a new season"
+            .to_string(),
+        CommandType::ChatInput,
+    )
+        .option(CommandOption::String(
+            ChoiceCommandOptionData {
+                autocomplete: false,
+                choices: vec![],
+                description: "Format".to_string(),
+                description_localizations: None,
+                name: "format".to_string(),
+                name_localizations: None,
+                required: true
+            }
+        ))
+        .build();
+
+    let commands = vec![create_race, cancel_race, register, start_season];
 
     let resp = state
         .interaction_client()
