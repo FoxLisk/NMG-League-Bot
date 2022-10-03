@@ -29,9 +29,7 @@ use twilight_gateway::Cluster;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::Client;
 use twilight_mention::Mention;
-use twilight_model::application::command::{
-    BaseCommandOptionData, CommandOption, CommandOptionType, CommandType, NumberCommandOptionData,
-};
+use twilight_model::application::command::{BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandOptionType, CommandType, NumberCommandOptionData};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
 use twilight_model::application::component::{ActionRow, Component, TextInput};
@@ -539,16 +537,29 @@ async fn _handle_register(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
-    let opt = get_opt(
+    let restream_opt = get_opt(
         "restream_ok",
         &mut ac.data.options,
         CommandOptionType::Boolean,
     )?;
-    let ok = if let CommandOptionValue::Boolean(val) = opt.value {
+    let restreams_ok = if let CommandOptionValue::Boolean(val) = restream_opt.value {
         val
     } else {
-        return Err("Error: invalid option type".to_string());
+        return Err("Error: invalid option type for restream_ok".to_string());
     };
+    let rtgg_opt = get_opt(
+        "racetime_username",
+        &mut ac.data.options,
+        CommandOptionType::String
+    )?;
+
+    let rtgg_username = if let CommandOptionValue::String(s) = rtgg_opt.value {
+        s
+    } else {
+        return Err("Error: invalid option type for racetime_username".to_string());
+    };
+
+
     let m = ac
         .member
         .ok_or("No member for /register command?".to_string())?;
@@ -558,7 +569,8 @@ async fn _handle_register(
     let p = NewPlayer {
         name: u.name,
         discord_id: u.id.to_string(),
-        restreams_ok: ok,
+        racetime_username: rtgg_username,
+        restreams_ok,
     };
 
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
@@ -1111,6 +1123,17 @@ async fn set_application_commands(
         name_localizations: None,
         required: true,
     }))
+        .option(CommandOption::String(
+            ChoiceCommandOptionData {
+                autocomplete: false,
+                choices: vec![],
+                description: "RaceTime.gg account with discriminator: username#1234".to_string(),
+                description_localizations: None,
+                name: "racetime_username".to_string(),
+                name_localizations: None,
+                required: true
+            }
+        ))
     .build();
 
     let commands = vec![create_race, cancel_race, register];

@@ -1,13 +1,16 @@
-table! {
+// @generated automatically by Diesel CLI.
+
+diesel::table! {
     players (id) {
         id -> Integer,
         name -> Text,
         discord_id -> Text,
+        racetime_username -> Text,
         restreams_ok -> Integer,
     }
 }
 
-table! {
+diesel::table! {
     race_runs (id) {
         id -> Integer,
         uuid -> Text,
@@ -25,7 +28,7 @@ table! {
     }
 }
 
-table! {
+diesel::table! {
     races (id) {
         id -> Integer,
         uuid -> Text,
@@ -34,6 +37,10 @@ table! {
     }
 }
 
-joinable!(race_runs -> races (race_id));
+diesel::joinable!(race_runs -> races (race_id));
 
-allow_tables_to_appear_in_same_query!(players, race_runs, races,);
+diesel::allow_tables_to_appear_in_same_query!(
+    players,
+    race_runs,
+    races,
+);
