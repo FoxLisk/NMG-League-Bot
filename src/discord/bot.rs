@@ -594,11 +594,15 @@ async fn _handle_register(
 async fn handle_register(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
-) -> Option<InteractionResponse> {
-    match _handle_register(ac, state).await {
-        Ok(ir) => ir,
-        Err(e) => Some(plain_interaction_response(e)),
-    }
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    _handle_register(ac, state).await
+        .map_err(|e|
+            ErrorResponse::new(
+                "Sorry, something went wrong with your registration. An admin
+                will look into it.",
+                e
+            )
+        )
 }
 
 /// this doesn't have an option to return an ErrorResponse because these interactions already occur
@@ -606,14 +610,14 @@ async fn handle_register(
 async fn handle_application_interaction(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
-) -> Option<InteractionResponse> {
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match ac.data.name.as_str() {
-        CREATE_RACE_CMD => Some(handle_create_race(ac, state).await),
-        CANCEL_RACE_CMD => handle_cancel_race(ac, state).await,
+        CREATE_RACE_CMD => Ok(Some(handle_create_race(ac, state).await)),
+        CANCEL_RACE_CMD => Ok(handle_cancel_race(ac, state).await),
         REGISTER_CMD => handle_register(ac, state).await,
         _ => {
             println!("Unhandled application command: {}", ac.data.name);
-            None
+            Ok(None)
         }
     }
 }
@@ -1013,7 +1017,7 @@ async fn _handle_interaction(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction.0 {
-        Interaction::ApplicationCommand(ac) => Ok(handle_application_interaction(ac, &state).await),
+        Interaction::ApplicationCommand(ac) => handle_application_interaction(ac, &state).await,
         Interaction::MessageComponent(mc) => handle_button_interaction(mc, &state).await,
         Interaction::ModalSubmit(ms) => handle_modal_submission(ms, &state).await,
         _ => {
