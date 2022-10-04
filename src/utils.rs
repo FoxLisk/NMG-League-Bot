@@ -74,12 +74,12 @@ impl<T, O> OptExt<T, O> for Option<T> {
     }
 }
 
-pub trait ResultFold<T> {
-    fn fold(self) -> T;
+pub trait ResultCollapse<T> {
+    fn collapse(self) -> T;
 }
 
-impl<T> ResultFold<T> for Result<T, T> {
-    fn fold(self) -> T {
+impl<T> ResultCollapse<T> for Result<T, T> {
+    fn collapse(self) -> T {
         match self {
             Ok(t) => {t}
             Err(e) => {e}

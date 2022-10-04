@@ -1,5 +1,7 @@
 pub mod player;
 pub mod season;
+mod brackets;
+mod bracket_races;
 
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
