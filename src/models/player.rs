@@ -1,4 +1,5 @@
 use diesel::prelude::Insertable;
+use diesel::SqliteConnection;
 // use crate::schema::players::dsl::*;
 use crate::schema::players;
 
@@ -12,6 +13,7 @@ pub struct Player {
 }
 
 impl Player {
+
     pub fn restreams_ok(&self) -> bool {
         self.restreams_ok == 1
     }

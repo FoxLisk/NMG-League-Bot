@@ -4,24 +4,25 @@ use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, REGISTER_CMD, CREATE_SEASON_CMD, CREATE_BRACKET_CMD};
+use crate::discord::{notify_racer, REGISTER_CMD, CREATE_SEASON_CMD, CREATE_BRACKET_CMD, SIGNUP_CMD};
 use crate::discord::{
     CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
-use crate::models::player::NewPlayer;
+use crate::models::player::{NewPlayer, Player};
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
 use crate::utils::{env_default, ResultCollapse};
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
 use diesel::result::{DatabaseErrorKind, Error};
-use diesel::{RunQueryDsl, SqliteConnection};
+use diesel::{Connection, QueryResult, RunQueryDsl, SqliteConnection};
 use lazy_static::lazy_static;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
+use diesel::result::Error::DatabaseError;
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -55,7 +56,8 @@ use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
-use crate::models::season::NewSeason;
+use crate::models::season::{NewSeason, Season};
+use crate::models::signups::NewSignup;
 
 use super::CREATE_RACE_CMD;
 
@@ -532,7 +534,7 @@ async fn handle_cancel_race(
     }
 
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let race = match Race::get_by_id(race_id as i32, &mut conn).await {
+    let race = match Race::get_by_id(race_id as i32, &mut conn) {
         Ok(r) => r,
         Err(_e) => {
             return Ok(Some(plain_interaction_response(
@@ -575,7 +577,7 @@ async fn _handle_register(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
-    let restreams_ok = get_opt!("restream_ok", &mut ac.data.options, Boolean)?;
+    let restreams_ok_opt = get_opt!("restream_ok", &mut ac.data.options, Boolean)?;
     let rtgg_username = get_opt!("racetime_username", &mut ac.data.options, String)?;
 
     let m = ac
@@ -584,31 +586,60 @@ async fn _handle_register(
     let u = m
         .user
         .ok_or(format!("No user for member for /register command"))?;
-    let p = NewPlayer {
-        name: u.name,
-        discord_id: u.id.to_string(),
-        racetime_username: rtgg_username,
-        restreams_ok,
-    };
+
 
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let res = diesel::insert_into(crate::schema::players::table)
-        .values(p)
-        .execute(cxn.deref_mut());
-    match res {
-        Ok(_) => Ok(Some(plain_interaction_response("Registered! Thank you."))),
-        Err(e) => {
-            if let Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _) = e {
-                Ok(Some(plain_interaction_response(
-                    "You are already registered :)",
-                )))
-            } else {
-                Err(e.to_string())
+    let player: Player = cxn.transaction(|conn| {
+        use crate::schema::players::dsl::*;
+        use diesel::prelude::*;
+
+        if let Ok(Some(p)) = players.filter(discord_id.eq(u.id.to_string()))
+            .first(conn)
+            .optional() {
+            return Ok(p);
+        }
+
+        let np = NewPlayer {
+            name: u.name,
+            discord_id: u.id.to_string(),
+            racetime_username: rtgg_username,
+            restreams_ok: restreams_ok_opt,
+        };
+
+        let res = diesel::insert_into(players)
+            .values(np)
+            .get_result(conn);
+        res
+    }).map_err(|e| e.to_string())?;
+
+    let szn = Season::get_active_season(
+        cxn.deref_mut()).map_err(|e| e.to_string()
+    )?;
+    if let Some(season) = szn {
+        let ns = NewSignup::new(&player, &season);
+        let insert_res = diesel::insert_into(crate::schema::signups::table)
+            .values(&ns)
+            .execute(cxn.deref_mut());
+        if let Err(Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) = insert_res {
+
+        }
+        match insert_res {
+            Ok(_)| Err(Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
+
+            },
+            Err(e) => {
+                return Err(e.to_string());
             }
         }
     }
+    Ok(Some(plain_interaction_response("Registered! Thank you :)")))
 }
 
+
+/// this registers the user and signs them up for the current
+/// season.
+///
+/// I am combining these functions because I think it is more user-friendly.
 async fn handle_register(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
@@ -1143,8 +1174,7 @@ async fn set_application_commands(
 
     let register = CommandBuilder::new(
         REGISTER_CMD.to_string(),
-        "Register with League. This does not commit you to anything, \
-            just gets you in the system."
+        "Register with League and signup for the current season."
             .to_string(),
         CommandType::ChatInput,
     )
@@ -1167,6 +1197,7 @@ async fn set_application_commands(
             }
         ))
     .build();
+
 
     let create_season =  CommandBuilder::new(
         CREATE_SEASON_CMD.to_string(),

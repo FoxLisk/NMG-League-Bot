@@ -1,7 +1,8 @@
 pub mod player;
 pub mod season;
-mod brackets;
-mod bracket_races;
+pub mod brackets;
+pub mod bracket_races;
+pub mod signups;
 
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -85,7 +86,7 @@ pub(crate) mod race {
 
     // statics
     impl Race {
-        pub(crate) async fn get_by_id(
+        pub(crate) fn get_by_id(
             id_: i32,
             conn: &mut SqliteConnection,
         ) -> Result<Self, String> {

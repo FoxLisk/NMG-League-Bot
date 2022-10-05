@@ -71,10 +71,20 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    signups (id) {
+        id -> Integer,
+        player_id -> Integer,
+        season_id -> Integer,
+    }
+}
+
 diesel::joinable!(bracket_races -> brackets (bracket_id));
 diesel::joinable!(bracket_races -> races (async_race_id));
 diesel::joinable!(brackets -> seasons (season_id));
 diesel::joinable!(race_runs -> races (race_id));
+diesel::joinable!(signups -> players (player_id));
+diesel::joinable!(signups -> seasons (season_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     bracket_races,
@@ -83,4 +93,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     race_runs,
     races,
     seasons,
+    signups,
 );
