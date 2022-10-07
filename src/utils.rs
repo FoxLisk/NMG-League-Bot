@@ -73,3 +73,16 @@ impl<T, O> OptExt<T, O> for Option<T> {
         lift_option(self, other, f)
     }
 }
+
+pub trait ResultCollapse<T> {
+    fn collapse(self) -> T;
+}
+
+impl<T> ResultCollapse<T> for Result<T, T> {
+    fn collapse(self) -> T {
+        match self {
+            Ok(t) => {t}
+            Err(e) => {e}
+        }
+    }
+}
