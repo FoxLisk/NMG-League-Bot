@@ -287,9 +287,7 @@ async fn handle_create_season(
 
     let ns = NewSeason::new(format);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    diesel::insert_into(crate::schema::seasons::table)
-        .values(ns)
-        .execute(cxn.deref_mut())
+    ns.save(cxn.deref_mut())
         .map_err(|e| e.to_string())?;
     Ok(
         plain_interaction_response("Season created!")
@@ -599,12 +597,11 @@ async fn _handle_register(
             return Ok(p);
         }
 
-        let np = NewPlayer {
-            name: u.name,
-            discord_id: u.id.to_string(),
-            racetime_username: rtgg_username,
-            restreams_ok: restreams_ok_opt,
-        };
+        let np = NewPlayer::new(
+            u.name, u.id.to_string(),
+            rtgg_username,
+            restreams_ok_opt,
+        );
 
         let res = diesel::insert_into(players)
             .values(np)

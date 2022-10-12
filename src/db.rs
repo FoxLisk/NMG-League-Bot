@@ -9,21 +9,31 @@ lazy_static! {
     // was getting intermittent PoolTimedOut errors on `get_pool`, which i think this resolves?
     static ref DB_LOCK: Mutex<()> = Mutex::new(());
 }
-pub(crate) struct DieselConnectionManager {
+pub struct DieselConnectionManager {
     path: String,
+}
+
+fn munge_path(sqlite_db_path: String) -> String {
+    if sqlite_db_path.starts_with("sqlite://") {
+        sqlite_db_path
+            .strip_prefix("sqlite://")
+            .unwrap()
+            .to_string()
+    } else {
+        sqlite_db_path
+    }
+}
+
+pub fn raw_diesel_cxn_from_env() -> diesel::ConnectionResult<SqliteConnection> {
+    let sqlite_db_path = std::env::var("DATABASE_URL").unwrap();
+    let path = munge_path(sqlite_db_path);
+    SqliteConnection::establish(&path)
 }
 
 impl DieselConnectionManager {
     fn new_from_env() -> Self {
         let sqlite_db_path = std::env::var("DATABASE_URL").unwrap();
-        let path = if sqlite_db_path.starts_with("sqlite://") {
-            sqlite_db_path
-                .strip_prefix("sqlite://")
-                .unwrap()
-                .to_string()
-        } else {
-            sqlite_db_path
-        };
+        let path = munge_path(sqlite_db_path);
         Self { path }
     }
 }
@@ -48,7 +58,7 @@ impl ManageConnection for DieselConnectionManager {
     }
 }
 
-pub(crate) async fn get_diesel_pool() -> Pool<DieselConnectionManager> {
+pub async fn get_diesel_pool() -> Pool<DieselConnectionManager> {
     let p = Pool::builder()
         .build(DieselConnectionManager::new_from_env())
         .await

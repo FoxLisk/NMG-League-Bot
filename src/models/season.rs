@@ -1,11 +1,13 @@
 use std::process::id;
-use diesel::prelude::Insertable;
-use diesel::SqliteConnection;
+use diesel::prelude::{Insertable, Queryable};
+use diesel::{RunQueryDsl, SqliteConnection};
+
 use crate::models::epoch_timestamp;
+use crate::save_fn;
 // use crate::schema::players::dsl::*;
 use crate::schema::seasons;
 
-#[derive(Queryable)]
+#[derive(Queryable, Debug)]
 pub struct Season {
     pub id: i32,
     started: i64,
@@ -45,14 +47,11 @@ pub struct NewSeason {
 }
 
 impl NewSeason {
-    pub fn new(format: String) -> Self {
+    pub fn new<S: Into<String>>(format: S) -> Self {
         Self {
-            format,
+            format: format.into(),
             started: epoch_timestamp() as i64
         }
     }
+    save_fn!(seasons::table, Season);
 }
-
-// use
-//
-// struct

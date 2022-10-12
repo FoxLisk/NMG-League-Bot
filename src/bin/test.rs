@@ -1,3 +1,3 @@
 fn main() {
-    println!("test.rs");
+    println!("test");
 }

@@ -1,4 +1,4 @@
-use diesel::prelude::Insertable;
+use diesel::prelude::{Insertable, Queryable};
 use rocket::serde::json::serde_json;
 use crate::models::brackets::Bracket;
 use crate::models::epoch_timestamp;

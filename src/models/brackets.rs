@@ -1,14 +1,18 @@
-use diesel::prelude::Insertable;
+use diesel::prelude::{Insertable, Queryable};
 use rocket::serde::json::serde_json;
+use crate::models::season::Season;
+use crate::save_fn;
 use crate::schema::brackets;
+use diesel::{SqliteConnection, RunQueryDsl};
 
 
-#[derive(Queryable)]
+
+#[derive(Queryable, Debug)]
 #[allow(unused)]
 pub struct Bracket {
     pub id: i32,
-    season_id: i32,
     name: String,
+    season_id: i32,
     state: String,
     current_round: Option<i32>
 }
@@ -30,15 +34,17 @@ pub struct NewBracket {
 }
 
 impl NewBracket {
-    fn new(bracket: &Bracket, name: String) -> Self {
+    pub fn new<S: Into<String>>(season: &Season, name: S) -> Self {
         // ... okay this would be FINE to .unwrap(), but rules are rules
         Self {
-            season_id: bracket.id,
-            name,
+            season_id: season.id,
+            name: name.into(),
             state: serde_json::to_string(&BracketState::Unstarted).unwrap_or("Unknown".to_string()),
             current_round: None
         }
     }
+
+    save_fn!(brackets::table, Bracket);
 }
 
 #[cfg(test)]

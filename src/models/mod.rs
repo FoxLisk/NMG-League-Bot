@@ -1,8 +1,10 @@
+use diesel::{Insertable, QueryResult, RunQueryDsl, SqliteConnection, Table};
+
 pub mod player;
 pub mod season;
 pub mod brackets;
 pub mod bracket_races;
-pub mod signups;
+pub mod player_bracket_entries;
 
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -21,6 +23,19 @@ pub(crate) fn epoch_timestamp() -> u32 {
         );
     }
     t_u32
+}
+
+// TODO: should this be a derive macro?
+#[macro_export]
+macro_rules! save_fn {
+    ($table:expr, $output:ty) => {
+        pub fn save(&self, cxn: &mut diesel::SqliteConnection) -> diesel::QueryResult<$output> {
+            use diesel::RunQueryDsl;
+            diesel::insert_into($table)
+                .values(self)
+                .get_result(cxn)
+        }
+    }
 }
 
 pub(crate) mod race {
