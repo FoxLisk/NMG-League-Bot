@@ -2,6 +2,15 @@
 name = "nmg-league-bot"
 version = "0.1.0"
 edition = "2021"
+default-run = "bot"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "bot"
+path = "src/main.rs"
+
 
 [features]
 no_auth_website = []
