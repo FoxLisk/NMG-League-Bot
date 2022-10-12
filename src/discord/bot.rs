@@ -16,7 +16,7 @@ use crate::models::race_run::RaceRun;
 use crate::utils::{env_default, ResultCollapse};
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use diesel::result::{DatabaseErrorKind, Error};
+use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use diesel::{Connection, QueryResult, RunQueryDsl, SqliteConnection};
 use lazy_static::lazy_static;
 use std::fmt::{Debug, Display, Formatter};
@@ -620,11 +620,11 @@ async fn _handle_register(
         let insert_res = diesel::insert_into(crate::schema::signups::table)
             .values(&ns)
             .execute(cxn.deref_mut());
-        if let Err(Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) = insert_res {
+        if let Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) = insert_res {
 
         }
         match insert_res {
-            Ok(_)| Err(Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
+            Ok(_)| Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
 
             },
             Err(e) => {
