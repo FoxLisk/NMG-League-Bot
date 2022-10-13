@@ -1,5 +1,6 @@
 use diesel::prelude::{Insertable, Queryable};
 use diesel::SqliteConnection;
+use crate::models::brackets::Bracket;
 use crate::save_fn;
 use crate::schema::players;
 
@@ -16,6 +17,7 @@ impl Player {
     pub fn restreams_ok(&self) -> bool {
         self.restreams_ok == 1
     }
+
 }
 
 #[derive(Insertable)]

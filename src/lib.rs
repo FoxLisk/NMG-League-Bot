@@ -1,3 +1,6 @@
+extern crate serde_json;
+extern crate rand;
+
 pub mod models;
 pub mod db;
 pub mod schema;

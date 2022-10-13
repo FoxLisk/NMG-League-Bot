@@ -1,6 +1,7 @@
 use std::process::id;
-use diesel::prelude::{Insertable, Queryable};
+use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
+use crate::models::brackets::Bracket;
 
 use crate::models::epoch_timestamp;
 use crate::save_fn;
@@ -35,6 +36,12 @@ impl Season {
             .filter(finished.is_null())
             .first(conn)
             .optional()
+    }
+
+    pub fn brackets(&self, conn: &mut SqliteConnection) -> Result<Vec<Bracket>, diesel::result::Error> {
+        use crate::schema::brackets as sbrack;
+        sbrack::table.filter(sbrack::season_id.eq(self.id))
+            .load(conn)
     }
 }
 

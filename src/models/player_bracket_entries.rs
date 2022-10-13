@@ -16,6 +16,7 @@ pub struct PlayerBracketEntry {
     pub player_id: i32,
 }
 
+
 #[derive(Insertable)]
 #[diesel(table_name=player_bracket_entry)]
 pub struct NewPlayerBracketEntry {

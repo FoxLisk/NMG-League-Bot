@@ -1,5 +1,6 @@
 use diesel::prelude::{Insertable, Queryable};
 use rocket::serde::json::serde_json;
+use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::epoch_timestamp;
 use crate::models::player::Player;
@@ -7,16 +8,17 @@ use crate::models::race::Race;
 use crate::schema::bracket_races;
 
 #[derive(serde::Serialize, serde::Deserialize)]
-enum BracketRaceState {
+pub enum BracketRaceState {
     New,
     Scheduled,
     Finished
 }
 
 #[derive(Queryable)]
-struct BracketRace {
+pub struct BracketRace {
     id: i32,
     bracket_id: i32,
+    round_id: i32,
     player_1_id: i32,
     player_2_id: i32,
     async_race_id: Option<i32>,
@@ -29,10 +31,11 @@ struct BracketRace {
 
 #[derive(Insertable)]
 #[diesel(table_name=bracket_races)]
-struct NewBracketRace {
+pub struct NewBracketRace {
     bracket_id: i32,
-    player_1_id: i32,
-    player_2_id: i32,
+    round_id: i32,
+    pub player_1_id: i32,
+    pub player_2_id: i32,
     async_race_id: Option<i32>,
     scheduled_for: Option<i64>,
     state: String,
@@ -43,9 +46,10 @@ struct NewBracketRace {
 
 impl NewBracketRace {
     // i think we probably always create these without anything scheduled
-    fn new(bracket: &Bracket, player_1: &Player, player_2: &Player) -> Self {
+    pub fn new(bracket: &Bracket, round: &BracketRound, player_1: &Player, player_2: &Player) -> Self {
         Self {
             bracket_id: bracket.id,
+            round_id: round.id,
             player_1_id: player_1.id,
             player_2_id: player_2.id,
             async_race_id: None,

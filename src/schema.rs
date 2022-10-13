@@ -4,6 +4,7 @@ diesel::table! {
     bracket_races (id) {
         id -> Integer,
         bracket_id -> Integer,
+        round_id -> Integer,
         player_1_id -> Integer,
         player_2_id -> Integer,
         async_race_id -> Nullable<Integer>,
@@ -16,12 +17,19 @@ diesel::table! {
 }
 
 diesel::table! {
+    bracket_rounds (id) {
+        id -> Integer,
+        round_num -> Integer,
+        bracket_id -> Integer,
+    }
+}
+
+diesel::table! {
     brackets (id) {
         id -> Integer,
         name -> Text,
         season_id -> Integer,
         state -> Text,
-        current_round -> Nullable<Integer>,
     }
 }
 
@@ -79,8 +87,10 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(bracket_races -> bracket_rounds (round_id));
 diesel::joinable!(bracket_races -> brackets (bracket_id));
 diesel::joinable!(bracket_races -> races (async_race_id));
+diesel::joinable!(bracket_rounds -> brackets (bracket_id));
 diesel::joinable!(brackets -> seasons (season_id));
 diesel::joinable!(player_bracket_entry -> brackets (bracket_id));
 diesel::joinable!(player_bracket_entry -> players (player_id));
@@ -88,6 +98,7 @@ diesel::joinable!(race_runs -> races (race_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     bracket_races,
+    bracket_rounds,
     brackets,
     player_bracket_entry,
     players,
