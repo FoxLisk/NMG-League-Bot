@@ -4,7 +4,9 @@ use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, REGISTER_CMD, CREATE_SEASON_CMD, CREATE_BRACKET_CMD, SIGNUP_CMD};
+use crate::discord::{
+    notify_racer, CREATE_BRACKET_CMD, CREATE_SEASON_CMD, REGISTER_CMD, SIGNUP_CMD,
+};
 use crate::discord::{
     CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
@@ -13,16 +15,18 @@ use crate::discord::{
 use crate::models::player::{NewPlayer, Player};
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
+use crate::models::season::{NewSeason, Season};
+use crate::models::signups::NewSignup;
 use crate::utils::{env_default, ResultCollapse};
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
+use diesel::result::Error::DatabaseError;
 use diesel::result::{DatabaseErrorKind, Error as DieselError};
 use diesel::{Connection, QueryResult, RunQueryDsl, SqliteConnection};
 use lazy_static::lazy_static;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use diesel::result::Error::DatabaseError;
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -30,7 +34,10 @@ use twilight_gateway::Cluster;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::Client;
 use twilight_mention::Mention;
-use twilight_model::application::command::{BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandOptionType, CommandType, NumberCommandOptionData};
+use twilight_model::application::command::{
+    BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandOptionType, CommandType,
+    NumberCommandOptionData,
+};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
 use twilight_model::application::component::{ActionRow, Component, TextInput};
@@ -56,11 +63,8 @@ use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
-use crate::models::season::{NewSeason, Season};
-use crate::models::signups::NewSignup;
 
 use super::CREATE_RACE_CMD;
-
 
 macro_rules! get_option_value {
     ($t:ident, $e:expr) => {
@@ -82,20 +86,15 @@ CommandOptionValue::OptionType(actual_value) and give you back just the actual_v
 returns Result<T, String> where actual_value: T
  */
 macro_rules! get_opt {
-    ($opt_name:expr, $options:expr, $t:ident) => {
-        {
-            get_opt($opt_name, $options, CommandOptionType::$t)
-                .and_then(|opt| {
-                    if let CommandOptionValue::$t(output) = opt.value {
-                        Ok(output)
-                    } else {
-                        Err(format!("Invalid option value for {}", $opt_name))
-                    }
-                }
-            )
-
-        }
-    }
+    ($opt_name:expr, $options:expr, $t:ident) => {{
+        get_opt($opt_name, $options, CommandOptionType::$t).and_then(|opt| {
+            if let CommandOptionValue::$t(output) = opt.value {
+                Ok(output)
+            } else {
+                Err(format!("Invalid option value for {}", $opt_name))
+            }
+        })
+    }};
 }
 
 pub(crate) async fn launch(
@@ -275,7 +274,6 @@ async fn handle_create_race(
     }
 }
 
-
 async fn handle_create_season(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
@@ -287,13 +285,9 @@ async fn handle_create_season(
 
     let ns = NewSeason::new(format);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    ns.save(cxn.deref_mut())
-        .map_err(|e| e.to_string())?;
-    Ok(
-        plain_interaction_response("Season created!")
-    )
+    ns.save(cxn.deref_mut()).map_err(|e| e.to_string())?;
+    Ok(plain_interaction_response("Season created!"))
 }
-
 
 async fn handle_create_bracket(
     mut ac: Box<ApplicationCommand>,
@@ -312,12 +306,12 @@ async fn handle_create_bracket(
 /// turns a "String" error response into a plain interaction response with that text
 ///
 /// designed for use on admin-only commands, where errors should just be reported to the admins
-fn admin_command_wrapper(result: Result<Option<InteractionResponse>, String>) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    Ok(
-        result
+fn admin_command_wrapper(
+    result: Result<Option<InteractionResponse>, String>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    Ok(result
         .map_err(|e| Some(plain_interaction_response(e)))
-        .collapse()
-    )
+        .collapse())
 }
 
 /// extracts the option with given name, if any
@@ -517,7 +511,6 @@ async fn handle_cancel_race(
     mut ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
-
     if !state.application_command_run_by_admin(&ac).await? {
         return Err("You are not authorized for this.".to_string());
     }
@@ -585,45 +578,36 @@ async fn _handle_register(
         .user
         .ok_or(format!("No user for member for /register command"))?;
 
-
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let player: Player = cxn.transaction(|conn| {
-        use crate::schema::players::dsl::*;
-        use diesel::prelude::*;
+    let player: Player = cxn
+        .transaction(|conn| {
+            use crate::schema::players::dsl::*;
+            use diesel::prelude::*;
 
-        if let Ok(Some(p)) = players.filter(discord_id.eq(u.id.to_string()))
-            .first(conn)
-            .optional() {
-            return Ok(p);
-        }
+            if let Ok(Some(p)) = players
+                .filter(discord_id.eq(u.id.to_string()))
+                .first(conn)
+                .optional()
+            {
+                return Ok(p);
+            }
 
-        let np = NewPlayer::new(
-            u.name, u.id.to_string(),
-            rtgg_username,
-            restreams_ok_opt,
-        );
+            let np = NewPlayer::new(u.name, u.id.to_string(), rtgg_username, restreams_ok_opt);
 
-        let res = diesel::insert_into(players)
-            .values(np)
-            .get_result(conn);
-        res
-    }).map_err(|e| e.to_string())?;
+            let res = diesel::insert_into(players).values(np).get_result(conn);
+            res
+        })
+        .map_err(|e| e.to_string())?;
 
-    let szn = Season::get_active_season(
-        cxn.deref_mut()).map_err(|e| e.to_string()
-    )?;
+    let szn = Season::get_active_season(cxn.deref_mut()).map_err(|e| e.to_string())?;
     if let Some(season) = szn {
         let ns = NewSignup::new(&player, &season);
         let insert_res = diesel::insert_into(crate::schema::signups::table)
             .values(&ns)
             .execute(cxn.deref_mut());
-        if let Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) = insert_res {
-
-        }
+        if let Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) = insert_res {}
         match insert_res {
-            Ok(_)| Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
-
-            },
+            Ok(_) | Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {}
             Err(e) => {
                 return Err(e.to_string());
             }
@@ -631,7 +615,6 @@ async fn _handle_register(
     }
     Ok(Some(plain_interaction_response("Registered! Thank you :)")))
 }
-
 
 /// this registers the user and signs them up for the current
 /// season.
@@ -641,14 +624,13 @@ async fn handle_register(
     ac: Box<ApplicationCommand>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    _handle_register(ac, state).await
-        .map_err(|e|
-            ErrorResponse::new(
-                "Sorry, something went wrong with your registration. An admin
+    _handle_register(ac, state).await.map_err(|e| {
+        ErrorResponse::new(
+            "Sorry, something went wrong with your registration. An admin
                 will look into it.",
-                e
-            )
+            e,
         )
+    })
 }
 
 /// this doesn't have an option to return an ErrorResponse because these interactions already occur
@@ -662,14 +644,16 @@ async fn handle_application_interaction(
         REGISTER_CMD => handle_register(ac, state).await,
 
         // admin commands
-        CREATE_RACE_CMD => admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i))),
+        CREATE_RACE_CMD => {
+            admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i)))
+        }
         CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, state).await),
-        CREATE_SEASON_CMD => admin_command_wrapper(
-            handle_create_season(ac, state).await.map(|i| Some(i))
-        ),
-        CREATE_BRACKET_CMD => admin_command_wrapper(
-                handle_create_bracket(ac, state).await.map(|i| Some(i))
-        ),
+        CREATE_SEASON_CMD => {
+            admin_command_wrapper(handle_create_season(ac, state).await.map(|i| Some(i)))
+        }
+        CREATE_BRACKET_CMD => {
+            admin_command_wrapper(handle_create_bracket(ac, state).await.map(|i| Some(i)))
+        }
 
         _ => {
             println!("Unhandled application command: {}", ac.data.name);
@@ -1171,8 +1155,7 @@ async fn set_application_commands(
 
     let register = CommandBuilder::new(
         REGISTER_CMD.to_string(),
-        "Register with League and signup for the current season."
-            .to_string(),
+        "Register with League and signup for the current season.".to_string(),
         CommandType::ChatInput,
     )
     .option(CommandOption::Boolean(BaseCommandOptionData {
@@ -1182,76 +1165,66 @@ async fn set_application_commands(
         name_localizations: None,
         required: true,
     }))
-        .option(CommandOption::String(
-            ChoiceCommandOptionData {
-                autocomplete: false,
-                choices: vec![],
-                description: "RaceTime.gg account with discriminator: username#1234".to_string(),
-                description_localizations: None,
-                name: "racetime_username".to_string(),
-                name_localizations: None,
-                required: true
-            }
-        ))
+    .option(CommandOption::String(ChoiceCommandOptionData {
+        autocomplete: false,
+        choices: vec![],
+        description: "RaceTime.gg account with discriminator: username#1234".to_string(),
+        description_localizations: None,
+        name: "racetime_username".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
     .build();
 
-
-    let create_season =  CommandBuilder::new(
+    let create_season = CommandBuilder::new(
         CREATE_SEASON_CMD.to_string(),
-        "Create a new season"
-            .to_string(),
+        "Create a new season".to_string(),
         CommandType::ChatInput,
     )
-        .option(CommandOption::String(
-            ChoiceCommandOptionData {
-                autocomplete: false,
-                choices: vec![],
-                description: "Format (e.g. Any% NMG)".to_string(),
-                description_localizations: None,
-                name: "format".to_string(),
-                name_localizations: None,
-                required: true
-            }
-        ))
-        .build();
+    .option(CommandOption::String(ChoiceCommandOptionData {
+        autocomplete: false,
+        choices: vec![],
+        description: "Format (e.g. Any% NMG)".to_string(),
+        description_localizations: None,
+        name: "format".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
+    .build();
 
-
-    let create_bracket =  CommandBuilder::new(
+    let create_bracket = CommandBuilder::new(
         CREATE_BRACKET_CMD.to_string(),
-        "Create a new bracket"
-            .to_string(),
+        "Create a new bracket".to_string(),
         CommandType::ChatInput,
     )
-        .option(CommandOption::String(
-            ChoiceCommandOptionData {
-                autocomplete: false,
-                choices: vec![],
-                description: "Name (e.g. Dark World)".to_string(),
-                description_localizations: None,
-                name: "name".to_string(),
-                name_localizations: None,
-                required: true
-            }
-        ))
-        .option(CommandOption::Integer(
-            NumberCommandOptionData {
-                autocomplete: false,
-                choices: vec![],
-                description: "Season ID".to_string(),
-                description_localizations: None,
-                max_value: None,
-                min_value: None,
-                name: "season_id".to_string(),
-                name_localizations: None,
-                required: true
-            }
-        ))
-        .build();
+    .option(CommandOption::String(ChoiceCommandOptionData {
+        autocomplete: false,
+        choices: vec![],
+        description: "Name (e.g. Dark World)".to_string(),
+        description_localizations: None,
+        name: "name".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
+    .option(CommandOption::Integer(NumberCommandOptionData {
+        autocomplete: false,
+        choices: vec![],
+        description: "Season ID".to_string(),
+        description_localizations: None,
+        max_value: None,
+        min_value: None,
+        name: "season_id".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
+    .build();
 
     let commands = vec![
-        create_race, cancel_race, register, create_season,
+        create_race,
+        cancel_race,
+        register,
+        create_season,
         create_bracket,
-
     ];
 
     let resp = state

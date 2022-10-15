@@ -15,6 +15,4 @@ fn main() {
         }
         b.generate_pairings(&mut db).unwrap();
     }
-    // TODO: run the rounds i guess. or hook this up to discord bottage.
-
 }

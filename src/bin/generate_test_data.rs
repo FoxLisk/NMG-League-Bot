@@ -2,7 +2,7 @@ use nmg_league_bot::db::{get_diesel_pool, raw_diesel_cxn_from_env};
 use nmg_league_bot::models::brackets::NewBracket;
 use nmg_league_bot::models::player::NewPlayer;
 use nmg_league_bot::models::player_bracket_entries::{NewPlayerBracketEntry, PlayerBracketEntry};
-use nmg_league_bot::models::season::NewSeason;
+use nmg_league_bot::models::season::{NewSeason, Season};
 
 extern crate dotenv;
 
@@ -10,6 +10,10 @@ extern crate dotenv;
 async fn main() {
     dotenv::dotenv().unwrap();
     let mut db = raw_diesel_cxn_from_env().unwrap();
+    if Season::get_active_season(&mut db).unwrap().is_some() {
+        println!("Test data already generated");
+        return;
+    }
 
     let nsn = NewSeason::new("Test NMG");
     let sn = nsn.save(&mut db).unwrap();
@@ -20,17 +24,11 @@ async fn main() {
         let name = format!("player_{}", i);
         let discord_id = format!("{}", i);
         let racetime_username = format!("player_{}#{}", i, i);
-        let np = NewPlayer::new(
-            name,
-            discord_id,
-            racetime_username,
-            true,
-        );
+        let np = NewPlayer::new(name, discord_id, racetime_username, true);
         let p = np.save(&mut db).unwrap();
 
         let entry = NewPlayerBracketEntry::new(&b, &p);
         let pbe = entry.save(&mut db).unwrap();
         println!("Player {:?}, pbe {:?}", p, pbe);
     }
-
 }

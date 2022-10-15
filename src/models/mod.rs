@@ -1,11 +1,11 @@
 use diesel::{Insertable, QueryResult, RunQueryDsl, SqliteConnection, Table};
 
-pub mod player;
-pub mod season;
-pub mod brackets;
 pub mod bracket_races;
-pub mod player_bracket_entries;
 pub mod bracket_rounds;
+pub mod brackets;
+pub mod player;
+pub mod player_bracket_entries;
+pub mod season;
 
 pub(crate) fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
@@ -32,11 +32,18 @@ macro_rules! save_fn {
     ($table:expr, $output:ty) => {
         pub fn save(&self, cxn: &mut diesel::SqliteConnection) -> diesel::QueryResult<$output> {
             use diesel::RunQueryDsl;
-            diesel::insert_into($table)
-                .values(self)
-                .get_result(cxn)
+            diesel::insert_into($table).values(self).get_result(cxn)
         }
-    }
+    };
+}
+
+#[macro_export]
+macro_rules! update_fn {
+    () => {
+        pub fn update(&self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
+            diesel::update(self).set(self).execute(conn)
+        }
+    };
 }
 
 pub(crate) mod race {
@@ -102,10 +109,7 @@ pub(crate) mod race {
 
     // statics
     impl Race {
-        pub(crate) fn get_by_id(
-            id_: i32,
-            conn: &mut SqliteConnection,
-        ) -> Result<Self, String> {
+        pub(crate) fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
             use crate::schema::races::dsl::*;
             use diesel::prelude::*;
             races

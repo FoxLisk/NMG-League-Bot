@@ -81,8 +81,8 @@ pub trait ResultCollapse<T> {
 impl<T> ResultCollapse<T> for Result<T, T> {
     fn collapse(self) -> T {
         match self {
-            Ok(t) => {t}
-            Err(e) => {e}
+            Ok(t) => t,
+            Err(e) => e,
         }
     }
 }

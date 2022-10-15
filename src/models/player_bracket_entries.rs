@@ -1,7 +1,7 @@
-use std::process::id;
+use crate::models::brackets::Bracket;
 use diesel::prelude::{Insertable, Queryable};
 use diesel::{RunQueryDsl, SqliteConnection};
-use crate::models::brackets::Bracket;
+use std::process::id;
 
 use crate::models::epoch_timestamp;
 use crate::models::player::Player;
@@ -16,7 +16,6 @@ pub struct PlayerBracketEntry {
     pub player_id: i32,
 }
 
-
 #[derive(Insertable)]
 #[diesel(table_name=player_bracket_entry)]
 pub struct NewPlayerBracketEntry {
@@ -28,7 +27,7 @@ impl NewPlayerBracketEntry {
     pub fn new(bracket: &Bracket, player: &Player) -> Self {
         Self {
             bracket_id: bracket.id,
-            player_id: player.id
+            player_id: player.id,
         }
     }
     save_fn!(player_bracket_entry::table, PlayerBracketEntry);

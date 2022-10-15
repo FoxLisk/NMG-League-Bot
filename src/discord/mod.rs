@@ -40,7 +40,6 @@ const SIGNUP_CMD: &str = "signup";
 const CREATE_SEASON_CMD: &str = "create_season";
 const CREATE_BRACKET_CMD: &str = "create_bracket";
 
-
 /// DM the player & save the run model if the DM sends successfully
 pub(crate) async fn notify_racer(
     race_run: &mut RaceRun,
