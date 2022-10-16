@@ -1,5 +1,3 @@
-use diesel::{Insertable, QueryResult, RunQueryDsl, SqliteConnection, Table};
-
 pub mod bracket_races;
 pub mod bracket_rounds;
 pub mod brackets;
@@ -12,12 +10,9 @@ pub(crate) fn uuid_string() -> String {
 }
 
 pub(crate) fn epoch_timestamp() -> u32 {
-    let timestamp = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
+    let timestamp = chrono::Utc::now().timestamp();
     let t_u32 = timestamp as u32;
-    if t_u32 as u64 != timestamp {
+    if t_u32 as i64 != timestamp {
         println!(
             "Error: timestamp too big?? got {} secs since epoch, which converted to {}",
             timestamp, t_u32

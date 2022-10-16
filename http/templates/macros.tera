@@ -5,7 +5,7 @@
 {% endmacro %}
 
 {% macro row_cell(data) %}
-<td class="border-x border-slate-500">
+<td class="border-x border-slate-500 px-1">
     {{ data }}
 </td>
 {% endmacro %}

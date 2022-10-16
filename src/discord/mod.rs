@@ -34,9 +34,7 @@ const CREATE_RACE_CMD: &str = "create_race";
 const CANCEL_RACE_CMD: &str = "cancel_race";
 const ADMIN_ROLE_NAME: &'static str = "Admin";
 
-const REGISTER_CMD: &str = "register";
 
-const SIGNUP_CMD: &str = "signup";
 const CREATE_SEASON_CMD: &str = "create_season";
 const CREATE_BRACKET_CMD: &str = "create_bracket";
 

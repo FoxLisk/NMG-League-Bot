@@ -1,5 +1,5 @@
 /target
 .env
 db/*
-http/static/css/tailwind.css
+http/static/css/tailwind.css.bak
 *.db3

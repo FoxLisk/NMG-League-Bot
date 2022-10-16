@@ -1,6 +1,8 @@
+use std::borrow::BorrowMut;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::{Display, Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use itertools::Itertools;
 
 use oauth2::basic::{BasicClient, BasicErrorResponseType, BasicTokenType};
 use oauth2::reqwest::async_http_client;
@@ -12,7 +14,7 @@ use oauth2::{
     TokenResponse as OauthTokenResponse, TokenUrl,
 };
 use rocket::fs::NamedFile;
-use rocket::http::{Cookie, CookieJar};
+use rocket::http::{Cookie, CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::{get, Request, State};
@@ -34,8 +36,16 @@ use diesel::prelude::*;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::DerefMut;
+use bb8::Pool;
+use oauth2::url::quirks::search;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
+use crate::db::{DieselConnectionManager, get_diesel_pool};
+use crate::models::bracket_races::BracketRace;
+use crate::models::bracket_rounds::BracketRound;
+use crate::models::brackets::Bracket;
+use crate::models::player::Player;
+use crate::models::season::Season;
 
 mod session_manager;
 
@@ -520,6 +530,162 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
     )
 }
 
+#[derive(Serialize)]
+struct DisplayPlayer {
+    name_and_status: String,
+    winner: bool,
+    loser: bool,
+}
+
+#[derive(Serialize)]
+struct DisplayRace {
+    player_1: DisplayPlayer,
+    player_2: DisplayPlayer,
+    scheduled: Option<String>
+}
+
+impl DisplayRace {
+    fn new(p1: &Player, p2: &Player, race: &BracketRace) -> Self {
+        let outcome = race.outcome().unwrap_or(None);
+        use crate::models::bracket_races::Outcome::{P1Win, P2Win};
+
+        let player_1 = match race.player_1_result() {
+            Some(r) => {
+                DisplayPlayer {
+                    name_and_status: format!("{} ({})",  p1.name.clone(), r),
+                    winner: outcome == Some(P1Win),
+                    loser: outcome == Some(P2Win),
+                }
+
+            },
+            None => DisplayPlayer { name_and_status: p1.name.clone(), winner: false, loser: false }
+        };
+        let player_2 = match race.player_2_result() {
+            Some(r) => {
+                DisplayPlayer {
+                    name_and_status: format!("{} ({})",  p1.name.clone(), r),
+                    winner: outcome == Some(P2Win),
+                    loser: outcome == Some(P1Win),
+                }
+
+            },
+            None => DisplayPlayer { name_and_status: p2.name.clone(), winner: false, loser: false }
+        };
+        let scheduled = match outcome {
+            Some(o) => None,
+            None => {
+                if let Some(utc_dt) = race.scheduled() {
+                    Some(
+                        utc_dt.with_timezone(&chrono_tz::US::Eastern)
+                        .format("%A, %B %d at %r (%Z)")
+                            .to_string()
+                    )
+                } else {
+                    None
+                }
+            }
+        };
+        Self {
+            player_1,
+            player_2,
+            scheduled
+        }
+
+    }
+}
+
+
+#[derive(Serialize)]
+struct DisplayRound {
+    round_num: i32,
+    races: Vec<DisplayRace>,
+}
+
+#[derive(Serialize)]
+struct DisplayBracket {
+    bracket: Bracket,
+    /// all the rounds of the bracket, in ascending order (i.e. round 1 first, round 2 second)
+    rounds: Vec<DisplayRound>
+}
+
+#[derive(Serialize)]
+struct BracketsContext {
+    season: Option<Season>,
+    brackets: Vec<DisplayBracket>,
+}
+
+fn get_brackets_context(conn: &mut SqliteConnection) -> Result<BracketsContext, diesel::result::Error> {
+    let mut ctx = BracketsContext {
+        season: None,
+        brackets: vec![],
+    };
+
+    let szn = match Season::get_active_season(conn)? {
+        Some(szn) => szn,
+        None => { return Ok(ctx); }
+    };
+
+    let brackets = szn.brackets(conn)?;
+
+    for bracket in brackets {
+        let races = bracket.bracket_races(conn)?;
+        let rounds_by_id : HashMap<i32, BracketRound> = HashMap::from_iter(  bracket.rounds(conn)?.into_iter().map(|r| (r.id, r) ));
+        let players_by_id : HashMap<i32, Player> = HashMap::from_iter(  bracket.players(conn)?.into_iter().map(|r| (r.id, r) ));
+
+        let mut display_rounds_by_num: HashMap<i32, DisplayRound> = Default::default();
+        for race in races {
+            let round = match rounds_by_id.get(&race.round_id) {
+                Some(r) => r,
+                None => {
+                    println!("Missing round with id {}", race.round_id);
+                    continue;
+                }
+            };
+            let p1 = match players_by_id.get(&race.player_1_id) {
+                Some(p) => p,
+                None => { continue; }
+            };
+
+            let p2 = match players_by_id.get(&race.player_2_id) {
+                Some(p) => p,
+                None => { continue; }
+            };
+            let dr = DisplayRace::new(p1, p2, &race);
+
+            display_rounds_by_num.entry(round.round_num)
+                .or_insert(DisplayRound { round_num: round.round_num, races: vec![] }).races.push(dr);
+        }
+        let rounds = display_rounds_by_num.into_iter().sorted_by_key(|(n, rs)| n.clone())
+            .map(|(n, rs)| rs).collect();
+
+        let disp_b = DisplayBracket {
+            bracket,
+            rounds
+        };
+        ctx.brackets.push(disp_b);
+    }
+
+    ctx.season = Some(szn);
+
+    Ok(ctx)
+
+}
+
+#[get("/brackets")]
+async fn brackets(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
+    // rocket::http::Status::InternalServerError
+    let mut conn = db.get().await
+        .map_err(|_| Status::InternalServerError)?;
+
+    let ctx = get_brackets_context(&mut conn)
+        .map_err(|_| Status::InternalServerError)?;
+
+    Ok( Template::render(
+        "brackets",
+        ctx,
+    ))
+}
+
 fn option_default(
     v: &Value,
     h: &HashMap<String, Value>,
@@ -548,6 +714,7 @@ pub(crate) async fn launch_website(
     let oauth_client = OauthClient::new();
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
+    let db = get_diesel_pool().await;
 
     let rocket = rocket::build()
         .mount("/static", rocket::routes![statics])
@@ -557,8 +724,12 @@ pub(crate) async fn launch_website(
                 login_page,
                 discord_login,
                 index_logged_in,
+                async_view,
+                brackets,
+                // it's important to keep this at the end, it functions like a 404 catcher
+                // TODO that's actually a bug
                 index_logged_out,
-                async_view
+
             ],
         )
         .attach(Template::custom(|e| {
@@ -566,7 +737,8 @@ pub(crate) async fn launch_website(
         }))
         .manage(state)
         .manage(session_manager)
-        .manage(oauth_client);
+        .manage(oauth_client)
+        .manage(db);
 
     let ignited = rocket.ignite().await.unwrap();
     println!("Rocket config: {:?}", ignited.config());

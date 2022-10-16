@@ -1,13 +1,12 @@
 use async_trait::async_trait;
 use bb8::{ManageConnection, Pool};
 use diesel::{Connection, ConnectionError, SqliteConnection};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, MutexGuard};
 
 use lazy_static::lazy_static;
 
 lazy_static! {
-    // was getting intermittent PoolTimedOut errors on `get_pool`, which i think this resolves?
-    static ref DB_LOCK: Mutex<()> = Mutex::new(());
+    static ref DB_LOCK: Mutex<Option<Pool<DieselConnectionManager>>> = Mutex::new(None);
 }
 pub struct DieselConnectionManager {
     path: String,
@@ -59,9 +58,23 @@ impl ManageConnection for DieselConnectionManager {
 }
 
 pub async fn get_diesel_pool() -> Pool<DieselConnectionManager> {
-    let p = Pool::builder()
-        .build(DieselConnectionManager::new_from_env())
-        .await
-        .unwrap();
-    p
+    let mut something: MutexGuard<'_, Option<Pool<DieselConnectionManager>>> = DB_LOCK.lock().await;
+
+    match &*something {
+        Some(p) => {
+            println!("Returning existing diesel pool");
+            p.clone()
+        },
+        None => {
+            println!("Generating a new diesel pool");
+            let p = Pool::builder()
+                .build(DieselConnectionManager::new_from_env())
+                .await
+                .unwrap();
+
+            let out = p.clone();
+            *something = Some(p);
+            out
+        }
+    }
 }

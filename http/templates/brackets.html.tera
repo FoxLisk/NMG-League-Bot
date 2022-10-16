@@ -1,0 +1,47 @@
+{% extends "base" %}
+
+{% import "macros" as macros %}
+
+{% block pagename %}NMG League Season 2 Brackets{% endblock %}
+{% block body %}
+{% if season %}
+    Season {{ season.id }}: {{ season.format }}
+{% endif %}
+{% for bracket in brackets %}
+    <div class="p1 border border-1">
+        Bracket: {{ bracket.bracket.name }}
+        {% for round in bracket.rounds %}
+            <div class="p-1 bg-sky-300 border border-1">
+                Round {{ round.round_num }}
+                <div class="p-1">
+                    <table  class="border border-slate-500">
+                        <thead>
+                        </thead>
+                        <tbody>
+                        {% for race in round.races %}
+                            <tr class="border-b border-slate-500">
+                                <td class="border-x border-slate-500 pl-1 pr-3
+                                 {% if race.player_1.winner %} bg-emerald-400 {% elif race.player_1.loser %} bg-red-400 {% endif %}
+                                 ">
+                                    {{ race.player_1.name_and_status }}
+                                </td>
+                                <td class="border-x border-slate-500 pl-1 pr-3
+                                 {% if race.player_2.winner %} bg-emerald-400 {% elif race.player_2.loser %} bg-red-400 {% endif %}
+                                 ">
+                                    {{ race.player_2.name_and_status }}
+                                </td>
+                                {% if race.scheduled %}
+                                    <td class="border-x border-slate-500 p-1">
+                                        {{ race.scheduled }}
+                                    </td>
+                                {% endif %}
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endfor %}
+{% endblock %}

@@ -2,13 +2,13 @@ use crate::models::brackets::Bracket;
 use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
 use std::process::id;
+use serde::Serialize;
 
 use crate::models::epoch_timestamp;
 use crate::save_fn;
-// use crate::schema::players::dsl::*;
 use crate::schema::seasons;
 
-#[derive(Queryable, Debug)]
+#[derive(Queryable, Debug, Serialize)]
 pub struct Season {
     pub id: i32,
     started: i64,

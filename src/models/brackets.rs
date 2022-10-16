@@ -1,17 +1,16 @@
 use std::collections::HashMap;
-use crate::models::bracket_races::{BracketRaceState, BracketRaceStateError, insert_bulk, MatchResultError, NewBracketRace};
+use crate::models::bracket_races::{BracketRace, BracketRaceStateError, insert_bulk, MatchResultError, NewBracketRace};
 use crate::models::bracket_rounds::{BracketRound, NewBracketRound};
 use crate::models::player::Player;
-use crate::models::player_bracket_entries::PlayerBracketEntry;
 use crate::models::season::Season;
 use crate::schema::brackets;
 use crate::{save_fn, update_fn};
 use diesel::prelude::*;
 use diesel::result::Error;
-use diesel::sqlite::Sqlite;
 use diesel::{RunQueryDsl, SqliteConnection};
 use rand::thread_rng;
-use swiss_pairings::{MatchResult, PairingError, TourneyConfig};
+use swiss_pairings::{PairingError, TourneyConfig};
+use serde::Serialize;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 enum BracketState {
@@ -20,7 +19,7 @@ enum BracketState {
     Finished,
 }
 
-#[derive(Queryable, Identifiable, Debug, AsChangeset)]
+#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
 #[allow(unused)]
 pub struct Bracket {
     pub id: i32,
@@ -82,10 +81,7 @@ fn generate_next_round_pairings(
     if bracket.state()? != BracketState::Started {
         return Err(BracketError::InvalidState);
     }
-    let rounds: Vec<BracketRound> = bracket_rounds::table
-        .filter(bracket_rounds::bracket_id.eq(bracket.id))
-        .order(bracket_rounds::round_num.asc())
-        .load(conn)?;
+    let rounds = bracket.rounds(conn)?;
 
     let mut round_races = vec![];
 
@@ -110,7 +106,7 @@ fn generate_next_round_pairings(
         points_per_draw: 1,
         error_on_repeated_opponent: true
     };
-    let (pairings, standings) = swiss_pairings::swiss_pairings(&pairing_rounds, &cfg, swiss_pairings::random_by_scoregroup)?;
+    let (pairings, _standings) = swiss_pairings::swiss_pairings(&pairing_rounds, &cfg, swiss_pairings::random_by_scoregroup)?;
     println!("{:?}", pairings);
 
     let mut players: HashMap<_, _> = HashMap::from_iter(
@@ -156,11 +152,26 @@ impl Bracket {
             .load(conn)
     }
 
+    pub fn rounds(&self, conn: &mut SqliteConnection) -> Result<Vec<BracketRound>, diesel::result::Error> {
+        use crate::schema::bracket_rounds;
+        bracket_rounds::table
+            .filter(bracket_rounds::bracket_id.eq(self.id))
+            .order(bracket_rounds::round_num.asc())
+            .load(conn)
+    }
+
+    /// returns all BracketRaces for this bracket (unordered)
+    pub fn bracket_races(&self, conn: &mut SqliteConnection) -> Result<Vec<BracketRace>, diesel::result::Error> {
+        use crate::schema::bracket_races;
+        bracket_races::table
+            .filter(bracket_races::bracket_id.eq(self.id))
+            .load(conn)
+    }
+
     fn generate_initial_pairings(
         &mut self,
         conn: &mut SqliteConnection,
     ) -> Result<(), BracketError> {
-        use crate::schema::bracket_races;
         use crate::schema::bracket_rounds;
         use rand::seq::SliceRandom;
 
@@ -186,7 +197,7 @@ impl Bracket {
         if !players.is_empty() {
             return Err(BracketError::OddPlayerCount);
         }
-        crate::models::bracket_races::insert_bulk(&nbrs, conn)?;
+        insert_bulk(&nbrs, conn)?;
 
         self.set_state(BracketState::Started)
             .map_err(|e| e.to_string())?;

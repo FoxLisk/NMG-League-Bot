@@ -1,17 +1,17 @@
+use std::fmt::{Display, Formatter};
+use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
-use crate::models::brackets::BracketError::InvalidState;
-use crate::models::epoch_timestamp;
 use crate::models::player::Player;
-use crate::models::race::Race;
 use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use diesel::prelude::*;
 use diesel::SqliteConnection;
-use rocket::serde::json::serde_json;
 use serde_json::Error;
 use swiss_pairings::MatchResult;
+use serde::Serialize;
+use crate::utils::format_hms;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 pub enum BracketRaceState {
@@ -38,6 +38,17 @@ pub enum PlayerResult {
     Finish(u32),
 }
 
+impl Display for PlayerResult {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PlayerResult::Forfeit => {write!(f, "Forfeit")}
+            PlayerResult::Finish(t) => {
+                write!(f, "{}", format_hms(*t as u64))
+            }
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 pub enum Outcome {
     Tie,
@@ -45,11 +56,11 @@ pub enum Outcome {
     P2Win,
 }
 
-#[derive(Queryable, Identifiable, AsChangeset, Debug)]
+#[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize)]
 pub struct BracketRace {
     id: i32,
     bracket_id: i32,
-    round_id: i32,
+    pub round_id: i32,
     pub player_1_id: i32,
     pub player_2_id: i32,
     async_race_id: Option<i32>,
@@ -57,7 +68,7 @@ pub struct BracketRace {
     state: String,
     player_1_result: Option<String>,
     player_2_result: Option<String>,
-    outcome: Option<String>,
+    pub(crate) outcome: Option<String>,
 }
 
 #[derive(Debug)]
@@ -114,6 +125,21 @@ impl BracketRace {
         }
     }
 
+    pub fn scheduled(&self) -> Option<DateTime<Utc>> {
+        self.scheduled_for.map(|t|
+            Utc.timestamp(t, 0)
+        )
+    }
+
+    pub fn schedule<T: TimeZone>(&mut self, when: DateTime<T>) -> Result<(), BracketRaceStateError> {
+        match self.state()? {
+            BracketRaceState::New | BracketRaceState::Scheduled => {}
+            BracketRaceState::Finished => { return Err(BracketRaceStateError::InvalidState); }
+        };
+        self.scheduled_for = Some(when.timestamp());
+        Ok(())
+    }
+
     /// only works on runs in the New or Scheduled state
     /// will overwrite existing partial results with new results but won't set them to null
     /// updates state & outcome to finished if that is the case
@@ -137,13 +163,13 @@ impl BracketRace {
         Ok(())
     }
 
-    fn player_1_result(&self) -> Option<PlayerResult> {
+    pub fn player_1_result(&self) -> Option<PlayerResult> {
         self.player_1_result
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())
     }
 
-    fn player_2_result(&self) -> Option<PlayerResult> {
+    pub fn player_2_result(&self) -> Option<PlayerResult> {
         self.player_2_result
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())

@@ -1,7 +1,7 @@
-use nmg_league_bot::db::{get_diesel_pool, raw_diesel_cxn_from_env};
+use nmg_league_bot::db::{ raw_diesel_cxn_from_env};
 use nmg_league_bot::models::brackets::NewBracket;
 use nmg_league_bot::models::player::NewPlayer;
-use nmg_league_bot::models::player_bracket_entries::{NewPlayerBracketEntry, PlayerBracketEntry};
+use nmg_league_bot::models::player_bracket_entries::{NewPlayerBracketEntry};
 use nmg_league_bot::models::season::{NewSeason, Season};
 
 extern crate dotenv;

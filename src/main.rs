@@ -29,6 +29,7 @@ extern crate twilight_util;
 extern crate twilight_validate;
 
 use discord::Webhooks;
+use crate::db::raw_diesel_cxn_from_env;
 
 #[tokio::main]
 async fn main() {
@@ -40,7 +41,7 @@ async fn main() {
     let state = discord::bot::launch(webhooks.clone(), shutdown_send.subscribe()).await;
 
     {
-        let mut conn = state.diesel_cxn().await.unwrap();
+        let mut conn = raw_diesel_cxn_from_env().unwrap();
         let migrations =
             diesel_migrations::FileBasedMigrations::from_path("diesel-migrations").unwrap();
         let res = conn.run_pending_migrations(migrations).unwrap();

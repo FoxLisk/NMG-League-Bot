@@ -5,7 +5,7 @@ use crate::discord::interactions::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
 };
 use crate::discord::{
-    notify_racer, CREATE_BRACKET_CMD, CREATE_SEASON_CMD, REGISTER_CMD, SIGNUP_CMD,
+    notify_racer, CREATE_BRACKET_CMD, CREATE_SEASON_CMD
 };
 use crate::discord::{
     CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
@@ -16,7 +16,6 @@ use crate::models::player::{NewPlayer, Player};
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
 use crate::models::season::{NewSeason, Season};
-use crate::models::signups::NewSignup;
 use crate::utils::{env_default, ResultCollapse};
 use crate::{Shutdown, Webhooks};
 use core::default::Default;
@@ -563,76 +562,6 @@ async fn handle_cancel_race(
     }
 }
 
-// TODO: make this (and handle_application_interaction in general) have error handling
-async fn _handle_register(
-    mut ac: Box<ApplicationCommand>,
-    state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, String> {
-    let restreams_ok_opt = get_opt!("restream_ok", &mut ac.data.options, Boolean)?;
-    let rtgg_username = get_opt!("racetime_username", &mut ac.data.options, String)?;
-
-    let m = ac
-        .member
-        .ok_or("No member for /register command?".to_string())?;
-    let u = m
-        .user
-        .ok_or(format!("No user for member for /register command"))?;
-
-    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let player: Player = cxn
-        .transaction(|conn| {
-            use crate::schema::players::dsl::*;
-            use diesel::prelude::*;
-
-            if let Ok(Some(p)) = players
-                .filter(discord_id.eq(u.id.to_string()))
-                .first(conn)
-                .optional()
-            {
-                return Ok(p);
-            }
-
-            let np = NewPlayer::new(u.name, u.id.to_string(), rtgg_username, restreams_ok_opt);
-
-            let res = diesel::insert_into(players).values(np).get_result(conn);
-            res
-        })
-        .map_err(|e| e.to_string())?;
-
-    let szn = Season::get_active_season(cxn.deref_mut()).map_err(|e| e.to_string())?;
-    if let Some(season) = szn {
-        let ns = NewSignup::new(&player, &season);
-        let insert_res = diesel::insert_into(crate::schema::signups::table)
-            .values(&ns)
-            .execute(cxn.deref_mut());
-        if let Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) = insert_res {}
-        match insert_res {
-            Ok(_) | Err(DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {}
-            Err(e) => {
-                return Err(e.to_string());
-            }
-        }
-    }
-    Ok(Some(plain_interaction_response("Registered! Thank you :)")))
-}
-
-/// this registers the user and signs them up for the current
-/// season.
-///
-/// I am combining these functions because I think it is more user-friendly.
-async fn handle_register(
-    ac: Box<ApplicationCommand>,
-    state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    _handle_register(ac, state).await.map_err(|e| {
-        ErrorResponse::new(
-            "Sorry, something went wrong with your registration. An admin
-                will look into it.",
-            e,
-        )
-    })
-}
-
 /// this doesn't have an option to return an ErrorResponse because these interactions already occur
 /// under the watchful eyes of admins (and are, in fact, run _by_ admins)
 async fn handle_application_interaction(
@@ -641,8 +570,6 @@ async fn handle_application_interaction(
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match ac.data.name.as_str() {
         // general commands
-        REGISTER_CMD => handle_register(ac, state).await,
-
         // admin commands
         CREATE_RACE_CMD => {
             admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i)))
@@ -1153,28 +1080,6 @@ async fn set_application_commands(
     }))
     .build();
 
-    let register = CommandBuilder::new(
-        REGISTER_CMD.to_string(),
-        "Register with League and signup for the current season.".to_string(),
-        CommandType::ChatInput,
-    )
-    .option(CommandOption::Boolean(BaseCommandOptionData {
-        description: "Are you okay with being restreamed?".to_string(),
-        description_localizations: None,
-        name: "restream_ok".to_string(),
-        name_localizations: None,
-        required: true,
-    }))
-    .option(CommandOption::String(ChoiceCommandOptionData {
-        autocomplete: false,
-        choices: vec![],
-        description: "RaceTime.gg account with discriminator: username#1234".to_string(),
-        description_localizations: None,
-        name: "racetime_username".to_string(),
-        name_localizations: None,
-        required: true,
-    }))
-    .build();
 
     let create_season = CommandBuilder::new(
         CREATE_SEASON_CMD.to_string(),
@@ -1222,7 +1127,6 @@ async fn set_application_commands(
     let commands = vec![
         create_race,
         cancel_race,
-        register,
         create_season,
         create_bracket,
     ];
