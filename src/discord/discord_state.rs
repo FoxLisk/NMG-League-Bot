@@ -21,7 +21,7 @@ use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
 
-pub(crate) struct DiscordState {
+pub struct DiscordState {
     pub cache: InMemoryCache,
     pub client: Client,
     diesel_pool: Pool<DieselConnectionManager>,
@@ -34,7 +34,7 @@ pub(crate) struct DiscordState {
 }
 
 impl DiscordState {
-    pub(super) fn new(
+    pub fn new(
         cache: InMemoryCache,
         client: Client,
         aid: Id<ApplicationMarker>,
@@ -56,11 +56,11 @@ impl DiscordState {
         }
     }
 
-    pub(super) fn interaction_client<'a>(&'a self) -> InteractionClient<'a> {
+    pub fn interaction_client<'a>(&'a self) -> InteractionClient<'a> {
         self.client.interaction(self.application_id.clone())
     }
 
-    pub(super) async fn get_private_channel(
+    pub async fn get_private_channel(
         &self,
         user: Id<UserMarker>,
     ) -> Result<Id<ChannelMarker>, String> {
@@ -86,7 +86,7 @@ impl DiscordState {
         }
     }
 
-    pub(crate) fn get_admin_role(&self, guild_id: Id<GuildMarker>) -> Option<Role> {
+    pub fn get_admin_role(&self, guild_id: Id<GuildMarker>) -> Option<Role> {
         let roles = self.cache.guild_roles(guild_id)?;
 
         for role_id in roles.value() {
@@ -101,7 +101,7 @@ impl DiscordState {
     }
 
     // making this async now so when i inevitably add an actual HTTP request fallback it's already async
-    pub(crate) async fn has_admin_role(
+    pub async fn has_admin_role(
         &self,
         user_id: Id<UserMarker>,
         guild_id: Id<GuildMarker>,
@@ -120,18 +120,18 @@ impl DiscordState {
     }
 
     // convenience for website which i have negative interest in adding guild info to
-    pub(crate) async fn has_nmg_league_admin_role(
+    pub async fn has_nmg_league_admin_role(
         &self,
         user_id: Id<UserMarker>,
     ) -> Result<bool, String> {
         self.has_admin_role(user_id, self.gid.clone()).await
     }
 
-    pub(crate) async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {
+    pub async fn get_user(&self, user_id: Id<UserMarker>) -> Result<Option<User>, String> {
         Ok(self.cache.user(user_id).map(|u| u.value().clone()))
     }
 
-    pub(crate) async fn create_response(
+    pub async fn create_response(
         &self,
         interaction_id: Id<InteractionMarker>,
         token: &str,
@@ -144,7 +144,7 @@ impl DiscordState {
             .map(|_| ())
     }
 
-    pub(crate) async fn application_command_run_by_admin(
+    pub async fn application_command_run_by_admin(
         &self,
         ac: &Box<InteractionCreate>,
     ) -> Result<bool, String> {
@@ -159,7 +159,7 @@ impl DiscordState {
     }
 
     /// creates a response and maps any errors to String
-    pub(crate) async fn create_response_err_to_str(
+    pub async fn create_response_err_to_str(
         &self,
         interaction_id: Id<InteractionMarker>,
         token: &str,
@@ -170,7 +170,7 @@ impl DiscordState {
             .map_err(|e| e.to_string())
     }
 
-    pub(crate) async fn diesel_cxn<'a>(
+    pub async fn diesel_cxn<'a>(
         &'a self,
     ) -> Result<impl DerefMut<Target = diesel::SqliteConnection> + 'a, RunError<ConnectionError>>
     {

@@ -5,11 +5,11 @@ pub mod player;
 pub mod player_bracket_entries;
 pub mod season;
 
-pub(crate) fn uuid_string() -> String {
+pub fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-pub(crate) fn epoch_timestamp() -> u32 {
+pub fn epoch_timestamp() -> u32 {
     let timestamp = chrono::Utc::now().timestamp();
     let t_u32 = timestamp as u32;
     if t_u32 as i64 != timestamp {
@@ -41,7 +41,7 @@ macro_rules! update_fn {
     };
 }
 
-pub(crate) mod race {
+pub mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::models::{epoch_timestamp, uuid_string};
     use crate::schema::races;
@@ -56,7 +56,7 @@ pub(crate) mod race {
     #[derive(Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
     #[diesel(sql_type = Text)]
-    pub(crate) enum RaceState {
+    pub enum RaceState {
         CREATED,
         FINISHED,
         ABANDONED,
@@ -65,7 +65,7 @@ pub(crate) mod race {
 
     #[derive(Insertable)]
     #[diesel(table_name=races)]
-    pub(crate) struct NewRace {
+    pub struct NewRace {
         uuid: String,
         created: i64,
         #[diesel(serialize_as = String)]
@@ -73,13 +73,13 @@ pub(crate) mod race {
     }
 
     #[derive(Queryable, Clone, Identifiable)]
-    pub(crate) struct Race {
-        pub(crate) id: i32,
-        pub(crate) uuid: String,
+    pub struct Race {
+        pub id: i32,
+        pub uuid: String,
         #[diesel(deserialize_as=i64)]
-        pub(crate) created: u32,
+        pub created: u32,
         #[diesel(deserialize_as=String)]
-        pub(crate) state: RaceState,
+        pub state: RaceState,
     }
 
     #[derive(Identifiable, AsChangeset)]
@@ -104,7 +104,7 @@ pub(crate) mod race {
 
     // statics
     impl Race {
-        pub(crate) fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
+        pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
             use crate::schema::races::dsl::*;
             use diesel::prelude::*;
             races
@@ -115,16 +115,16 @@ pub(crate) mod race {
     }
 
     impl Race {
-        pub(crate) fn finish(&mut self) {
+        pub fn finish(&mut self) {
             self.state = RaceState::FINISHED;
         }
 
-        pub(crate) fn abandon(&mut self) {
+        pub fn abandon(&mut self) {
             self.state = RaceState::ABANDONED;
         }
 
         /// clones self
-        pub(crate) async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
+        pub async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
             let update = UpdateRace::from(self.clone());
             diesel::update(&update)
                 .set(&update)
@@ -146,7 +146,7 @@ pub(crate) mod race {
         }
 
         /// Creates RaceRuns with the appropriate users and associates them with this race
-        pub(crate) async fn select_racers(
+        pub async fn select_racers(
             &self,
             racer_1: Id<UserMarker>,
             racer_2: Id<UserMarker>,
@@ -162,7 +162,7 @@ pub(crate) mod race {
 
         /// Cancels this race and its associated RaceRun
         /// This updates the database
-        pub(crate) async fn cancel(
+        pub async fn cancel(
             &self,
             conn: &mut SqliteConnection,
         ) -> Result<(), diesel::result::Error> {
@@ -182,7 +182,7 @@ pub(crate) mod race {
             })
         }
 
-        pub(crate) async fn get_runs(
+        pub async fn get_runs(
             &self,
             conn: &mut SqliteConnection,
         ) -> Result<(RaceRun, RaceRun), String> {
@@ -191,7 +191,7 @@ pub(crate) mod race {
     }
 
     impl NewRace {
-        pub(crate) fn new() -> Self {
+        pub fn new() -> Self {
             Self {
                 uuid: uuid_string(),
                 created: epoch_timestamp() as i64,
@@ -201,7 +201,7 @@ pub(crate) mod race {
     }
 }
 
-pub(crate) mod race_run {
+pub mod race_run {
     use crate::models::epoch_timestamp;
     use crate::models::uuid_string;
     use crate::schema::race_runs;
@@ -222,10 +222,10 @@ pub(crate) mod race_run {
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
     }
 
-    pub(crate) struct Filenames {
-        pub(crate) one: char,
-        pub(crate) three: [char; 3],
-        pub(crate) four: [char; 4],
+    pub struct Filenames {
+        pub one: char,
+        pub three: [char; 3],
+        pub four: [char; 4],
     }
 
     fn random_char(rng: &mut ThreadRng) -> char {
@@ -351,7 +351,7 @@ pub(crate) mod race_run {
 
     #[derive(Debug, Serialize, PartialEq, DieselEnum, Clone)]
     #[allow(non_camel_case_types)]
-    pub(crate) enum RaceRunState {
+    pub enum RaceRunState {
         /// RaceRun created
         CREATED,
         /// Player successfully contacted via DM
@@ -373,14 +373,14 @@ pub(crate) mod race_run {
     }
 
     impl RaceRunState {
-        pub(crate) fn is_created(&self) -> bool {
+        pub fn is_created(&self) -> bool {
             match self {
                 Self::CREATED => true,
                 _ => false,
             }
         }
 
-        pub(crate) fn is_pre_start(&self) -> bool {
+        pub fn is_pre_start(&self) -> bool {
             match self {
                 Self::CREATED | Self::CONTACTED => true,
                 _ => false,
@@ -389,22 +389,22 @@ pub(crate) mod race_run {
     }
 
     #[derive(Clone, Queryable, Identifiable)]
-    pub(crate) struct RaceRun {
-        pub(crate) id: i32,
-        pub(crate) uuid: String,
+    pub struct RaceRun {
+        pub id: i32,
+        pub uuid: String,
         race_id: i32,
         racer_id: String,
         filenames: String,
         #[diesel(deserialize_as=i64)]
         created: u32,
         #[diesel(deserialize_as=String)]
-        pub(crate) state: RaceRunState,
-        pub(crate) run_started: Option<i64>,
-        pub(crate) run_finished: Option<i64>,
-        pub(crate) reported_run_time: Option<String>,
+        pub state: RaceRunState,
+        pub run_started: Option<i64>,
+        pub run_finished: Option<i64>,
+        pub reported_run_time: Option<String>,
         reported_at: Option<i64>,
-        pub(crate) message_id: Option<String>,
-        pub(crate) vod: Option<String>,
+        pub message_id: Option<String>,
+        pub vod: Option<String>,
     }
 
     #[derive(Identifiable, AsChangeset)]
@@ -447,7 +447,7 @@ pub(crate) mod race_run {
 
     // statics
     impl RaceRun {
-        pub(crate) async fn get_runs(
+        pub async fn get_runs(
             race_id_: i32,
             conn: &mut SqliteConnection,
         ) -> Result<(RaceRun, RaceRun), String> {
@@ -466,7 +466,7 @@ pub(crate) mod race_run {
 
     // instance
     impl RaceRun {
-        pub(crate) fn racer_id(&self) -> Result<Id<UserMarker>, String> {
+        pub fn racer_id(&self) -> Result<Id<UserMarker>, String> {
             self.racer_id
                 .parse::<u64>()
                 .map_err(|e| e.to_string())
@@ -474,7 +474,7 @@ pub(crate) mod race_run {
                 .map_err(|e| e.to_string())
         }
 
-        pub(crate) fn is_finished(&self) -> bool {
+        pub fn is_finished(&self) -> bool {
             match self.state {
                 RaceRunState::VOD_SUBMITTED => true,
                 RaceRunState::FORFEIT => true,
@@ -482,72 +482,72 @@ pub(crate) mod race_run {
             }
         }
 
-        pub(crate) fn filenames(&self) -> Result<Filenames, String> {
+        pub fn filenames(&self) -> Result<Filenames, String> {
             Filenames::from_str(&self.filenames)
         }
 
-        pub(crate) fn contact_succeeded(&mut self) {
+        pub fn contact_succeeded(&mut self) {
             self.state = RaceRunState::CONTACTED;
         }
 
-        pub(crate) fn get_message_id(&self) -> Option<Id<MessageMarker>> {
+        pub fn get_message_id(&self) -> Option<Id<MessageMarker>> {
             self.message_id
                 .as_ref()
                 .and_then(|ms| Id::<MessageMarker>::from_str(&ms).ok())
         }
 
-        pub(crate) fn get_started_at(&self) -> Option<NaiveDateTime> {
+        pub fn get_started_at(&self) -> Option<NaiveDateTime> {
             self.run_started.map(timestamp_to_naivedatetime)
         }
 
-        pub(crate) fn get_finished_at(&self) -> Option<NaiveDateTime> {
+        pub fn get_finished_at(&self) -> Option<NaiveDateTime> {
             self.run_finished.map(timestamp_to_naivedatetime)
         }
 
-        pub(crate) fn get_time_to_finish(&self) -> Option<String> {
+        pub fn get_time_to_finish(&self) -> Option<String> {
             time_delta_lifted(self.get_started_at(), self.get_finished_at())
                 .map(format_duration_hms)
         }
 
-        pub(crate) fn get_time_from_finish_to_report(&self) -> Option<String> {
+        pub fn get_time_from_finish_to_report(&self) -> Option<String> {
             time_delta_lifted(self.get_finished_at(), self.get_reported_at())
                 .map(format_duration_hms)
         }
 
-        pub(crate) fn get_reported_at(&self) -> Option<NaiveDateTime> {
+        pub fn get_reported_at(&self) -> Option<NaiveDateTime> {
             self.reported_at
                 .map(|t| NaiveDateTime::from_timestamp(t, 0))
         }
 
-        pub(crate) fn start(&mut self) {
+        pub fn start(&mut self) {
             self.state = RaceRunState::STARTED;
             self.run_started = Some(epoch_timestamp() as i64);
         }
 
         /// If the run is already finished this does *not* update it
-        pub(crate) fn finish(&mut self) {
+        pub fn finish(&mut self) {
             self.state = RaceRunState::FINISHED;
             if self.run_finished.is_none() {
                 self.run_finished = Some(epoch_timestamp() as i64);
             }
         }
 
-        pub(crate) fn forfeit(&mut self) {
+        pub fn forfeit(&mut self) {
             self.state = RaceRunState::FORFEIT;
         }
 
-        pub(crate) fn report_user_time(&mut self, user_time: String) {
+        pub fn report_user_time(&mut self, user_time: String) {
             self.state = RaceRunState::TIME_SUBMITTED;
             self.reported_at = Some(epoch_timestamp().into());
             self.reported_run_time = Some(user_time);
         }
 
-        pub(crate) fn set_vod(&mut self, vod: String) {
+        pub fn set_vod(&mut self, vod: String) {
             self.state = RaceRunState::VOD_SUBMITTED;
             self.vod = Some(vod);
         }
 
-        pub(crate) async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
+        pub async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
             let update = UpdateRaceRun::from(self.clone());
             diesel::update(self)
                 .set(update)
@@ -556,11 +556,11 @@ pub(crate) mod race_run {
                 .map_err(|e| e.to_string())
         }
 
-        pub(crate) fn set_message_id(&mut self, message_id: u64) {
+        pub fn set_message_id(&mut self, message_id: u64) {
             self.message_id = Some(message_id.to_string());
         }
 
-        pub(crate) async fn get_by_message_id(
+        pub async fn get_by_message_id(
             message_id: Id<MessageMarker>,
             conn: &mut SqliteConnection,
         ) -> Result<Self, String> {
@@ -569,7 +569,7 @@ pub(crate) mod race_run {
                 .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
         }
 
-        pub(crate) async fn search_by_message_id(
+        pub async fn search_by_message_id(
             message_id_: Id<MessageMarker>,
             conn: &mut SqliteConnection,
         ) -> Result<Option<Self>, String> {
@@ -588,7 +588,7 @@ pub(crate) mod race_run {
 
     #[derive(Insertable)]
     #[diesel(table_name=race_runs)]
-    pub(crate) struct NewRaceRun {
+    pub struct NewRaceRun {
         race_id: i32,
         uuid: String,
         racer_id: String,
@@ -601,7 +601,7 @@ pub(crate) mod race_run {
     }
 
     impl NewRaceRun {
-        pub(crate) fn new(race_id: i32, racer_id: Id<UserMarker>) -> Self {
+        pub fn new(race_id: i32, racer_id: Id<UserMarker>) -> Self {
             Self {
                 race_id,
                 uuid: uuid_string(),

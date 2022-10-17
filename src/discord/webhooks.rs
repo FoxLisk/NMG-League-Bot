@@ -10,7 +10,7 @@ use twilight_model::id::Id;
 use twilight_util::link::webhook::parse;
 
 #[derive(Clone)]
-pub(crate) struct Webhooks {
+pub struct Webhooks {
     http_client: Arc<Client>,
     async_channel: WebhookInfo,
     admin_channel: WebhookInfo,
@@ -46,7 +46,7 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
 }
 
 impl Webhooks {
-    pub(crate) async fn new() -> Result<Self, String> {
+    pub async fn new() -> Result<Self, String> {
         let client = Arc::new(Client::new(std::env::var(TOKEN_VAR).unwrap()));
         let async_webhook_url = std::env::var(ASYNC_WEBHOOK_VAR).unwrap();
         let admin_webhook_url = std::env::var(ADMIN_WEBHOOK_VAR).unwrap();
@@ -79,7 +79,7 @@ impl Webhooks {
         }
     }
 
-    pub(crate) async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
+    pub async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
         let resp: Response<EmptyBody> = ew.exec().await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             Err(format!("Error executing webhook: {:?}", resp.text().await))
@@ -92,15 +92,15 @@ impl Webhooks {
         self.http_client.execute_webhook(webhook.id, &webhook.token)
     }
 
-    pub(crate) fn prepare_execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {
+    pub fn prepare_execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {
         self._execute_webhook(&self.async_channel)
     }
 
-    pub(crate) fn prepare_execute_admin<'a>(&'a self) -> ExecuteWebhook<'a> {
+    pub fn prepare_execute_admin<'a>(&'a self) -> ExecuteWebhook<'a> {
         self._execute_webhook(&self.admin_channel)
     }
 
-    pub(crate) async fn message_async(&self, content: &str) -> Result<(), String> {
+    pub async fn message_async(&self, content: &str) -> Result<(), String> {
         self.execute_webhook(
             self.prepare_execute_async()
                 .content(content)
