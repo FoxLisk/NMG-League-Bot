@@ -1,25 +1,24 @@
 use core::default::Default;
 use std::fmt::{Display, Formatter};
-use std::ops::{ DerefMut};
+use std::ops::DerefMut;
 use std::sync::Arc;
 
-use diesel::{ RunQueryDsl, SqliteConnection};
+use diesel::{RunQueryDsl, SqliteConnection};
 use lazy_static::lazy_static;
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
-use twilight_http::Client;
 use twilight_http::request::channel::message::UpdateMessage;
+use twilight_http::Client;
 use twilight_mention::Mention;
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandOptionType, CommandType,
     NumberCommandOptionData,
 };
-use twilight_model::application::component::{ActionRow, Component, TextInput};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
-use twilight_model::application::interaction::{Interaction, InteractionData};
+use twilight_model::application::component::{ActionRow, Component, TextInput};
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption, CommandOptionValue,
 };
@@ -27,35 +26,39 @@ use twilight_model::application::interaction::message_component::MessageComponen
 use twilight_model::application::interaction::modal::{
     ModalInteractionData, ModalInteractionDataActionRow,
 };
+use twilight_model::application::interaction::{Interaction, InteractionData};
 use twilight_model::gateway::event::Event;
-use twilight_model::gateway::Intents;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
+use twilight_model::gateway::Intents;
 use twilight_model::guild::Permissions;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::Id;
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, MessageMarker};
+use twilight_model::id::Id;
 use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
 
-use crate::{Shutdown, Webhooks};
 use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
 use crate::db::get_diesel_pool;
-use crate::discord::{CREATE_BRACKET_CMD, CREATE_SEASON_CMD, notify_racer};
+use crate::discord::discord_state::DiscordState;
+use crate::discord::interactions::{
+    button_component, interaction_to_custom_id, plain_interaction_response,
+    update_resp_to_plain_content,
+};
+use crate::discord::{notify_racer, CREATE_BRACKET_CMD, CREATE_SEASON_CMD};
 use crate::discord::{
     CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
-use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions::{button_component, interaction_to_custom_id, plain_interaction_response, update_resp_to_plain_content};
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
-use crate::models::season::{NewSeason,};
+use crate::models::season::NewSeason;
 use crate::utils::{env_default, ResultCollapse};
+use crate::{Shutdown, Webhooks};
 
 use super::CREATE_RACE_CMD;
 
@@ -173,10 +176,14 @@ impl Display for ErrorResponse {
     }
 }
 
-
-fn interaction_to_message_id<S: Into<String>>(i: &InteractionCreate, user_facing_err: S) -> Result<Id<MessageMarker>, ErrorResponse> {
-    i.message.as_ref().map(|m| m.id).ok_or(ErrorResponse::new(user_facing_err, "Missing message id?"))
-
+fn interaction_to_message_id<S: Into<String>>(
+    i: &InteractionCreate,
+    user_facing_err: S,
+) -> Result<Id<MessageMarker>, ErrorResponse> {
+    i.message
+        .as_ref()
+        .map(|m| m.id)
+        .ok_or(ErrorResponse::new(user_facing_err, "Missing message id?"))
 }
 
 async fn handle_create_race(
@@ -442,13 +449,12 @@ async fn handle_cancel_race_started(
             // creating an "update response"
             let cid = interaction_to_custom_id(&cmp);
             let resp = match cid {
-                Some(REALLY_CANCEL_ID) => {
-                    actually_cancel_race(race, r1, r2, state).await
-                        .map(|()| "Race cancelled.".to_string())
-                        .collapse()
-                },
-                Some(_) => {"Okay, not cancelling it.".to_string()},
-                None => {"Not cancelling it with a side of bizarre internal error.".to_string()},
+                Some(REALLY_CANCEL_ID) => actually_cancel_race(race, r1, r2, state)
+                    .await
+                    .map(|()| "Race cancelled.".to_string())
+                    .collapse(),
+                Some(_) => "Okay, not cancelling it.".to_string(),
+                None => "Not cancelling it with a side of bizarre internal error.".to_string(),
             };
             state
                 .create_response_err_to_str(cmp.id, &cmp.token, &update_resp_to_plain_content(resp))
@@ -626,7 +632,11 @@ async fn handle_run_start(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "There was an error starting your race. Please ping FoxLisk.";
-    let mid = interaction.message.as_ref().map(|m| m.id).ok_or(ErrorResponse::new(USER_FACING_ERROR, "Missing message id?"))?;
+    let mid = interaction
+        .message
+        .as_ref()
+        .map(|m| m.id)
+        .ok_or(ErrorResponse::new(USER_FACING_ERROR, "Missing message id?"))?;
     let mut conn = state
         .diesel_cxn()
         .await
@@ -947,9 +957,13 @@ async fn handle_modal_submission(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction_data.custom_id.as_str() {
-        CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction_data, interaction, state).await,
+        CUSTOM_ID_USER_TIME_MODAL => {
+            handle_user_time_modal(interaction_data, interaction, state).await
+        }
         CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction_data, interaction, state).await,
-        CUSTOM_ID_FORFEIT_MODAL => handle_run_forfeit_modal(interaction_data, interaction, state).await,
+        CUSTOM_ID_FORFEIT_MODAL => {
+            handle_run_forfeit_modal(interaction_data, interaction, state).await
+        }
         _ => {
             println!("Unhandled modal: {:?}", interaction_data);
             Ok(None)
@@ -967,8 +981,12 @@ async fn _handle_interaction(
             InteractionData::ApplicationCommand(ac) => {
                 handle_application_interaction(ac, interaction, &state).await
             }
-            InteractionData::MessageComponent(mc) => handle_button_interaction(mc, interaction, &state).await,
-            InteractionData::ModalSubmit(ms) => handle_modal_submission(ms, interaction, &state).await,
+            InteractionData::MessageComponent(mc) => {
+                handle_button_interaction(mc, interaction, &state).await
+            }
+            InteractionData::ModalSubmit(ms) => {
+                handle_modal_submission(ms, interaction, &state).await
+            }
             _ => {
                 println!("Unhandled interaction: {:?}", interaction);
                 Ok(None)

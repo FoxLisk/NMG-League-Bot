@@ -131,7 +131,6 @@ impl DiscordState {
         Ok(self.cache.user(user_id).map(|u| u.value().clone()))
     }
 
-
     pub(crate) async fn create_response(
         &self,
         interaction_id: Id<InteractionMarker>,

@@ -18,13 +18,9 @@ fn main() {
         .unwrap()
         .pop()
         .unwrap();
-    let round = bracket
-        .current_round(&mut db)
-        .unwrap()
-        .unwrap();
+    let round = bracket.current_round(&mut db).unwrap().unwrap();
 
     for player in bracket.players(&mut db).unwrap() {
-
         let mut race = get_current_round_race_for_player(&player, &mut db)
             .unwrap()
             .unwrap();

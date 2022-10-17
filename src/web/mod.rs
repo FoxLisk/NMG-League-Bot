@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use std::path::{ Path, PathBuf};
-use std::sync::{Arc, Mutex};
 use itertools::Itertools;
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use oauth2::basic::{BasicClient, BasicErrorResponseType, BasicTokenType};
 use oauth2::reqwest::async_http_client;
@@ -24,26 +24,26 @@ use tokio::time::{Duration, Instant};
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
 };
+use crate::db::{get_diesel_pool, DieselConnectionManager};
 use crate::discord::discord_state::DiscordState;
-use crate::models::race::{Race, RaceState};
-use crate::models::race_run::{RaceRun, RaceRunState};
-use crate::schema;
-use crate::shutdown::Shutdown;
-use crate::web::session_manager::SessionManager as _SessionManager;
-use crate::web::session_manager::SessionToken;
-use diesel::prelude::*;
-use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
-use serde::Serialize;
-use std::ops::DerefMut;
-use bb8::Pool;
-use twilight_model::id::marker::UserMarker;
-use twilight_model::id::Id;
-use crate::db::{DieselConnectionManager, get_diesel_pool};
 use crate::models::bracket_races::BracketRace;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
+use crate::models::race::{Race, RaceState};
+use crate::models::race_run::{RaceRun, RaceRunState};
 use crate::models::season::Season;
+use crate::schema;
+use crate::shutdown::Shutdown;
+use crate::web::session_manager::SessionManager as _SessionManager;
+use crate::web::session_manager::SessionToken;
+use bb8::Pool;
+use diesel::prelude::*;
+use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
+use serde::Serialize;
+use std::ops::DerefMut;
+use twilight_model::id::marker::UserMarker;
+use twilight_model::id::Id;
 
 mod session_manager;
 
@@ -539,7 +539,7 @@ struct DisplayPlayer {
 struct DisplayRace {
     player_1: DisplayPlayer,
     player_2: DisplayPlayer,
-    scheduled: Option<String>
+    scheduled: Option<String>,
 }
 
 impl DisplayRace {
@@ -548,35 +548,38 @@ impl DisplayRace {
         use crate::models::bracket_races::Outcome::{P1Win, P2Win};
 
         let player_1 = match race.player_1_result() {
-            Some(r) => {
-                DisplayPlayer {
-                    name_and_status: format!("{} ({})",  p1.name.clone(), r),
-                    winner: outcome == Some(P1Win),
-                    loser: outcome == Some(P2Win),
-                }
-
+            Some(r) => DisplayPlayer {
+                name_and_status: format!("{} ({})", p1.name.clone(), r),
+                winner: outcome == Some(P1Win),
+                loser: outcome == Some(P2Win),
             },
-            None => DisplayPlayer { name_and_status: p1.name.clone(), winner: false, loser: false }
+            None => DisplayPlayer {
+                name_and_status: p1.name.clone(),
+                winner: false,
+                loser: false,
+            },
         };
         let player_2 = match race.player_2_result() {
-            Some(r) => {
-                DisplayPlayer {
-                    name_and_status: format!("{} ({})",  p1.name.clone(), r),
-                    winner: outcome == Some(P2Win),
-                    loser: outcome == Some(P1Win),
-                }
-
+            Some(r) => DisplayPlayer {
+                name_and_status: format!("{} ({})", p1.name.clone(), r),
+                winner: outcome == Some(P2Win),
+                loser: outcome == Some(P1Win),
             },
-            None => DisplayPlayer { name_and_status: p2.name.clone(), winner: false, loser: false }
+            None => DisplayPlayer {
+                name_and_status: p2.name.clone(),
+                winner: false,
+                loser: false,
+            },
         };
         let scheduled = match outcome {
             Some(_) => None,
             None => {
                 if let Some(utc_dt) = race.scheduled() {
                     Some(
-                        utc_dt.with_timezone(&chrono_tz::US::Eastern)
-                        .format("%A, %B %d at %r (%Z)")
-                            .to_string()
+                        utc_dt
+                            .with_timezone(&chrono_tz::US::Eastern)
+                            .format("%A, %B %d at %r (%Z)")
+                            .to_string(),
                     )
                 } else {
                     None
@@ -586,12 +589,10 @@ impl DisplayRace {
         Self {
             player_1,
             player_2,
-            scheduled
+            scheduled,
         }
-
     }
 }
-
 
 #[derive(Serialize)]
 struct DisplayRound {
@@ -603,7 +604,7 @@ struct DisplayRound {
 struct DisplayBracket {
     bracket: Bracket,
     /// all the rounds of the bracket, in ascending order (i.e. round 1 first, round 2 second)
-    rounds: Vec<DisplayRound>
+    rounds: Vec<DisplayRound>,
 }
 
 #[derive(Serialize)]
@@ -612,7 +613,9 @@ struct BracketsContext {
     brackets: Vec<DisplayBracket>,
 }
 
-fn get_brackets_context(conn: &mut SqliteConnection) -> Result<BracketsContext, diesel::result::Error> {
+fn get_brackets_context(
+    conn: &mut SqliteConnection,
+) -> Result<BracketsContext, diesel::result::Error> {
     let mut ctx = BracketsContext {
         season: None,
         brackets: vec![],
@@ -620,15 +623,19 @@ fn get_brackets_context(conn: &mut SqliteConnection) -> Result<BracketsContext, 
 
     let szn = match Season::get_active_season(conn)? {
         Some(szn) => szn,
-        None => { return Ok(ctx); }
+        None => {
+            return Ok(ctx);
+        }
     };
 
     let brackets = szn.brackets(conn)?;
 
     for bracket in brackets {
         let races = bracket.bracket_races(conn)?;
-        let rounds_by_id : HashMap<i32, BracketRound> = HashMap::from_iter(  bracket.rounds(conn)?.into_iter().map(|r| (r.id, r) ));
-        let players_by_id : HashMap<i32, Player> = HashMap::from_iter(  bracket.players(conn)?.into_iter().map(|r| (r.id, r) ));
+        let rounds_by_id: HashMap<i32, BracketRound> =
+            HashMap::from_iter(bracket.rounds(conn)?.into_iter().map(|r| (r.id, r)));
+        let players_by_id: HashMap<i32, Player> =
+            HashMap::from_iter(bracket.players(conn)?.into_iter().map(|r| (r.id, r)));
 
         let mut display_rounds_by_num: HashMap<i32, DisplayRound> = Default::default();
         for race in races {
@@ -641,47 +648,51 @@ fn get_brackets_context(conn: &mut SqliteConnection) -> Result<BracketsContext, 
             };
             let p1 = match players_by_id.get(&race.player_1_id) {
                 Some(p) => p,
-                None => { continue; }
+                None => {
+                    continue;
+                }
             };
 
             let p2 = match players_by_id.get(&race.player_2_id) {
                 Some(p) => p,
-                None => { continue; }
+                None => {
+                    continue;
+                }
             };
             let dr = DisplayRace::new(p1, p2, &race);
 
-            display_rounds_by_num.entry(round.round_num)
-                .or_insert(DisplayRound { round_num: round.round_num, races: vec![] }).races.push(dr);
+            display_rounds_by_num
+                .entry(round.round_num)
+                .or_insert(DisplayRound {
+                    round_num: round.round_num,
+                    races: vec![],
+                })
+                .races
+                .push(dr);
         }
-        let rounds = display_rounds_by_num.into_iter().sorted_by_key(|(n, _rs)| n.clone())
-            .map(|(_n, rs)| rs).collect();
+        let rounds = display_rounds_by_num
+            .into_iter()
+            .sorted_by_key(|(n, _rs)| n.clone())
+            .map(|(_n, rs)| rs)
+            .collect();
 
-        let disp_b = DisplayBracket {
-            bracket,
-            rounds
-        };
+        let disp_b = DisplayBracket { bracket, rounds };
         ctx.brackets.push(disp_b);
     }
 
     ctx.season = Some(szn);
 
     Ok(ctx)
-
 }
 
 #[get("/brackets")]
 async fn brackets(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
     // rocket::http::Status::InternalServerError
-    let mut conn = db.get().await
-        .map_err(|_| Status::InternalServerError)?;
+    let mut conn = db.get().await.map_err(|_| Status::InternalServerError)?;
 
-    let ctx = get_brackets_context(&mut conn)
-        .map_err(|_| Status::InternalServerError)?;
+    let ctx = get_brackets_context(&mut conn).map_err(|_| Status::InternalServerError)?;
 
-    Ok( Template::render(
-        "brackets",
-        ctx,
-    ))
+    Ok(Template::render("brackets", ctx))
 }
 
 fn option_default(
@@ -727,7 +738,6 @@ pub(crate) async fn launch_website(
                 // it's important to keep this at the end, it functions like a 404 catcher
                 // TODO that's actually a bug
                 index_logged_out,
-
             ],
         )
         .attach(Template::custom(|e| {
