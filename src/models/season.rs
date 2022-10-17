@@ -1,7 +1,6 @@
 use crate::models::brackets::Bracket;
 use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
-use std::process::id;
 use serde::Serialize;
 
 use crate::models::epoch_timestamp;

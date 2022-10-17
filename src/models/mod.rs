@@ -83,7 +83,7 @@ pub(crate) mod race {
     }
 
     #[derive(Identifiable, AsChangeset)]
-    #[table_name = "races"]
+    #[diesel(table_name = races)]
     struct UpdateRace {
         id: i32,
         uuid: String,
@@ -408,7 +408,7 @@ pub(crate) mod race_run {
     }
 
     #[derive(Identifiable, AsChangeset)]
-    #[table_name = "race_runs"]
+    #[diesel(table_name = race_runs)]
     struct UpdateRaceRun {
         id: i32,
         uuid: String,

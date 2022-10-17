@@ -1,11 +1,6 @@
-use std::ops::Add;
 use chrono::Duration;
 use rand::{Rng, thread_rng};
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
-use nmg_league_bot::models::bracket_races::{
-    get_current_round_race_for_player, BracketRaceState, PlayerResult,
-};
-use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 
 

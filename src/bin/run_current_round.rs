@@ -2,7 +2,6 @@ use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::models::bracket_races::{
     get_current_round_race_for_player, BracketRaceState, PlayerResult,
 };
-use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 
 fn hms_to_secs(h: u32, m: u32, s: u32) -> u32 {

@@ -1,8 +1,5 @@
 use crate::models::bracket_races::{BracketRace, BracketRaceState};
 use crate::models::brackets::Bracket;
-use crate::models::epoch_timestamp;
-use crate::models::player::Player;
-use crate::models::race::Race;
 use crate::save_fn;
 use crate::schema::bracket_rounds;
 use diesel::prelude::*;
