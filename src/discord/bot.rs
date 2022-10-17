@@ -40,6 +40,8 @@ use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
+use nmg_league_bot::models::brackets::NewBracket;
+use nmg_league_bot::models::season::Season;
 
 use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
 use crate::db::get_diesel_pool;
@@ -268,9 +270,12 @@ async fn handle_create_bracket(
 ) -> Result<InteractionResponse, String> {
     let name = get_opt!("name", &mut ac.options, String)?;
     let season_id = get_opt!("season_id", &mut ac.options, Integer)?;
+    let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     // TODO: look up season, save thing, whatever
-
-    Err("asdf".to_string())
+    let szn = Season::get_by_id(season_id as i32, conn.deref_mut())?;
+    let nb = NewBracket::new(&szn, name);
+    nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
+    Ok(plain_interaction_response("Bracket created!"))
 }
 
 /// turns a "String" error response into a plain interaction response with that text
