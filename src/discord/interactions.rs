@@ -1,5 +1,6 @@
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{Button, Component};
+use twilight_model::application::interaction::{Interaction, InteractionData};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
@@ -46,4 +47,16 @@ pub fn button_component<S1: Into<String>, S2: Into<String>>(
         style,
         url: None,
     })
+}
+
+pub fn interaction_to_custom_id(i: &Interaction) -> Option<&str> {
+    match i.data.as_ref()? {
+        InteractionData::ApplicationCommand(_ac) => {None}
+        InteractionData::MessageComponent(mc) => {Some(&mc.custom_id)}
+        InteractionData::ModalSubmit(ms) => {Some(&ms.custom_id)}
+        _ => {
+            println!("Unhandled InteractionData type: {:?}", i);
+            None
+        }
+    }
 }

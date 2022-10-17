@@ -76,7 +76,6 @@ fn generate_next_round_pairings(
     bracket: &Bracket,
     conn: &mut SqliteConnection,
 ) -> Result<(), BracketError> {
-    use crate::schema::bracket_rounds;
 
     if bracket.state()? != BracketState::Started {
         return Err(BracketError::InvalidState);
@@ -172,7 +171,6 @@ impl Bracket {
         &mut self,
         conn: &mut SqliteConnection,
     ) -> Result<(), BracketError> {
-        use crate::schema::bracket_rounds;
         use rand::seq::SliceRandom;
 
         if self.state()? != BracketState::Unstarted {

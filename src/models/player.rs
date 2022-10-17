@@ -1,4 +1,3 @@
-use crate::models::brackets::Bracket;
 use crate::save_fn;
 use crate::schema::players;
 use diesel::prelude::*;

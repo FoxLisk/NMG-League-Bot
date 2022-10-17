@@ -1,79 +1,63 @@
-use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
-use crate::db::get_diesel_pool;
-use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions::{
-    button_component, plain_interaction_response, update_resp_to_plain_content,
-};
-use crate::discord::{
-    notify_racer, CREATE_BRACKET_CMD, CREATE_SEASON_CMD
-};
-use crate::discord::{
-    CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
-    CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
-    CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
-};
-use crate::models::player::{NewPlayer, Player};
-use crate::models::race::{NewRace, Race, RaceState};
-use crate::models::race_run::RaceRun;
-use crate::models::season::{NewSeason, Season};
-use crate::utils::{env_default, ResultCollapse};
-use crate::{Shutdown, Webhooks};
 use core::default::Default;
-use diesel::result::Error::DatabaseError;
-use diesel::result::{DatabaseErrorKind, Error as DieselError};
-use diesel::{Connection, QueryResult, RunQueryDsl, SqliteConnection};
-use lazy_static::lazy_static;
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::{Deref, DerefMut};
+use std::fmt::{Display, Formatter};
+use std::ops::{ DerefMut};
 use std::sync::Arc;
+
+use diesel::{ RunQueryDsl, SqliteConnection};
+use lazy_static::lazy_static;
 use tokio::time::Duration;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
-use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::Client;
+use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, CommandOption, CommandOptionType, CommandType,
     NumberCommandOptionData,
 };
+use twilight_model::application::component::{ActionRow, Component, TextInput};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::text_input::TextInputStyle;
-use twilight_model::application::component::{ActionRow, Component, TextInput};
+use twilight_model::application::interaction::{Interaction, InteractionData};
 use twilight_model::application::interaction::application_command::{
-    CommandDataOption, CommandOptionValue,
+    CommandData, CommandDataOption, CommandOptionValue,
 };
+use twilight_model::application::interaction::message_component::MessageComponentInteractionData;
 use twilight_model::application::interaction::modal::{
-    ModalInteractionDataActionRow, ModalSubmitInteraction,
-};
-use twilight_model::application::interaction::{
-    ApplicationCommand, Interaction, MessageComponentInteraction,
+    ModalInteractionData, ModalInteractionDataActionRow,
 };
 use twilight_model::gateway::event::Event;
-use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
+use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::guild::Permissions;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
+use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, MessageMarker};
 use twilight_standby::Standby;
 use twilight_util::builder::command::CommandBuilder;
 use twilight_util::builder::InteractionResponseDataBuilder;
 use twilight_validate::message::MessageValidationError;
 
-use super::CREATE_RACE_CMD;
+use crate::{Shutdown, Webhooks};
+use crate::constants::{APPLICATION_ID_VAR, CANCEL_RACE_TIMEOUT_VAR, TOKEN_VAR, WEBSITE_URL};
+use crate::db::get_diesel_pool;
+use crate::discord::{CREATE_BRACKET_CMD, CREATE_SEASON_CMD, notify_racer};
+use crate::discord::{
+    CANCEL_RACE_CMD, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
+    CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
+    CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
+};
+use crate::discord::discord_state::DiscordState;
+use crate::discord::interactions::{button_component, interaction_to_custom_id, plain_interaction_response, update_resp_to_plain_content};
+use crate::models::race::{NewRace, Race, RaceState};
+use crate::models::race_run::RaceRun;
+use crate::models::season::{NewSeason,};
+use crate::utils::{env_default, ResultCollapse};
 
-macro_rules! get_option_value {
-    ($t:ident, $e:expr) => {
-        if let CommandOptionValue::$t(output) = $e {
-            output
-        } else {
-            return Err("Invalid option value".to_string());
-        }
-    };
-}
+use super::CREATE_RACE_CMD;
 
 /**
 get_opt!("name", &mut vec_of_options, OptionType)
@@ -189,32 +173,18 @@ impl Display for ErrorResponse {
     }
 }
 
-trait GetMessageId {
-    fn get_message_id(&self) -> Option<Id<MessageMarker>>;
-}
 
-impl GetMessageId for MessageComponentInteraction {
-    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
-        Some(self.message.id)
-    }
-}
+fn interaction_to_message_id<S: Into<String>>(i: &InteractionCreate, user_facing_err: S) -> Result<Id<MessageMarker>, ErrorResponse> {
+    i.message.as_ref().map(|m| m.id).ok_or(ErrorResponse::new(user_facing_err, "Missing message id?"))
 
-impl GetMessageId for ModalSubmitInteraction {
-    fn get_message_id(&self) -> Option<Id<MessageMarker>> {
-        self.message.as_ref().map(|m| m.id.clone())
-    }
 }
 
 async fn handle_create_race(
-    mut ac: Box<ApplicationCommand>,
+    mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    if !state.application_command_run_by_admin(&ac).await? {
-        return Err("Unprivileged user attempted to create race".to_string());
-    }
-
-    let p1 = get_opt!("p1", &mut ac.data.options, User)?;
-    let p2 = get_opt!("p2", &mut ac.data.options, User)?;
+    let p1 = get_opt!("p1", &mut ac.options, User)?;
+    let p2 = get_opt!("p2", &mut ac.options, User)?;
 
     if p1 == p2 {
         return Ok(plain_interaction_response(
@@ -274,13 +244,10 @@ async fn handle_create_race(
 }
 
 async fn handle_create_season(
-    mut ac: Box<ApplicationCommand>,
+    mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    if !state.application_command_run_by_admin(&ac).await? {
-        return Err("You are not authorized for this.".to_string());
-    }
-    let format = get_opt!("format", &mut ac.data.options, String)?;
+    let format = get_opt!("format", &mut ac.options, String)?;
 
     let ns = NewSeason::new(format);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
@@ -289,14 +256,11 @@ async fn handle_create_season(
 }
 
 async fn handle_create_bracket(
-    mut ac: Box<ApplicationCommand>,
+    mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    if !state.application_command_run_by_admin(&ac).await? {
-        return Err("You are not authorized for this.".to_string());
-    }
-    let name = get_opt!("name", &mut ac.data.options, String)?;
-    let season_id = get_opt!("season_id", &mut ac.data.options, Integer)?;
+    let name = get_opt!("name", &mut ac.options, String)?;
+    let season_id = get_opt!("season_id", &mut ac.options, Integer)?;
     // TODO: look up season, save thing, whatever
 
     Err("asdf".to_string())
@@ -422,12 +386,12 @@ const REALLY_CANCEL_ID: &'static str = "really_cancel";
 async fn wait_for_cancel_race_decision(
     mid: Id<MessageMarker>,
     state: &Arc<DiscordState>,
-) -> Result<MessageComponentInteraction, String> {
+) -> Result<Interaction, String> {
     let sb = state.standby.wait_for_component(
         mid,
         // I don't know why but spelling out the parameter type here seems to fix a compiler
         // complaint
-        |_: &MessageComponentInteraction| true,
+        |_: &Interaction| true,
     );
 
     let time = env_default(CANCEL_RACE_TIMEOUT_VAR, 90);
@@ -444,7 +408,7 @@ async fn wait_for_cancel_race_decision(
 // this method returns () because it is taking over the interaction flow. we're adding a new
 // interaction cycle and not operating on the original interaction anymore.
 async fn handle_cancel_race_started(
-    ac: Box<ApplicationCommand>,
+    ac: Box<InteractionCreate>,
     race: Race,
     r1: RaceRun,
     r2: RaceRun,
@@ -476,13 +440,15 @@ async fn handle_cancel_race_started(
         Ok(cmp) => {
             // if we got a button click we have to deal with that interaction, specifically via
             // creating an "update response"
-            let resp = if cmp.data.custom_id == REALLY_CANCEL_ID {
-                match actually_cancel_race(race, r1, r2, state).await {
-                    Ok(()) => "Race cancelled.".to_string(),
-                    Err(e) => e,
-                }
-            } else {
-                format!("Okay, not cancelling it.")
+            let cid = interaction_to_custom_id(&cmp);
+            let resp = match cid {
+                Some(REALLY_CANCEL_ID) => {
+                    actually_cancel_race(race, r1, r2, state).await
+                        .map(|()| "Race cancelled.".to_string())
+                        .collapse()
+                },
+                Some(_) => {"Okay, not cancelling it.".to_string()},
+                None => {"Not cancelling it with a side of bizarre internal error.".to_string()},
             };
             state
                 .create_response_err_to_str(cmp.id, &cmp.token, &update_resp_to_plain_content(resp))
@@ -507,16 +473,13 @@ async fn handle_cancel_race_started(
 }
 
 async fn handle_cancel_race(
-    mut ac: Box<ApplicationCommand>,
+    mut ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
-    if !state.application_command_run_by_admin(&ac).await? {
-        return Err("You are not authorized for this.".to_string());
-    }
+    let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
 
-    let race_id = get_opt!("race_id", &mut ac.data.options, Integer)?;
-
-    if !ac.data.options.is_empty() {
+    if !ac.options.is_empty() {
         return Err(format!(
             "I'm very confused: {} had an unexpected option",
             CANCEL_RACE_CMD
@@ -551,7 +514,7 @@ async fn handle_cancel_race(
     };
 
     if !r1.state.is_pre_start() || !r2.state.is_pre_start() {
-        handle_cancel_race_started(ac, race, r1, r2, state)
+        handle_cancel_race_started(interaction, race, r1, r2, state)
             .await
             .ok();
         Ok(None)
@@ -564,26 +527,47 @@ async fn handle_cancel_race(
 
 /// this doesn't have an option to return an ErrorResponse because these interactions already occur
 /// under the watchful eyes of admins (and are, in fact, run _by_ admins)
+///
+/// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
 async fn handle_application_interaction(
-    ac: Box<ApplicationCommand>,
+    ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    match ac.data.name.as_str() {
+    match ac.name.as_str() {
         // general commands
+        // there aren't any right now... but if there are we just stick them in here,
+        // return whatever we find, and if we find nothing we validate adminniness and move on
+        _ => {}
+    };
+    match state.application_command_run_by_admin(&interaction).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return Ok(Some(plain_interaction_response(
+                "This command is admin-only.",
+            )));
+        }
+        Err(s) => {
+            return Err(ErrorResponse::new("Error running command", s));
+        }
+    };
+    match ac.name.as_str() {
         // admin commands
         CREATE_RACE_CMD => {
             admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i)))
         }
-        CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, state).await),
+
+        CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
         CREATE_SEASON_CMD => {
             admin_command_wrapper(handle_create_season(ac, state).await.map(|i| Some(i)))
         }
+
         CREATE_BRACKET_CMD => {
             admin_command_wrapper(handle_create_bracket(ac, state).await.map(|i| Some(i)))
         }
 
         _ => {
-            println!("Unhandled application command: {}", ac.data.name);
+            println!("Unhandled application command: {}", ac.name);
             Ok(None)
         }
     }
@@ -637,15 +621,17 @@ If anything goes wrong, tell an admin there was an issue with run `{}`
 }
 
 async fn handle_run_start(
-    interaction: Box<MessageComponentInteraction>,
+    _component_data: MessageComponentInteractionData,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "There was an error starting your race. Please ping FoxLisk.";
+    let mid = interaction.message.as_ref().map(|m| m.id).ok_or(ErrorResponse::new(USER_FACING_ERROR, "Missing message id?"))?;
     let mut conn = state
         .diesel_cxn()
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
-    let mut rr = RaceRun::get_by_message_id(interaction.message.id, &mut conn)
+    let mut rr = RaceRun::get_by_message_id(mid, &mut conn)
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     rr.start();
@@ -666,24 +652,15 @@ async fn handle_run_start(
 }
 
 // TODO: this should take a message id, this method signature is bullshit
-async fn update_race_run<M, T, F>(
-    interaction: &T,
+async fn update_race_run<F>(
+    message_id: Id<MessageMarker>,
     f: F,
     conn: &mut SqliteConnection,
 ) -> Result<(), String>
 where
-    M: GetMessageId,
-    T: Deref<Target = M> + Debug,
     F: FnOnce(&mut RaceRun) -> (),
 {
-    let mid = match interaction.get_message_id() {
-        Some(id) => id,
-        None => {
-            return Err(format!("Interaction {:?} has no message id", interaction));
-        }
-    };
-
-    let rro = match RaceRun::search_by_message_id(mid.clone(), conn).await {
+    let rro = match RaceRun::search_by_message_id(message_id.clone(), conn).await {
         Ok(r) => r,
         Err(e) => {
             return Err(e);
@@ -700,7 +677,10 @@ where
                 }
             }
         }
-        None => Err(format!("Update for unknown race with message id {}", mid)),
+        None => Err(format!(
+            "Update for unknown race with message id {}",
+            message_id
+        )),
     }
 }
 
@@ -731,14 +711,15 @@ lazy_static! {
 }
 
 async fn handle_run_forfeit_modal(
-    mut interaction: Box<ModalSubmitInteraction>,
+    mut interaction_data: ModalInteractionData,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str =
         "Something went wrong forfeiting this race. Please ping FoxLisk.";
-
+    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
     let ut = get_field_from_modal_components(
-        std::mem::take(&mut interaction.data.components),
+        std::mem::take(&mut interaction_data.components),
         CUSTOM_ID_FORFEIT_MODAL_INPUT,
     )
     .ok_or(ErrorResponse::new(
@@ -750,7 +731,7 @@ async fn handle_run_forfeit_modal(
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     let ir = if FORFEIT_REGEX.is_match(&ut) {
-        update_race_run(&interaction, |rr| rr.forfeit(), &mut conn)
+        update_race_run(mid, |rr| rr.forfeit(), &mut conn)
             .await
             .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
 
@@ -758,16 +739,6 @@ async fn handle_run_forfeit_modal(
             "You have forfeited this match. Please let the admins know if there are any issues.",
         )
     } else {
-        let mid = match interaction.get_message_id() {
-            Some(id) => id,
-            None => {
-                return Err(ErrorResponse::new(
-                    USER_FACING_ERROR,
-                    format!("Interaction {:?} has no message id", interaction),
-                ));
-            }
-        };
-
         RaceRun::get_by_message_id(mid, &mut conn)
             .await
             .and_then(|race_run| {
@@ -797,16 +768,17 @@ fn create_modal(
 }
 
 async fn handle_run_finish(
-    interaction: Box<MessageComponentInteraction>,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "Something went wrong finishing this run. Please ping FoxLisk.";
+    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
     let mut conn = state
         .diesel_cxn()
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     if let Err(e) = update_race_run(
-        &interaction,
+        mid,
         |rr| {
             rr.finish();
         },
@@ -848,7 +820,7 @@ fn get_field_from_modal_components(
             // I don't really get what's going on here, but I think a modal is basically just
             // an action row + some text inputs. that's all I'm doing, anyway, so it's fine
             if cmp.custom_id == custom_id {
-                return Some(cmp.value);
+                return cmp.value;
             }
         }
     }
@@ -856,13 +828,15 @@ fn get_field_from_modal_components(
 }
 
 async fn handle_user_time_modal(
-    mut interaction: Box<ModalSubmitInteraction>,
+    mut interaction_data: ModalInteractionData,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str =
         "Something went wrong reporting your time. Please ping FoxLisk.";
+    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
     let ut = get_field_from_modal_components(
-        std::mem::take(&mut interaction.data.components),
+        std::mem::take(&mut interaction_data.components),
         CUSTOM_ID_USER_TIME,
     )
     .ok_or(ErrorResponse::new(
@@ -873,7 +847,7 @@ async fn handle_user_time_modal(
         .diesel_cxn()
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
-    update_race_run(&interaction, |rr| rr.report_user_time(ut), &mut conn)
+    update_race_run(mid, |rr| rr.report_user_time(ut), &mut conn)
         .await
         .map_err(|e| {
             ErrorResponse::new(
@@ -917,12 +891,14 @@ fn handle_vod_ready() -> InteractionResponse {
 }
 
 async fn handle_vod_modal(
-    mut interaction: Box<ModalSubmitInteraction>,
+    mut interaction_data: ModalInteractionData,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const USER_FACING_ERROR: &str = "Something went wrong reporting your VoD. Please ping FoxLisk.";
+    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
     let user_input = get_field_from_modal_components(
-        std::mem::take(&mut interaction.data.components),
+        std::mem::take(&mut interaction_data.components),
         CUSTOM_ID_VOD_MODAL_INPUT,
     )
     .ok_or(ErrorResponse::new(
@@ -934,7 +910,7 @@ async fn handle_vod_modal(
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
 
-    update_race_run(&interaction, |rr| rr.set_vod(user_input), &mut conn)
+    update_race_run(mid, |rr| rr.set_vod(user_input), &mut conn)
         .await
         .map_err(|e| {
             ErrorResponse::new(
@@ -949,56 +925,66 @@ async fn handle_vod_modal(
 }
 
 async fn handle_button_interaction(
-    interaction: Box<MessageComponentInteraction>,
+    interaction_data: MessageComponentInteractionData,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    match interaction.data.custom_id.as_str() {
-        CUSTOM_ID_START_RUN => handle_run_start(interaction, state).await,
+    match interaction_data.custom_id.as_str() {
+        CUSTOM_ID_START_RUN => handle_run_start(interaction_data, interaction, state).await,
         CUSTOM_ID_FORFEIT_RUN => Ok(Some(handle_run_forfeit_button())),
         CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
         CUSTOM_ID_VOD_READY => Ok(Some(handle_vod_ready())),
         _ => {
-            println!("Unhandled button: {:?}", interaction);
+            println!("Unhandled button: {:?}", interaction_data);
             Ok(None)
         }
     }
 }
 
 async fn handle_modal_submission(
-    interaction: Box<ModalSubmitInteraction>,
+    interaction_data: ModalInteractionData,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    match interaction.data.custom_id.as_str() {
-        CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction, state).await,
-        CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction, state).await,
-        CUSTOM_ID_FORFEIT_MODAL => handle_run_forfeit_modal(interaction, state).await,
+    match interaction_data.custom_id.as_str() {
+        CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction_data, interaction, state).await,
+        CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction_data, interaction, state).await,
+        CUSTOM_ID_FORFEIT_MODAL => handle_run_forfeit_modal(interaction_data, interaction, state).await,
         _ => {
-            println!("Unhandled modal: {:?}", interaction);
+            println!("Unhandled modal: {:?}", interaction_data);
             Ok(None)
         }
     }
 }
 
 async fn _handle_interaction(
-    interaction: InteractionCreate,
+    mut interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    match interaction.0 {
-        Interaction::ApplicationCommand(ac) => handle_application_interaction(ac, &state).await,
-        Interaction::MessageComponent(mc) => handle_button_interaction(mc, &state).await,
-        Interaction::ModalSubmit(ms) => handle_modal_submission(ms, &state).await,
-        _ => {
-            println!("Unhandled interaction: {:?}", interaction);
-            Ok(None)
+    let data = std::mem::take(&mut interaction.0.data);
+    if let Some(id) = data {
+        match id {
+            InteractionData::ApplicationCommand(ac) => {
+                handle_application_interaction(ac, interaction, &state).await
+            }
+            InteractionData::MessageComponent(mc) => handle_button_interaction(mc, interaction, &state).await,
+            InteractionData::ModalSubmit(ms) => handle_modal_submission(ms, interaction, &state).await,
+            _ => {
+                println!("Unhandled interaction: {:?}", interaction);
+                Ok(None)
+            }
         }
+    } else {
+        // this handles the PING case, which is webhook-only, aiui
+        Ok(None)
     }
 }
 
 /// Handles an interaction. This attempts to dispatch to the relevant processing code, and then
 /// creates any responses as specified, and alerts admins via webhook if there is a problem.
-async fn handle_interaction(interaction: InteractionCreate, state: Arc<DiscordState>) {
-    let interaction_id = interaction.id();
-    let token = interaction.token().to_string();
+async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<DiscordState>) {
+    let interaction_id = interaction.id;
+    let token = interaction.token.clone();
 
     let (user_resp, admin_message) = match _handle_interaction(interaction, &state).await {
         Ok(o) => (o, None),
@@ -1080,7 +1066,6 @@ async fn set_application_commands(
     }))
     .build();
 
-
     let create_season = CommandBuilder::new(
         CREATE_SEASON_CMD.to_string(),
         "Create a new season".to_string(),
@@ -1091,6 +1076,8 @@ async fn set_application_commands(
         choices: vec![],
         description: "Format (e.g. Any% NMG)".to_string(),
         description_localizations: None,
+        max_length: None,
+        min_length: None,
         name: "format".to_string(),
         name_localizations: None,
         required: true,
@@ -1107,6 +1094,8 @@ async fn set_application_commands(
         choices: vec![],
         description: "Name (e.g. Dark World)".to_string(),
         description_localizations: None,
+        max_length: None,
+        min_length: None,
         name: "name".to_string(),
         name_localizations: None,
         required: true,
@@ -1124,12 +1113,7 @@ async fn set_application_commands(
     }))
     .build();
 
-    let commands = vec![
-        create_race,
-        cancel_race,
-        create_season,
-        create_bracket,
-    ];
+    let commands = vec![create_race, cancel_race, create_season, create_bracket];
 
     let resp = state
         .interaction_client()

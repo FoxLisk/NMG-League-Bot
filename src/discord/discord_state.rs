@@ -11,7 +11,7 @@ use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
 use twilight_http::Client;
-use twilight_model::application::interaction::ApplicationCommand;
+use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::guild::Role;
 use twilight_model::http::interaction::InteractionResponse;
 use twilight_model::id::marker::{
@@ -131,6 +131,7 @@ impl DiscordState {
         Ok(self.cache.user(user_id).map(|u| u.value().clone()))
     }
 
+
     pub(crate) async fn create_response(
         &self,
         interaction_id: Id<InteractionMarker>,
@@ -146,7 +147,7 @@ impl DiscordState {
 
     pub(crate) async fn application_command_run_by_admin(
         &self,
-        ac: &Box<ApplicationCommand>,
+        ac: &Box<InteractionCreate>,
     ) -> Result<bool, String> {
         let gid = ac
             .guild_id
@@ -158,6 +159,7 @@ impl DiscordState {
         self.has_admin_role(uid, gid).await
     }
 
+    /// creates a response and maps any errors to String
     pub(crate) async fn create_response_err_to_str(
         &self,
         interaction_id: Id<InteractionMarker>,

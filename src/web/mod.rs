@@ -1,6 +1,5 @@
-use std::borrow::BorrowMut;
 use std::collections::HashMap;
-use std::path::{Display, Path, PathBuf};
+use std::path::{ Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use itertools::Itertools;
 
@@ -37,7 +36,6 @@ use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::DerefMut;
 use bb8::Pool;
-use oauth2::url::quirks::search;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 use crate::db::{DieselConnectionManager, get_diesel_pool};
@@ -187,7 +185,7 @@ impl<'r> FromRequest<'r> for Admin {
         };
         let uid = {
             let mut sm = sm_lock.lock().await;
-            let st = SessionToken::new(cookie);
+            let st = SessionToken::new(cookie.to_string());
             match sm.get_user(&st) {
                 Ok(u) => u,
                 Err(e) => {
@@ -327,7 +325,7 @@ async fn discord_login(
             )
         };
 
-        cookies.add(Cookie::new(SESSION_COOKIE_NAME, st.into_string()));
+        cookies.add(Cookie::new(SESSION_COOKIE_NAME, st.to_string()));
         println!("User {} has logged in as an admin", user_info.name);
         Ok(Template::render(
             "login_redirect",
@@ -572,7 +570,7 @@ impl DisplayRace {
             None => DisplayPlayer { name_and_status: p2.name.clone(), winner: false, loser: false }
         };
         let scheduled = match outcome {
-            Some(o) => None,
+            Some(_) => None,
             None => {
                 if let Some(utc_dt) = race.scheduled() {
                     Some(
@@ -655,8 +653,8 @@ fn get_brackets_context(conn: &mut SqliteConnection) -> Result<BracketsContext, 
             display_rounds_by_num.entry(round.round_num)
                 .or_insert(DisplayRound { round_num: round.round_num, races: vec![] }).races.push(dr);
         }
-        let rounds = display_rounds_by_num.into_iter().sorted_by_key(|(n, rs)| n.clone())
-            .map(|(n, rs)| rs).collect();
+        let rounds = display_rounds_by_num.into_iter().sorted_by_key(|(n, _rs)| n.clone())
+            .map(|(_n, rs)| rs).collect();
 
         let disp_b = DisplayBracket {
             bracket,
