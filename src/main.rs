@@ -27,8 +27,8 @@ extern crate twilight_standby;
 extern crate twilight_util;
 extern crate twilight_validate;
 
-use discord::Webhooks;
 use crate::db::raw_diesel_cxn_from_env;
+use discord::Webhooks;
 
 #[tokio::main]
 async fn main() {

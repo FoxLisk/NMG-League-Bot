@@ -64,7 +64,7 @@ pub async fn get_diesel_pool() -> Pool<DieselConnectionManager> {
         Some(p) => {
             println!("Returning existing diesel pool");
             p.clone()
-        },
+        }
         None => {
             println!("Generating a new diesel pool");
             let p = Pool::builder()

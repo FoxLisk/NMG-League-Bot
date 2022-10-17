@@ -51,9 +51,9 @@ pub fn button_component<S1: Into<String>, S2: Into<String>>(
 
 pub fn interaction_to_custom_id(i: &Interaction) -> Option<&str> {
     match i.data.as_ref()? {
-        InteractionData::ApplicationCommand(_ac) => {None}
-        InteractionData::MessageComponent(mc) => {Some(&mc.custom_id)}
-        InteractionData::ModalSubmit(ms) => {Some(&ms.custom_id)}
+        InteractionData::ApplicationCommand(_ac) => None,
+        InteractionData::MessageComponent(mc) => Some(&mc.custom_id),
+        InteractionData::ModalSubmit(ms) => Some(&ms.custom_id),
         _ => {
             println!("Unhandled InteractionData type: {:?}", i);
             None

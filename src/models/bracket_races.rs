@@ -1,17 +1,17 @@
-use std::fmt::{Display, Formatter};
-use chrono::{DateTime,  TimeZone, Utc};
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
 use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
+use crate::utils::format_hms;
+use chrono::{DateTime, TimeZone, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
-use serde_json::Error;
-use swiss_pairings::MatchResult;
 use serde::Serialize;
-use crate::utils::format_hms;
+use serde_json::Error;
+use std::fmt::{Display, Formatter};
+use swiss_pairings::MatchResult;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 pub enum BracketRaceState {
@@ -41,7 +41,9 @@ pub enum PlayerResult {
 impl Display for PlayerResult {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            PlayerResult::Forfeit => {write!(f, "Forfeit")}
+            PlayerResult::Forfeit => {
+                write!(f, "Forfeit")
+            }
             PlayerResult::Finish(t) => {
                 write!(f, "{}", format_hms(*t as u64))
             }
@@ -78,7 +80,6 @@ pub enum MatchResultError {
 }
 
 impl BracketRace {
-
     pub fn try_into_match_result<'a>(&'a self) -> Result<MatchResult<'a, i32>, MatchResultError> {
         if self
             .state()
@@ -126,15 +127,18 @@ impl BracketRace {
     }
 
     pub fn scheduled(&self) -> Option<DateTime<Utc>> {
-        self.scheduled_for.map(|t|
-            Utc.timestamp(t, 0)
-        )
+        self.scheduled_for.map(|t| Utc.timestamp(t, 0))
     }
 
-    pub fn schedule<T: TimeZone>(&mut self, when: DateTime<T>) -> Result<(), BracketRaceStateError> {
+    pub fn schedule<T: TimeZone>(
+        &mut self,
+        when: DateTime<T>,
+    ) -> Result<(), BracketRaceStateError> {
         match self.state()? {
             BracketRaceState::New | BracketRaceState::Scheduled => {}
-            BracketRaceState::Finished => { return Err(BracketRaceStateError::InvalidState); }
+            BracketRaceState::Finished => {
+                return Err(BracketRaceStateError::InvalidState);
+            }
         };
         self.scheduled_for = Some(when.timestamp());
         Ok(())
@@ -259,7 +263,10 @@ pub struct NewBracketRace {
     outcome: Option<String>,
 }
 
-pub fn insert_bulk(new_races: &Vec<NewBracketRace>, conn: &mut SqliteConnection) -> Result<usize, diesel::result::Error> {
+pub fn insert_bulk(
+    new_races: &Vec<NewBracketRace>,
+    conn: &mut SqliteConnection,
+) -> Result<usize, diesel::result::Error> {
     diesel::insert_into(bracket_races::table)
         .values(new_races)
         .execute(conn)

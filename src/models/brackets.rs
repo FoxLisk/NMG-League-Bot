@@ -1,5 +1,6 @@
-use std::collections::HashMap;
-use crate::models::bracket_races::{BracketRace, BracketRaceStateError, insert_bulk, MatchResultError, NewBracketRace};
+use crate::models::bracket_races::{
+    insert_bulk, BracketRace, BracketRaceStateError, MatchResultError, NewBracketRace,
+};
 use crate::models::bracket_rounds::{BracketRound, NewBracketRound};
 use crate::models::player::Player;
 use crate::models::season::Season;
@@ -9,8 +10,9 @@ use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
 use rand::thread_rng;
-use swiss_pairings::{PairingError, TourneyConfig};
 use serde::Serialize;
+use std::collections::HashMap;
+use swiss_pairings::{PairingError, TourneyConfig};
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 enum BracketState {
@@ -76,7 +78,6 @@ fn generate_next_round_pairings(
     bracket: &Bracket,
     conn: &mut SqliteConnection,
 ) -> Result<(), BracketError> {
-
     if bracket.state()? != BracketState::Started {
         return Err(BracketError::InvalidState);
     }
@@ -103,21 +104,28 @@ fn generate_next_round_pairings(
         points_per_win: 2,
         points_per_loss: 0,
         points_per_draw: 1,
-        error_on_repeated_opponent: true
+        error_on_repeated_opponent: true,
     };
-    let (pairings, _standings) = swiss_pairings::swiss_pairings(&pairing_rounds, &cfg, swiss_pairings::random_by_scoregroup)?;
+    let (pairings, _standings) = swiss_pairings::swiss_pairings(
+        &pairing_rounds,
+        &cfg,
+        swiss_pairings::random_by_scoregroup,
+    )?;
     println!("{:?}", pairings);
 
-    let mut players: HashMap<_, _> = HashMap::from_iter(
-        bracket.players(conn)?.into_iter().map(|p| (p.id, p))
-    );
+    let mut players: HashMap<_, _> =
+        HashMap::from_iter(bracket.players(conn)?.into_iter().map(|p| (p.id, p)));
 
     let nr = NewBracketRound::new(&bracket, highest_round_num + 1);
     let new_round = nr.save(conn)?;
     let mut new_races = vec![];
     for (p1_id, p2_id) in pairings {
-        let p1 = players.remove(p1_id).ok_or(BracketError::Other(format!("Cannot find player {}", p1_id)))?;
-        let p2 = players.remove(p2_id).ok_or(BracketError::Other(format!("Cannot find player {}", p2_id)))?;
+        let p1 = players
+            .remove(p1_id)
+            .ok_or(BracketError::Other(format!("Cannot find player {}", p1_id)))?;
+        let p2 = players
+            .remove(p2_id)
+            .ok_or(BracketError::Other(format!("Cannot find player {}", p2_id)))?;
         let new_race = NewBracketRace::new(bracket, &new_round, &p1, &p2);
         new_races.push(new_race);
     }
@@ -151,7 +159,10 @@ impl Bracket {
             .load(conn)
     }
 
-    pub fn rounds(&self, conn: &mut SqliteConnection) -> Result<Vec<BracketRound>, diesel::result::Error> {
+    pub fn rounds(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<BracketRound>, diesel::result::Error> {
         use crate::schema::bracket_rounds;
         bracket_rounds::table
             .filter(bracket_rounds::bracket_id.eq(self.id))
@@ -160,7 +171,10 @@ impl Bracket {
     }
 
     /// returns all BracketRaces for this bracket (unordered)
-    pub fn bracket_races(&self, conn: &mut SqliteConnection) -> Result<Vec<BracketRace>, diesel::result::Error> {
+    pub fn bracket_races(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<BracketRace>, diesel::result::Error> {
         use crate::schema::bracket_races;
         bracket_races::table
             .filter(bracket_races::bracket_id.eq(self.id))
