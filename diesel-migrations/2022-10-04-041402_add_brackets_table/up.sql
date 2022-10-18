@@ -7,3 +7,5 @@ CREATE TABLE if not exists brackets (
 
     FOREIGN KEY(season_id) REFERENCES seasons(id)
 );
+
+CREATE UNIQUE INDEX season_name ON brackets(season_id, name);

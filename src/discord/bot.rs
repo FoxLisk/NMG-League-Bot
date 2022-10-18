@@ -562,6 +562,7 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
     }
 
     if let Some(u) = user_resp {
+        println!("handle_interaction trying to send response {:?}", u);
         if let Some(more_errors) = state
             .create_response_err_to_str(interaction_id, &token, &u)
             .await

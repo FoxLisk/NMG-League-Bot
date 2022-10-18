@@ -1,28 +1,38 @@
-use std::sync::Arc;
-use std::ops::DerefMut;
-use diesel::RunQueryDsl;
-use twilight_http::request::channel::message::UpdateMessage;
-use twilight_mention::Mention;
-use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::interaction::application_command::CommandData;
-use twilight_model::application::interaction::Interaction;
-use twilight_model::gateway::payload::incoming::InteractionCreate;
-use twilight_model::http::interaction::InteractionResponse;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ChannelMarker, MessageMarker};
-use twilight_validate::message::MessageValidationError;
-use nmg_league_bot::models::brackets::NewBracket;
-use nmg_league_bot::models::season::{NewSeason, Season};
-use nmg_league_bot::utils::{env_default, ResultCollapse};
 use crate::constants::CANCEL_RACE_TIMEOUT_VAR;
-use crate::discord::{CREATE_RACE_CMD, CANCEL_RACE_CMD, CREATE_SEASON_CMD, CREATE_BRACKET_CMD, ErrorResponse, notify_racer};
 use crate::discord::components::action_row;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions::{button_component, interaction_to_custom_id, plain_interaction_response, update_resp_to_plain_content};
+use crate::discord::interactions::{
+    button_component, interaction_to_custom_id, plain_interaction_response,
+    update_resp_to_plain_content,
+};
+use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, get_opt};
 use crate::get_opt;
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
-
+use diesel::{QueryResult, RunQueryDsl};
+use nmg_league_bot::models::brackets::{Bracket, NewBracket};
+use nmg_league_bot::models::player::{NewPlayer, Player};
+use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
+use nmg_league_bot::models::player_bracket_entries::PlayerBracketEntry;
+use nmg_league_bot::models::season::{NewSeason, Season};
+use nmg_league_bot::utils::{env_default, ResultCollapse};
+use std::ops::DerefMut;
+use std::sync::Arc;
+use twilight_http::request::channel::message::UpdateMessage;
+use twilight_mention::Mention;
+use twilight_model::application::command::{CommandOptionChoice, CommandOptionType};
+use twilight_model::application::component::button::ButtonStyle;
+use twilight_model::application::interaction::application_command::{
+    CommandData, CommandOptionValue,
+};
+use twilight_model::application::interaction::{Interaction, InteractionType};
+use twilight_model::gateway::payload::incoming::InteractionCreate;
+use twilight_model::http::interaction::{
+    InteractionResponse, InteractionResponseData, InteractionResponseType,
+};
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
+use twilight_model::id::Id;
+use twilight_validate::message::MessageValidationError;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
@@ -53,6 +63,17 @@ pub async fn handle_application_interaction(
         }
     };
     match ac.name.as_str() {
+        CREATE_PLAYER_CMD => {
+            admin_command_wrapper(create_player(ac, interaction, state).await.map(|i| Some(i)))
+        }
+        ADD_PLAYER_TO_BRACKET_CMD => {
+            println!("handle add data: interaction: {:?}", interaction);
+            admin_command_wrapper(
+                handle_add_player_to_bracket(ac, interaction, state)
+                    .await
+                    .map(|i| Some(i)),
+            )
+        }
         // admin commands
         CREATE_RACE_CMD => {
             admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i)))
@@ -80,11 +101,151 @@ pub async fn handle_application_interaction(
 fn admin_command_wrapper(
     result: Result<Option<InteractionResponse>, String>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    Ok(result
+    let out = Ok(result
         .map_err(|e| Some(plain_interaction_response(e)))
-        .collapse())
+        .collapse());
+    println!("admin_command_wrapper: returning {:?}", out);
+    out
 }
 
+async fn create_player(
+    mut ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let discord_user = get_opt!("user", &mut ac.options, User)?;
+    let rt_un = get_opt!("rtgg_username", &mut ac.options, String)?;
+    let name_override = get_opt!("name", &mut ac.options, String).ok();
+    let name = match name_override {
+        Some(name) => name,
+        None => {
+            let u = state
+                .get_user(discord_user)
+                .await
+                .map_err(|e| format!("Error finding user??? {}", e))?;
+            u.ok_or(format!("User not found"))?.name
+        }
+    };
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let np = NewPlayer::new(name, discord_user.to_string(), rt_un, true);
+
+    match np.save(cxn.deref_mut()) {
+        Ok(_) => Ok(plain_interaction_response("Player added!")),
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+async fn handle_add_player_to_bracket(
+    mut ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    match interaction.kind {
+        InteractionType::ApplicationCommand => {
+            handle_add_player_to_bracket_submit(ac, interaction, state).await
+        }
+        InteractionType::ApplicationCommandAutocomplete => {
+            handle_add_player_to_bracket_autocomplete(ac, interaction, state).await
+        }
+        _ => Err(format!(
+            "Unexpected InteractionType for {}",
+            ADD_PLAYER_TO_BRACKET_CMD
+        )),
+    }
+}
+
+async fn handle_add_player_to_bracket_submit(
+    mut ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let discord_id = get_opt!("user", &mut ac.options, User)?;
+    let bracket_name = get_opt!("bracket", &mut ac.options, String)?;
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let player = match Player::get_by_discord_id(&(discord_id.to_string()), cxn.deref_mut())
+        .map_err(|e| e.to_string())?
+    {
+        Some(p) => p,
+        None => {
+            return Ok(plain_interaction_response(format!(
+                "That player has not been created. Use /{} to create them.",
+                ADD_PLAYER_TO_BRACKET_CMD
+            )));
+        }
+    };
+    let szn = Season::get_active_season(cxn.deref_mut())
+        .map_err(|e| e.to_string())?
+        .ok_or("There's no active season.".to_string())?;
+    let bracket = szn
+        .brackets(cxn.deref_mut())
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|b| b.name == bracket_name)
+        .ok_or(format!(
+            "Cannot find bracket {} in Season {}",
+            bracket_name, szn.id
+        ))?;
+
+    let npbe = NewPlayerBracketEntry::new(&bracket, &player);
+    npbe.save(cxn.deref_mut())
+        .map(|_| plain_interaction_response(format!("{} added to {}", player.name, bracket.name)))
+        .map_err(|e| e.to_string())
+}
+
+async fn get_bracket_autocompletes(mut ac: Box<CommandData>,
+                                   state: &Arc<DiscordState>,) -> Result<Vec<CommandOptionChoice>, String> {
+    let b = get_opt("bracket", &mut ac.options, CommandOptionType::String)?;
+    if let CommandOptionValue::Focused(_, _) = b.value {
+        // this is what we're expecting
+    } else {
+        println!("Found option {:?}", b);
+        return Err("Trying to autocomplete for bracket but it's not the bracket arg".to_string());
+    }
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let szn = Season::get_active_season(cxn.deref_mut())
+        .map_err(|e| e.to_string())?
+        .ok_or("No current season!!!".to_string())?;
+    let brackets = szn.brackets(cxn.deref_mut()).map_err(|e| e.to_string())?;
+    Ok(brackets
+        .into_iter()
+        .map(|b| CommandOptionChoice::String {
+            name: b.name.clone(),
+            name_localizations: None,
+            value: b.name,
+        })
+        .collect())
+
+}
+
+async fn handle_add_player_to_bracket_autocomplete(
+    mut ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    // just to validate that we're autocompleting what we think we are.
+    let options = match get_bracket_autocompletes(ac, state).await {
+        Ok(o) => o,
+        Err(e) => {
+            println!("Error fetching bracket autocompletes: {}", e);
+            vec![]
+        }
+    };
+    Ok(InteractionResponse {
+        kind: InteractionResponseType::ApplicationCommandAutocompleteResult,
+        data: Some(InteractionResponseData {
+            allowed_mentions: None,
+            attachments: None,
+            choices: Some(options),
+            components: None,
+            content: None,
+            custom_id: None,
+            embeds: None,
+            flags: None,
+            title: None,
+            tts: None,
+        }),
+    })
+}
 
 async fn handle_create_race(
     mut ac: Box<CommandData>,
@@ -151,7 +312,6 @@ async fn handle_create_race(
     }
 }
 
-
 async fn handle_cancel_race(
     mut ac: Box<CommandData>,
     interaction: Box<InteractionCreate>,
@@ -204,7 +364,6 @@ async fn handle_cancel_race(
             .map(|_| Some(plain_interaction_response("Race cancelled.")))
     }
 }
-
 
 // this method returns () because it is taking over the interaction flow. we're adding a new
 // interaction cycle and not operating on the original interaction anymore.
@@ -272,7 +431,6 @@ async fn handle_cancel_race_started(
     }
 }
 
-
 /// returns the new component interaction if the user indicates their choice, otherwise
 /// an error indicating what happened instead.
 async fn wait_for_cancel_race_decision(
@@ -296,7 +454,6 @@ async fn wait_for_cancel_race_decision(
         }
     }
 }
-
 
 async fn actually_cancel_race(
     race: Race,
@@ -329,7 +486,6 @@ async fn actually_cancel_race(
     Ok(())
 }
 
-
 async fn update_cancelled_race_message(
     run: RaceRun,
     state: &Arc<DiscordState>,
@@ -344,14 +500,13 @@ async fn update_cancelled_race_message(
         "This race has been cancelled by an admin.",
         state,
     )
-        .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())?;
     update
         .exec()
         .await
         .map_err(|e| format!("Error updating race run message: {}", e))
         .map(|_| ())
 }
-
 
 // this should be called something like "race_cancelled_update_message" since it's building an
 // "UpdateMessage" object to indicate "Race Cancelled" but that just sounds like word salad in
@@ -379,8 +534,8 @@ async fn handle_create_season(
 
     let ns = NewSeason::new(format);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    ns.save(cxn.deref_mut()).map_err(|e| e.to_string())?;
-    Ok(plain_interaction_response("Season created!"))
+    let s = ns.save(cxn.deref_mut()).map_err(|e| e.to_string())?;
+    Ok(plain_interaction_response(format!("Season {} created!", s.id)))
 }
 
 async fn handle_create_bracket(

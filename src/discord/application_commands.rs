@@ -2,7 +2,7 @@ use twilight_model::application::command::{BaseCommandOptionData, ChoiceCommandO
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
 use crate::constants::WEBSITE_URL;
-use crate::discord::{CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD};
+use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD};
 
 pub fn application_command_definitions() -> Vec<Command> {
     let create_race = CommandBuilder::new(
@@ -95,6 +95,72 @@ pub fn application_command_definitions() -> Vec<Command> {
         }))
         .build();
 
-    vec![create_race, cancel_race, create_season, create_bracket]
+
+    let add_player_to_bracket = CommandBuilder::new(
+        ADD_PLAYER_TO_BRACKET_CMD.to_string(),
+        "Add a player to a bracket".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::User(BaseCommandOptionData{
+            description: format!("The player. Add with /{}", ADD_PLAYER_TO_BRACKET_CMD),
+            description_localizations: None,
+            name: "user".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: true,
+            choices: vec![],
+            description: "The bracket to add to".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "bracket".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+        .build();
+
+
+    let create_player = CommandBuilder::new(
+        CREATE_PLAYER_CMD.to_string(),
+        "Add a player".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::User(BaseCommandOptionData {
+            description: "user".to_string(),
+            description_localizations: None,
+            name: "user".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "RaceTime.gg username".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "rtgg_username".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Name (if different than discord name)".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "name".to_string(),
+            name_localizations: None,
+            required: false
+        }))
+        .build();
+
+    vec![create_race, cancel_race, create_season, create_bracket, create_player,
+         add_player_to_bracket]
 
 }

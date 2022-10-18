@@ -43,6 +43,9 @@ const ADMIN_ROLE_NAME: &'static str = "Admin";
 const CREATE_SEASON_CMD: &str = "create_season";
 const CREATE_BRACKET_CMD: &str = "create_bracket";
 
+const ADD_PLAYER_TO_BRACKET_CMD: &str = "add_player_to_bracket";
+const CREATE_PLAYER_CMD: &str = "create_player";
+
 /// DM the player & save the run model if the DM sends successfully
 pub(crate) async fn notify_racer(
     race_run: &mut RaceRun,
@@ -152,6 +155,7 @@ macro_rules! get_opt {
 /// an ErrorResponse indicates that, rather than simply responding to the interaction with some
 /// kind of response, you want to both respond to that (with a plain error message)
 /// *AND* inform the admins that there was an error
+#[derive(Debug)]
 pub struct ErrorResponse {
     user_facing_error: String,
     internal_error: String,
