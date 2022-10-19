@@ -26,6 +26,7 @@ extern crate twilight_model;
 extern crate twilight_standby;
 extern crate twilight_util;
 extern crate twilight_validate;
+extern crate twilight_mention;
 
 use crate::db::raw_diesel_cxn_from_env;
 use discord::Webhooks;

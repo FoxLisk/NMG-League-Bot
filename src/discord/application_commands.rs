@@ -1,8 +1,8 @@
-use twilight_model::application::command::{BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandType, NumberCommandOptionData};
+use twilight_model::application::command::{BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice, CommandOptionValue, CommandType, NumberCommandOptionData};
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
 use crate::constants::WEBSITE_URL;
-use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD};
+use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD};
 
 pub fn application_command_definitions() -> Vec<Command> {
     let create_race = CommandBuilder::new(
@@ -122,7 +122,6 @@ pub fn application_command_definitions() -> Vec<Command> {
         }))
         .build();
 
-
     let create_player = CommandBuilder::new(
         CREATE_PLAYER_CMD.to_string(),
         "Add a player".to_string(),
@@ -160,7 +159,78 @@ pub fn application_command_definitions() -> Vec<Command> {
         }))
         .build();
 
+    let hours = (1..=12).map(|s| CommandOptionChoice::Int {
+        name:  format!("{}", s),
+        name_localizations: None,
+        value: s
+    }).collect();
+    let ampm_opts = vec! [
+        CommandOptionChoice::String {
+            name: "AM".to_string(),
+            name_localizations: None,
+            value: "AM".to_string(),
+        },
+        CommandOptionChoice::String {
+            name: "PM".to_string(),
+            name_localizations: None,
+            value: "PM".to_string(),
+        },
+    ];
+
+    let schedule_race = CommandBuilder::new(
+        SCHEDULE_RACE_CMD.to_string(),
+        "Schedule your next race (all times in US/Eastern)".to_string(),
+        CommandType::ChatInput,
+    )
+        .option(CommandOption::Integer(NumberCommandOptionData{
+            autocomplete: false,
+            choices: hours,
+            description: "Hour".to_string(),
+            description_localizations: None,
+            max_value: None,
+            min_value: None,
+            name: "hour".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+        .option(CommandOption::Integer(NumberCommandOptionData{
+            autocomplete: false,
+            choices: vec![],
+            description: "Minute (1-59 to avoid noon/midnight confusion)".to_string(),
+            description_localizations: None,
+            max_value: Some(CommandOptionValue::Integer(59)),
+            min_value: Some(CommandOptionValue::Integer(1)),
+            name: "minute".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: ampm_opts,
+            description: "AM/PM".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "am_pm".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+            .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: true,
+            choices: vec![],
+            description: "Day (yyyy/mm/dd format) (wait for suggestions)".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "day".to_string(),
+            name_localizations: None,
+            required: true
+        }))
+
+        .build();
+
     vec![create_race, cancel_race, create_season, create_bracket, create_player,
-         add_player_to_bracket]
+         add_player_to_bracket,
+    schedule_race]
 
 }

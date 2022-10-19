@@ -5,25 +5,34 @@ use crate::discord::interactions::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, get_opt};
-use crate::get_opt;
+use crate::discord::{
+    notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD,
+    CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD,
+};
 use crate::models::race::{NewRace, Race, RaceState};
 use crate::models::race_run::RaceRun;
-use diesel::{QueryResult, RunQueryDsl};
-use nmg_league_bot::models::brackets::{Bracket, NewBracket};
-use nmg_league_bot::models::player::{NewPlayer, Player};
+use crate::{get_focused_opt, get_opt};
+
+use chrono::{DateTime,  Duration, TimeZone, Utc};
+use diesel::{ RunQueryDsl};
+use nmg_league_bot::models::bracket_races::{
+    get_current_round_race_for_player,  BracketRaceStateError,
+};
+use nmg_league_bot::models::brackets::{ NewBracket};
+use nmg_league_bot::models::player::{IntoMentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
-use nmg_league_bot::models::player_bracket_entries::PlayerBracketEntry;
 use nmg_league_bot::models::season::{NewSeason, Season};
 use nmg_league_bot::utils::{env_default, ResultCollapse};
-use std::ops::DerefMut;
+use regex::Regex;
+use std::ops::{ DerefMut};
 use std::sync::Arc;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
-use twilight_model::application::command::{CommandOptionChoice, CommandOptionType};
+use twilight_mention::timestamp::TimestampStyle;
+use twilight_model::application::command::{CommandOptionChoice,};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::interaction::application_command::{
-    CommandData, CommandOptionValue,
+    CommandData,
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::gateway::payload::incoming::InteractionCreate;
@@ -36,9 +45,6 @@ use twilight_validate::message::MessageValidationError;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
-/// this doesn't have an option to return an ErrorResponse because these interactions already occur
-/// under the watchful eyes of admins (and are, in fact, run _by_ admins)
-///
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
 pub async fn handle_application_interaction(
     ac: Box<CommandData>,
@@ -46,6 +52,9 @@ pub async fn handle_application_interaction(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match ac.name.as_str() {
+        SCHEDULE_RACE_CMD => {
+            return handle_schedule_race(ac, interaction, state).await;
+        }
         // general commands
         // there aren't any right now... but if there are we just stick them in here,
         // return whatever we find, and if we find nothing we validate adminniness and move on
@@ -66,14 +75,11 @@ pub async fn handle_application_interaction(
         CREATE_PLAYER_CMD => {
             admin_command_wrapper(create_player(ac, interaction, state).await.map(|i| Some(i)))
         }
-        ADD_PLAYER_TO_BRACKET_CMD => {
-            println!("handle add data: interaction: {:?}", interaction);
-            admin_command_wrapper(
-                handle_add_player_to_bracket(ac, interaction, state)
-                    .await
-                    .map(|i| Some(i)),
-            )
-        }
+        ADD_PLAYER_TO_BRACKET_CMD => admin_command_wrapper(
+            handle_add_player_to_bracket(ac, interaction, state)
+                .await
+                .map(|i| Some(i)),
+        ),
         // admin commands
         CREATE_RACE_CMD => {
             admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i)))
@@ -95,6 +101,227 @@ pub async fn handle_application_interaction(
     }
 }
 
+/// parses a string in `YYYY/MM/DD` format, returns (month, day)
+/// if it doesn't parse, does not return that
+fn parse_day(s: &str) -> Option<(i32, u32, u32)> {
+    // TODO: move regex construction elsewhere, remove unwrap (or take it out of normal code path)
+    let re = Regex::new(r#"(\d{4})/(\d{1,2})/(\d{1,2})"#).unwrap();
+    let stripped = s.trim();
+    let caps = re.captures(stripped)?;
+    println!("caps: {:?}", caps);
+
+    let y = caps.get(1)?.as_str().parse().ok()?;
+    let m = caps.get(2)?.as_str().parse().ok()?;
+    let d = caps.get(2)?.as_str().parse().ok()?;
+    Some((y, m, d))
+}
+
+async fn _handle_schedule_race(
+    mut ac: Box<CommandData>,
+    mut interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
+    let member = std::mem::take(&mut interaction.member).ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "No member found on schedule_race command!",
+    ))?;
+    let user = member.user.ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "No user found on member struct for a schedule_race command!",
+    ))?;
+    let day_string = match get_opt!("day", &mut ac.options, String) {
+        Ok(d) => d,
+        Err(_e) => {
+            // this doesn't, IMO, merit alerting admins separately
+            return Ok(Some(plain_interaction_response(
+                "Missing required day option",
+            )));
+        }
+    };
+    println!("Day string: {}", day_string);
+    let (year, month, day) = match parse_day(&day_string) {
+        Some(ymd) => ymd,
+        None => {
+            return Ok(Some(plain_interaction_response(
+                "Invalid day. Expected YYYY/MM/DD format. You should see helpful autocomplete options.",
+            )));
+        }
+    };
+    let hour = match get_opt!("hour", &mut ac.options, Integer) {
+        Ok(h) => h,
+        Err(_e) => {
+            // this doesn't, IMO, merit alerting admins separately
+            return Ok(Some(plain_interaction_response(
+                "Missing required hour option",
+            )));
+        }
+    };
+    let minute = match get_opt!("minute", &mut ac.options, Integer) {
+        Ok(m) => m,
+        Err(_e) => {
+            // this doesn't, IMO, merit alerting admins separately
+            return Ok(Some(plain_interaction_response(
+                "Missing required minute option",
+            )));
+        }
+    };
+    // TODO: this cannot possibly be the best way to do this, lmao
+    let ampm_offset = match get_opt!("am_pm", &mut ac.options, String)
+        .map_err(|_e| "Missing required am_pm option")
+        .and_then(|o| match o.as_str() {
+            "AM" => Ok(0),
+            "PM" => Ok(12),
+            _ => Err("Invalid value for AM/PM"),
+        }) {
+        Ok(ap) => ap,
+        Err(e) => {
+            return Ok(Some(plain_interaction_response(e)));
+        }
+    };
+
+    let dt: DateTime<_> = match chrono_tz::US::Eastern
+        .ymd_opt(year, month, day)
+        .and_hms_opt((hour as u32) + ampm_offset, minute as u32, 0)
+        .earliest()
+    {
+        Some(dt) => dt,
+        None => {
+            return Ok(Some(plain_interaction_response("Invalid datetime")));
+        }
+    };
+
+
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+    let player =
+        match Player::get_by_discord_id(&user.id.to_string(), cxn.deref_mut()).map_err(|e| {
+            ErrorResponse::new(
+                BLAND_USER_FACING_ERROR,
+                format!("Error fetching player: {}", e),
+            )
+        })? {
+            Some(p) => p,
+            None => {
+                return Ok(Some(plain_interaction_response(
+                    "You do not seem to be registered.",
+                )));
+            }
+        };
+
+    let race_opt = get_current_round_race_for_player(&player, cxn.deref_mut()).map_err(|e| {
+        ErrorResponse::new(
+            BLAND_USER_FACING_ERROR,
+            format!("Error fetching race for player: {}", e),
+        )
+    })?;
+    let mut the_race = match race_opt {
+        Some(r) => r,
+        None => {
+            return Ok(Some(plain_interaction_response(
+                "You do not have an active race.",
+            )));
+        }
+    };
+
+    let was = match the_race.schedule(&dt) {
+        Ok(w) => w,
+        Err(BracketRaceStateError::InvalidState) => {
+            return Ok(Some(plain_interaction_response(
+                "That race cannot be scheduled anymore.",
+            )));
+        }
+        Err(e) => {
+            return Err(ErrorResponse::new(
+                BLAND_USER_FACING_ERROR,
+                format!("{:?}", e),
+            ));
+        }
+    };
+    the_race.update(cxn.deref_mut()).map_err(|e| {
+        ErrorResponse::new(
+            BLAND_USER_FACING_ERROR,
+            format!("Error saving scheduled race: {}", e),
+        )
+    })?;
+
+
+    let p1_name = Player::get_by_id(the_race.player_1_id, cxn.deref_mut())
+        .mention_maybe()
+        .unwrap_or("Error finding player".to_string());
+
+    let p2_name = Player::get_by_id(the_race.player_2_id, cxn.deref_mut())
+        .mention_maybe()
+        .unwrap_or("Error finding player".to_string());
+    let new_t = twilight_mention::timestamp::Timestamp::new(dt.timestamp() as u64, Some(TimestampStyle::LongDateTime)).mention();
+    let old_t = was
+        .map(|t|
+            format!(" (was {})",
+            twilight_mention::timestamp::Timestamp::new(
+                t as u64, Some(TimestampStyle::LongDateTime)).mention()
+            )
+
+        ).unwrap_or("".to_string());
+    Ok(Some(plain_interaction_response(format!(
+        "{p1_name} vs {p2_name} has been scheduled for {new_t}{old_t}"
+    ))))
+}
+
+fn handle_schedule_race_autocomplete(
+    mut ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    _state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    get_focused_opt!("day", &mut ac.options, String)?;
+
+    let today = Utc::today().with_timezone(&chrono_tz::US::Eastern);
+    let mut options = vec![];
+    for i in 0..7 {
+        let dur = Duration::days(i);
+        let day = today.clone() + dur;
+        options.push(CommandOptionChoice::String {
+            name: day.format("%A, %B %d").to_string(),
+            name_localizations: None,
+            value: day.format("%Y/%m/%d").to_string(),
+        });
+    }
+    Ok(InteractionResponse {
+        kind: InteractionResponseType::ApplicationCommandAutocompleteResult,
+        data: Some(InteractionResponseData {
+            allowed_mentions: None,
+            attachments: None,
+            choices: Some(options),
+            components: None,
+            content: None,
+            custom_id: None,
+            embeds: None,
+            flags: None,
+            title: None,
+            tts: None,
+        }),
+    })
+}
+async fn handle_schedule_race(
+    ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    match interaction.kind {
+        InteractionType::ApplicationCommand => _handle_schedule_race(ac, interaction, state).await,
+        InteractionType::ApplicationCommandAutocomplete => {
+            handle_schedule_race_autocomplete(ac, interaction, state)
+                .map(|i| Some(i))
+                .map_err(|e| ErrorResponse::new("Unexpected error thinking about days.", e))
+        }
+        _ => Err(ErrorResponse::new(
+            "Weird internal error, sorry",
+            format!("Unexpected InteractionType for {}", SCHEDULE_RACE_CMD),
+        )),
+    }
+}
+
 /// turns a "String" error response into a plain interaction response with that text
 ///
 /// designed for use on admin-only commands, where errors should just be reported to the admins
@@ -104,7 +331,6 @@ fn admin_command_wrapper(
     let out = Ok(result
         .map_err(|e| Some(plain_interaction_response(e)))
         .collapse());
-    println!("admin_command_wrapper: returning {:?}", out);
     out
 }
 
@@ -136,7 +362,7 @@ async fn create_player(
 }
 
 async fn handle_add_player_to_bracket(
-    mut ac: Box<CommandData>,
+    ac: Box<CommandData>,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
@@ -156,7 +382,7 @@ async fn handle_add_player_to_bracket(
 
 async fn handle_add_player_to_bracket_submit(
     mut ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
+    _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     let discord_id = get_opt!("user", &mut ac.options, User)?;
@@ -192,15 +418,12 @@ async fn handle_add_player_to_bracket_submit(
         .map_err(|e| e.to_string())
 }
 
-async fn get_bracket_autocompletes(mut ac: Box<CommandData>,
-                                   state: &Arc<DiscordState>,) -> Result<Vec<CommandOptionChoice>, String> {
-    let b = get_opt("bracket", &mut ac.options, CommandOptionType::String)?;
-    if let CommandOptionValue::Focused(_, _) = b.value {
-        // this is what we're expecting
-    } else {
-        println!("Found option {:?}", b);
-        return Err("Trying to autocomplete for bracket but it's not the bracket arg".to_string());
-    }
+async fn get_bracket_autocompletes(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<Vec<CommandOptionChoice>, String> {
+    get_focused_opt!("bracket", &mut ac.options, String)?;
+
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let szn = Season::get_active_season(cxn.deref_mut())
         .map_err(|e| e.to_string())?
@@ -214,12 +437,11 @@ async fn get_bracket_autocompletes(mut ac: Box<CommandData>,
             value: b.name,
         })
         .collect())
-
 }
 
 async fn handle_add_player_to_bracket_autocomplete(
-    mut ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
+    ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     // just to validate that we're autocompleting what we think we are.
@@ -535,7 +757,10 @@ async fn handle_create_season(
     let ns = NewSeason::new(format);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let s = ns.save(cxn.deref_mut()).map_err(|e| e.to_string())?;
-    Ok(plain_interaction_response(format!("Season {} created!", s.id)))
+    Ok(plain_interaction_response(format!(
+        "Season {} created!",
+        s.id
+    )))
 }
 
 async fn handle_create_bracket(

@@ -130,18 +130,20 @@ impl BracketRace {
         self.scheduled_for.map(|t| Utc.timestamp(t, 0))
     }
 
+    /// returns the prior scheduled time, if any (as timestamp)
     pub fn schedule<T: TimeZone>(
         &mut self,
-        when: DateTime<T>,
-    ) -> Result<(), BracketRaceStateError> {
+        when: &DateTime<T>,
+    ) -> Result<Option<i64>, BracketRaceStateError> {
         match self.state()? {
             BracketRaceState::New | BracketRaceState::Scheduled => {}
             BracketRaceState::Finished => {
                 return Err(BracketRaceStateError::InvalidState);
             }
         };
-        self.scheduled_for = Some(when.timestamp());
-        Ok(())
+        let before = std::mem::replace(&mut self.scheduled_for, Some(when.timestamp()));
+        self.set_state(BracketRaceState::Scheduled);
+        Ok(before)
     }
 
     /// only works on runs in the New or Scheduled state
