@@ -10,7 +10,7 @@ fn main() {
     let bs = sn.brackets(&mut db).unwrap();
     println!("{:?}", bs);
     for mut b in bs {
-        for p in b.players(&mut db).unwrap() {
+        for _p in b.players(&mut db).unwrap() {
         }
         b.generate_pairings(&mut db).unwrap();
         println!("Generated pairings for Bracket: {:?}", b);

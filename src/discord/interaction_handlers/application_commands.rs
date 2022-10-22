@@ -1,7 +1,7 @@
 use crate::constants::CANCEL_RACE_TIMEOUT_VAR;
 use crate::discord::components::action_row;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions::{
+use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
@@ -14,7 +14,6 @@ use nmg_league_bot::models::race_run::RaceRun;
 use crate::{get_focused_opt, get_opt};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use diesel::RunQueryDsl;
 use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError, BracketRace};
 use nmg_league_bot::models::brackets::NewBracket;
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
@@ -25,9 +24,8 @@ use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_http::Client;
-use twilight_http::request::AuditLogReason;
 use twilight_http::request::channel::message::UpdateMessage;
-use twilight_http::response::DeserializeBodyError;
+use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_mention::timestamp::TimestampStyle;
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
@@ -43,7 +41,6 @@ use twilight_model::http::interaction::{
 use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
 use twilight_model::id::Id;
 use twilight_model::scheduled_event::GuildScheduledEvent;
-use twilight_model::util::datetime::TimestampParseError;
 use twilight_model::util::Timestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
@@ -260,16 +257,28 @@ async fn _handle_schedule_race(
     let p2_name = p2r
         .mention_maybe()
         .unwrap_or("Error finding player".to_string());
-    if let (Ok(Some(p1)), Ok(Some(p2)), Some(gid)) = (p1r, p2r, ac.guild_id) {
+    let info = the_race.info(cxn.deref_mut());
+    if let (Ok(Some(p1)), Ok(Some(p2)), Some(gid), Ok(mut info)) = (p1r, p2r, ac.guild_id, info) {
         // create event
         match create_discord_event(&dt, &p1, &p2, gid, &state.client).await {
-            Ok(evt) => { println!("Event {:?} created", evt); }
+            Ok(evt) => {
+                info.set_scheduled_event_id(evt.id);
+            }
             Err(e) => { println!("Error creating event: {}", e); }
         };
         match create_commportunities_post(&dt, &p1, &p2, &the_race, state).await {
-            anything => {println!("{:?}", anything);}
+            Ok(m) => {
+                info.set_commportunities_message_id(m.id);
+            },
+            Err(e) => {
+                println!("Error creating commportunities post: {:?}", e);
+            }
         };
-        // create "commportunities" (commentary opportunities) post
+
+        // if(dirty)
+        if let Err(e) = info.update(cxn.deref_mut()) {
+            println!("Error updating bracket race info: {:?}", e);
+        }
     }
 
     let new_t = twilight_mention::timestamp::Timestamp::new(
@@ -295,8 +304,10 @@ async fn _handle_schedule_race(
     ))))
 }
 
+/// "commentary opportunities"
 async fn create_commportunities_post<Tz: TimeZone> (
-    when: &DateTime<Tz>, p1: &Player, p2: &Player, race: &BracketRace, state: &Arc<DiscordState>) -> Result<Message, String> {
+    when: &DateTime<Tz>, p1: &Player, p2: &Player, race: &BracketRace, state: &Arc<DiscordState>
+) -> Result<Message, String> {
     let text_content = format!("{} vs {}", p1.mention_or_name(), p2.mention_or_name());
     let embeds = vec![
             Embed {
@@ -320,31 +331,14 @@ async fn create_commportunities_post<Tz: TimeZone> (
         .wait()
         .exec().await
         .map_err_to_string()?;
-    msg.model().await.map_err_to_string()
-
-
-    // state
-
-    /*
-    Okay sirius, I have a working prototype of the bot. Here is the proposed workflow:
-    - when there are 2 (or more) commentators signed up for a race, the bot will notify you in your sirius-inbox
-        - when you are ready to assign commentators to a race, react to the commportunities message with
-          :Linkbot: The bot will:
-    - update events with comms
-        - post a pingless notification in commentary-discussion for tentative assignments, pending a channel
-        - post a pingless notification in spam requesting a restream channel (with discord tags as ZSR requested)
-        - delete the post in commportunities
-        - when anyone in ZSR's channel is ready to assign a channel,
-          react with 1️⃣ for ZSR main, 2️⃣  for ZSR2, 3️⃣ for ZSR3, 4️⃣  for ZSR4. The bot will:
-    - post a pinged notification to commentary-discussion for both racers and all comms, with channel
-        - update the event with the restream channel
-        - NOT delete the ZSR post
-        - if you need to change/update the channel, remove the existing reaction, and then
-          repost with the correct one for the channel, e.g., it got changed to ZSR2,
-          so remove the 1️⃣ and react with 2️⃣
-
-    I included a short demo of how the workflow should work. the current example for notifications is just any comm sign up, but the bot is currently set up to do 2+.
-     */
+    let m = msg.model().await.map_err_to_string()?;
+    let emojum = RequestReactionType::Unicode { name: "🎙" };
+    if let Err(e) = state.client.create_reaction(m.channel_id, m.id, &emojum)
+        .exec()
+        .await {
+        println!("Error adding initial reaction to commportunity post: {:?}", e);
+    }
+    Ok(m)
 }
 
 async fn create_discord_event<Tz: TimeZone>(
@@ -596,12 +590,7 @@ async fn handle_create_race(
         .diesel_cxn()
         .await
         .map_err(|e| format!("Error getting database connection: {}", e))?;
-    //
-    // let race: Race = diesel::insert_into(crate::schema::races::table)
-    //     .values(new_race)
-    //     .get_result(cxn.deref_mut())
-    //     .map_err(|e| format!("Error saving race: {}", e))?;
-    let race: Race = Race::get_by_id(1, cxn.deref_mut()).unwrap();
+    let race = new_race.save(cxn.deref_mut()).map_err(|e| format!("Error saving race: {}", e))?;
 
     let (mut r1, mut r2) = race
         .select_racers(p1.clone(), p2.clone(), &mut cxn)

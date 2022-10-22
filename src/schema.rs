@@ -5,6 +5,8 @@ diesel::table! {
         id -> Integer,
         bracket_race_id -> Integer,
         scheduled_for -> Nullable<BigInt>,
+        scheduled_event_id -> Nullable<Text>,
+        commportunities_message_id -> Nullable<Text>,
     }
 }
 

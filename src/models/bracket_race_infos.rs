@@ -1,16 +1,12 @@
 use crate::models::bracket_races::BracketRace;
-use crate::models::bracket_rounds::BracketRound;
-use crate::models::brackets::Bracket;
-use crate::models::player::Player;
-use crate::models::season::Season;
 use crate::schema::bracket_race_infos;
-use crate::utils::format_hms;
 use crate::{save_fn, update_fn};
 use chrono::{DateTime, TimeZone, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Serialize;
-use serde_json::Error;
+use twilight_model::id::Id;
+use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker};
 
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
@@ -18,6 +14,8 @@ pub struct BracketRaceInfo {
     id: i32,
     bracket_race_id: i32,
     scheduled_for: Option<i64>,
+    scheduled_event_id: Option<String>,
+    commportunities_message_id: Option<String>
 }
 
 impl BracketRaceInfo {
@@ -32,9 +30,16 @@ impl BracketRaceInfo {
                 .optional()?
             {
                 Some(bi) => Ok(bi),
-                None => NewBracketRaceInfo::new(bracket_race, None).save(conn),
+                None => NewBracketRaceInfo::new(bracket_race).save(conn),
             }
         })
+    }
+
+    pub fn get_by_commportunities_message_id(id: Id<MessageMarker>, conn: &mut SqliteConnection) -> Result<Option<Self>, diesel::result::Error> {
+        bracket_race_infos::table
+            .filter(bracket_race_infos::commportunities_message_id.eq(id.to_string()))
+            .first(conn)
+            .optional()
     }
 
     pub fn scheduled(&self) -> Option<DateTime<Utc>> {
@@ -50,6 +55,18 @@ impl BracketRaceInfo {
         std::mem::replace(&mut self.scheduled_for, Some(when.timestamp()))
     }
 
+    /// Returns the old scheduled event ID, if any
+    /// (it's a string b/c sqlite)
+    pub fn set_scheduled_event_id(&mut self, id: Id<ScheduledEventMarker>) -> Option<String> {
+        std::mem::replace(&mut self.scheduled_event_id, Some(id.to_string()))
+    }
+
+    /// Returns the old scheduled event ID, if any
+    /// (it's a string b/c sqlite)
+    pub fn set_commportunities_message_id(&mut self, id: Id<MessageMarker>) -> Option<String> {
+        std::mem::replace(&mut self.commportunities_message_id, Some(id.to_string()))
+    }
+
     update_fn! {}
 }
 
@@ -58,13 +75,17 @@ impl BracketRaceInfo {
 pub struct NewBracketRaceInfo {
     bracket_race_id: i32,
     scheduled_for: Option<i64>,
+    scheduled_event_id: Option<String>,
+    commportunities_message_id: Option<String>,
 }
 
 impl NewBracketRaceInfo {
-    pub fn new(bracket_race: &BracketRace, scheduled_for: Option<i64>) -> Self {
+    pub fn new(bracket_race: &BracketRace) -> Self {
         Self {
             bracket_race_id: bracket_race.id,
-            scheduled_for,
+            scheduled_for: None,
+            scheduled_event_id: None,
+            commportunities_message_id: None,
         }
     }
 

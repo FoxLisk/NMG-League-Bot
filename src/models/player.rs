@@ -59,7 +59,7 @@ impl<T> MentionOptional for Result<Option<Player>, T> {
                 o.as_ref().and_then(|i| i.discord_id().ok())
                     .map(|i| i.mention().to_string())
             }
-            Err(e) => {None}
+            Err(_e) => {None}
         }
     }
 }

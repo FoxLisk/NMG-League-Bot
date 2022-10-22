@@ -66,3 +66,28 @@ diesel migration generate --migration-dir diesel-migrations <migration_name>
 
 diesel print-schema --database-url .\db\sqlite-diesel.db3
 ```
+
+# commentary workflow
+
+(via the inimitable clearmouse)
+
+Okay sirius, I have a working prototype of the bot. Here is the proposed workflow:
+- when there are 2 (or more) commentators signed up for a race, the bot will notify you in your sirius-inbox
+- when you are ready to assign commentators to a race, react to the commportunities message with
+:Linkbot: The bot will:
+- update events with comms
+- post a pingless notification in commentary-discussion for tentative assignments, pending a channel
+- post a pingless notification in spam requesting a restream channel (with discord tags as ZSR requested)
+- delete the post in commportunities
+- when anyone in ZSR's channel is ready to assign a channel,
+react with 1️⃣ for ZSR main, 2️⃣  for ZSR2, 3️⃣ for ZSR3, 4️⃣  for ZSR4. The bot will:
+- post a pinged notification to commentary-discussion for both racers and all comms, with channel
+- update the event with the restream channel
+- NOT delete the ZSR post
+- if you need to change/update the channel, remove the existing reaction, and then
+repost with the correct one for the channel, e.g., it got changed to ZSR2,
+so remove the 1️⃣ and react with 2️⃣
+
+    I included a short demo of how the workflow should work. the current example for notifications is just any comm sign up, but the bot is currently set up to do 2+.
+
+https://discord.com/channels/982502396590698498/982508018577051749/1000292512809881661

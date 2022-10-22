@@ -13,10 +13,11 @@ use twilight_model::application::interaction::application_command::CommandDataOp
 pub(crate) use webhooks::Webhooks;
 
 pub(crate) mod discord_state;
-mod interactions;
+mod interactions_utils;
 mod application_commands;
 mod interaction_handlers;
 mod components;
+mod reaction_handlers;
 
 extern crate rand;
 extern crate tokio;
@@ -75,7 +76,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         .client
         .create_message(dm)
         .components(&[Component::ActionRow(ActionRow {
-            components: vec![interactions::button_component(
+            components: vec![interactions_utils::button_component(
                 "Start run",
                 CUSTOM_ID_START_RUN,
                 ButtonStyle::Primary,

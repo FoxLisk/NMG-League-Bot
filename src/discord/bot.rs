@@ -29,7 +29,7 @@ use twilight_util::builder::InteractionResponseDataBuilder;
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use crate::db::get_diesel_pool;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions::{
+use crate::discord::interactions_utils::{
     button_component, plain_interaction_response,
     update_resp_to_plain_content,
 };
@@ -44,6 +44,7 @@ use crate::{Shutdown, Webhooks};
 use crate::discord::application_commands::application_command_definitions;
 use crate::discord::components::action_row;
 use crate::discord::interaction_handlers::application_commands::handle_application_interaction;
+use crate::discord::reaction_handlers::handle_reaction_add;
 
 
 pub(crate) async fn launch(
@@ -634,6 +635,12 @@ async fn handle_event(event: Event, state: Arc<DiscordState>) {
         }
         Event::RoleUpdate(ru) => {
             println!("Role updated: {:?}", ru);
+        }
+        Event::ReactionAdd(ra) => {
+            handle_reaction_add(ra, &state).await;
+        }
+        Event::ReactionRemove(rr) => {
+            println!("Reaction removed: {:?}", rr);
         }
         _ => {}
     }

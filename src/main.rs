@@ -4,7 +4,6 @@ use shutdown::Shutdown;
 mod constants;
 mod db;
 mod discord;
-// mod models;
 mod race_cron;
 mod schema;
 mod shutdown;
