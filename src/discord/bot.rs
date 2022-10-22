@@ -39,7 +39,7 @@ use crate::discord::{
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
-use crate::models::race_run::RaceRun;
+use nmg_league_bot::models::race_run::RaceRun;
 use crate::{Shutdown, Webhooks};
 use crate::discord::application_commands::application_command_definitions;
 use crate::discord::components::action_row;

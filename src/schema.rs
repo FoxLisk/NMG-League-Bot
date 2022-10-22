@@ -1,6 +1,14 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    bracket_race_infos (id) {
+        id -> Integer,
+        bracket_race_id -> Integer,
+        scheduled_for -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
     bracket_races (id) {
         id -> Integer,
         bracket_id -> Integer,
@@ -8,7 +16,6 @@ diesel::table! {
         player_1_id -> Integer,
         player_2_id -> Integer,
         async_race_id -> Nullable<Integer>,
-        scheduled_for -> Nullable<BigInt>,
         state -> Text,
         player_1_result -> Nullable<Text>,
         player_2_result -> Nullable<Text>,
@@ -87,6 +94,7 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(bracket_race_infos -> bracket_races (bracket_race_id));
 diesel::joinable!(bracket_races -> bracket_rounds (round_id));
 diesel::joinable!(bracket_races -> brackets (bracket_id));
 diesel::joinable!(bracket_races -> races (async_race_id));
@@ -97,6 +105,7 @@ diesel::joinable!(player_bracket_entry -> players (player_id));
 diesel::joinable!(race_runs -> races (race_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    bracket_race_infos,
     bracket_races,
     bracket_rounds,
     brackets,

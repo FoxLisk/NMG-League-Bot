@@ -26,13 +26,13 @@ use crate::constants::{
 };
 use crate::db::{get_diesel_pool, DieselConnectionManager};
 use crate::discord::discord_state::DiscordState;
-use crate::models::bracket_races::BracketRace;
-use crate::models::bracket_rounds::BracketRound;
-use crate::models::brackets::Bracket;
-use crate::models::player::Player;
-use crate::models::race::{Race, RaceState};
-use crate::models::race_run::{RaceRun, RaceRunState};
-use crate::models::season::Season;
+use nmg_league_bot::models::bracket_races::BracketRace;
+use nmg_league_bot::models::bracket_rounds::BracketRound;
+use nmg_league_bot::models::brackets::Bracket;
+use nmg_league_bot::models::player::Player;
+use nmg_league_bot::models::race::{Race, RaceState};
+use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
+use nmg_league_bot::models::season::Season;
 use crate::schema;
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager as _SessionManager;
@@ -44,6 +44,7 @@ use serde::Serialize;
 use std::ops::DerefMut;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
+use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 
 mod session_manager;
 
@@ -543,9 +544,9 @@ struct DisplayRace {
 }
 
 impl DisplayRace {
-    fn new(p1: &Player, p2: &Player, race: &BracketRace) -> Self {
+    fn new(p1: &Player, p2: &Player, race: &BracketRace, race_info: &BracketRaceInfo) -> Self {
         let outcome = race.outcome().unwrap_or(None);
-        use crate::models::bracket_races::Outcome::{P1Win, P2Win};
+        use nmg_league_bot::models::bracket_races::Outcome::{P1Win, P2Win};
 
         let player_1 = match race.player_1_result() {
             Some(r) => DisplayPlayer {
@@ -574,7 +575,7 @@ impl DisplayRace {
         let scheduled = match outcome {
             Some(_) => None,
             None => {
-                if let Some(utc_dt) = race.scheduled() {
+                if let Some(utc_dt) = race_info.scheduled() {
                     Some(
                         utc_dt
                             .with_timezone(&chrono_tz::US::Eastern)
@@ -659,7 +660,8 @@ fn get_brackets_context(
                     continue;
                 }
             };
-            let dr = DisplayRace::new(p1, p2, &race);
+            let r = race.info(conn)?;
+            let dr = DisplayRace::new(p1, p2, &race, &r);
 
             display_rounds_by_num
                 .entry(round.round_num)

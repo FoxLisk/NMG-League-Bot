@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::Error;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
+use crate::models::bracket_race_infos::BracketRaceInfo;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 pub enum BracketRaceState {
@@ -24,6 +25,13 @@ pub enum BracketRaceState {
 pub enum BracketRaceStateError {
     InvalidState,
     ParseError(serde_json::Error),
+    DatabaseError(diesel::result::Error),
+}
+
+impl From<diesel::result::Error> for BracketRaceStateError {
+    fn from(e: diesel::result::Error) -> Self {
+        Self::DatabaseError(e)
+    }
 }
 
 impl From<serde_json::Error> for BracketRaceStateError {
@@ -60,13 +68,12 @@ pub enum Outcome {
 
 #[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize)]
 pub struct BracketRace {
-    id: i32,
+    pub id: i32,
     bracket_id: i32,
     pub round_id: i32,
     pub player_1_id: i32,
     pub player_2_id: i32,
     async_race_id: Option<i32>,
-    scheduled_for: Option<i64>,
     state: String,
     player_1_result: Option<String>,
     player_2_result: Option<String>,
@@ -110,6 +117,7 @@ impl BracketRace {
     }
 }
 
+
 impl BracketRace {
     pub fn state(&self) -> Result<BracketRaceState, BracketRaceStateError> {
         serde_json::from_str(&self.state).map_err(From::from)
@@ -126,14 +134,17 @@ impl BracketRace {
         }
     }
 
-    pub fn scheduled(&self) -> Option<DateTime<Utc>> {
-        self.scheduled_for.map(|t| Utc.timestamp(t, 0))
+    pub fn info(&self, conn: &mut SqliteConnection) -> Result<BracketRaceInfo, diesel::result::Error> {
+        BracketRaceInfo::get_or_create_for_bracket(self, conn)
+
     }
 
     /// returns the prior scheduled time, if any (as timestamp)
+    /// updates the database
     pub fn schedule<T: TimeZone>(
         &mut self,
         when: &DateTime<T>,
+        conn: &mut SqliteConnection
     ) -> Result<Option<i64>, BracketRaceStateError> {
         match self.state()? {
             BracketRaceState::New | BracketRaceState::Scheduled => {}
@@ -141,8 +152,13 @@ impl BracketRace {
                 return Err(BracketRaceStateError::InvalidState);
             }
         };
-        let before = std::mem::replace(&mut self.scheduled_for, Some(when.timestamp()));
+        let mut info = self.info(conn)?;
+        let before = info.schedule(when);
         self.set_state(BracketRaceState::Scheduled);
+        conn.transaction(|c| {
+            info.update(c)?;
+            self.update(c)
+        })?;
         Ok(before)
     }
 
@@ -258,7 +274,6 @@ pub struct NewBracketRace {
     pub player_1_id: i32,
     pub player_2_id: i32,
     async_race_id: Option<i32>,
-    scheduled_for: Option<i64>,
     state: String,
     player_1_result: Option<String>,
     player_2_result: Option<String>,
@@ -275,7 +290,6 @@ pub fn insert_bulk(
 }
 
 impl NewBracketRace {
-    // i think we probably always create these without anything scheduled
     pub fn new(
         bracket: &Bracket,
         round: &BracketRound,
@@ -288,7 +302,6 @@ impl NewBracketRace {
             player_1_id: player_1.id,
             player_2_id: player_2.id,
             async_race_id: None,
-            scheduled_for: None,
             state: serde_json::to_string(&BracketRaceState::New).unwrap_or("Unknown".to_string()),
             player_1_result: None,
             player_2_result: None,

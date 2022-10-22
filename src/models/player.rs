@@ -8,13 +8,14 @@ use twilight_mention::Mention;
 use twilight_model::id::Id;
 use twilight_model::id::marker::UserMarker;
 
-pub trait IntoMentionOptional {
-    fn mention_maybe(self) -> Option<String>;
+pub trait MentionOptional {
+    fn mention_maybe(&self) -> Option<String>;
 }
 
 #[derive(Queryable, Debug)]
 pub struct Player {
     pub id: i32,
+    /// display name
     pub name: String,
     pub discord_id: String,
     pub racetime_username: String,
@@ -44,14 +45,22 @@ impl Player {
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Option<Self>, diesel::result::Error> {
         players::table.find(id).first(conn).optional()
     }
+
+    pub fn mention_or_name(&self) -> String {
+        self.discord_id().ok().map(|i| i.mention().to_string()).unwrap_or(self.name.clone())
+    }
+
 }
 
-impl<T> IntoMentionOptional for Result<Option<Player>, T> {
-    fn mention_maybe(self) -> Option<String> {
-        self.ok()
-            .flatten()
-            .and_then(|p| p.discord_id().ok())
-            .map(|i| i.mention().to_string())
+impl<T> MentionOptional for Result<Option<Player>, T> {
+    fn mention_maybe(&self) -> Option<String> {
+        match self {
+            Ok(o) => {
+                o.as_ref().and_then(|i| i.discord_id().ok())
+                    .map(|i| i.mention().to_string())
+            }
+            Err(e) => {None}
+        }
     }
 }
 

@@ -1,4 +1,4 @@
-use crate::models::uuid_string;
+use nmg_league_bot::utils::uuid_string;
 use aliri_braid::braid;
 use std::collections::HashMap;
 use tokio::time::Instant;

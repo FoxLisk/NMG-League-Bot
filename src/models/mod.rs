@@ -4,22 +4,7 @@ pub mod brackets;
 pub mod player;
 pub mod player_bracket_entries;
 pub mod season;
-
-pub fn uuid_string() -> String {
-    uuid::Uuid::new_v4().to_string()
-}
-
-pub fn epoch_timestamp() -> u32 {
-    let timestamp = chrono::Utc::now().timestamp();
-    let t_u32 = timestamp as u32;
-    if t_u32 as i64 != timestamp {
-        println!(
-            "Error: timestamp too big?? got {} secs since epoch, which converted to {}",
-            timestamp, t_u32
-        );
-    }
-    t_u32
-}
+pub mod bracket_race_infos;
 
 // TODO: should this be a derive macro?
 #[macro_export]
@@ -43,7 +28,6 @@ macro_rules! update_fn {
 
 pub mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
-    use crate::models::{epoch_timestamp, uuid_string};
     use crate::schema::races;
     use diesel::prelude::{AsChangeset, Identifiable, Insertable, Queryable};
     use diesel::sql_types::Text;
@@ -52,6 +36,7 @@ pub mod race {
     use serde::Serialize;
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
+    use crate::utils::{epoch_timestamp, uuid_string};
 
     #[derive(Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
@@ -64,12 +49,11 @@ pub mod race {
     }
 
     #[derive(Insertable)]
-    #[diesel(table_name=races)]
+    #[diesel(table_name=crate::schema::races)]
     pub struct NewRace {
         uuid: String,
         created: i64,
-        #[diesel(serialize_as = String)]
-        state: RaceState,
+        state: String,
     }
 
     #[derive(Queryable, Clone, Identifiable)]
@@ -195,15 +179,17 @@ pub mod race {
             Self {
                 uuid: uuid_string(),
                 created: epoch_timestamp() as i64,
-                state: RaceState::CREATED,
+                state: RaceState::CREATED.into(),
             }
         }
+
+        save_fn!(races::table, Race);
     }
 }
 
 pub mod race_run {
-    use crate::models::epoch_timestamp;
-    use crate::models::uuid_string;
+    use crate::utils::epoch_timestamp;
+    use crate::utils::uuid_string;
     use crate::schema::race_runs;
     use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
     use chrono::NaiveDateTime;
@@ -211,7 +197,7 @@ pub mod race_run {
     use diesel_enum_derive::DieselEnum;
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
-    use rand::{thread_rng, Rng};
+    use rand::{Rng, thread_rng};
     use serde::Serialize;
     use std::fmt::Formatter;
     use std::str::FromStr;

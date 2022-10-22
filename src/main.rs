@@ -4,7 +4,7 @@ use shutdown::Shutdown;
 mod constants;
 mod db;
 mod discord;
-mod models;
+// mod models;
 mod race_cron;
 mod schema;
 mod shutdown;
@@ -27,6 +27,7 @@ extern crate twilight_standby;
 extern crate twilight_util;
 extern crate twilight_validate;
 extern crate twilight_mention;
+extern crate nmg_league_bot;
 
 use crate::db::raw_diesel_cxn_from_env;
 use discord::Webhooks;

@@ -20,7 +20,7 @@ fn main() {
     let now = chrono::Local::now();
     for mut race in round.races(&mut db).unwrap() {
         let dur = Duration::hours(thread_rng().gen_range(24..172));
-        race.schedule(&(now + dur)).ok();
+        race.schedule(&(now + dur), &mut db).ok();
         race.update(&mut db).unwrap();
     }
 }

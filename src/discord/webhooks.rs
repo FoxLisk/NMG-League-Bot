@@ -1,4 +1,4 @@
-use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, TOKEN_VAR};
+use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, COMMPORTUNITIES_WEBHOOK_VAR, TOKEN_VAR};
 use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
@@ -14,6 +14,7 @@ pub struct Webhooks {
     http_client: Arc<Client>,
     async_channel: WebhookInfo,
     admin_channel: WebhookInfo,
+    commportunities: WebhookInfo,
 }
 
 #[derive(Clone)]
@@ -50,14 +51,17 @@ impl Webhooks {
         let client = Arc::new(Client::new(std::env::var(TOKEN_VAR).unwrap()));
         let async_webhook_url = std::env::var(ASYNC_WEBHOOK_VAR).unwrap();
         let admin_webhook_url = std::env::var(ADMIN_WEBHOOK_VAR).unwrap();
+        let commportunities_webhook_url = std::env::var(COMMPORTUNITIES_WEBHOOK_VAR).unwrap();
 
         let async_channel = get_webhook_by_url(&client, async_webhook_url).await?;
         let admin_channel = get_webhook_by_url(&client, admin_webhook_url).await?;
+        let commportunities = get_webhook_by_url(&client, commportunities_webhook_url).await?;
 
         Ok(Self {
             http_client: client,
             async_channel,
             admin_channel,
+            commportunities
         })
     }
 
@@ -80,6 +84,7 @@ impl Webhooks {
     }
 
     pub async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
+
         let resp: Response<EmptyBody> = ew.exec().await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             Err(format!("Error executing webhook: {:?}", resp.text().await))
@@ -92,12 +97,16 @@ impl Webhooks {
         self.http_client.execute_webhook(webhook.id, &webhook.token)
     }
 
-    pub fn prepare_execute_async<'a>(&'a self) -> ExecuteWebhook<'a> {
+    pub fn prepare_execute_async(&self) -> ExecuteWebhook {
         self._execute_webhook(&self.async_channel)
     }
 
-    pub fn prepare_execute_admin<'a>(&'a self) -> ExecuteWebhook<'a> {
+    pub fn prepare_execute_admin(&self) -> ExecuteWebhook {
         self._execute_webhook(&self.admin_channel)
+    }
+
+    pub fn prepare_execute_commportunities(&self)  -> ExecuteWebhook {
+        self._execute_webhook(&self.commportunities)
     }
 
     pub async fn message_async(&self, content: &str) -> Result<(), String> {

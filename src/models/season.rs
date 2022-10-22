@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
 use serde::Serialize;
 
-use crate::models::epoch_timestamp;
+use crate::utils::epoch_timestamp;
 use crate::save_fn;
 use crate::schema::seasons;
 

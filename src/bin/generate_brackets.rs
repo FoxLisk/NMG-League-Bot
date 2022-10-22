@@ -10,10 +10,9 @@ fn main() {
     let bs = sn.brackets(&mut db).unwrap();
     println!("{:?}", bs);
     for mut b in bs {
-        println!("Bracket: {:?}", b);
         for p in b.players(&mut db).unwrap() {
-            // println!("  Player: {:?}", p);
         }
         b.generate_pairings(&mut db).unwrap();
+        println!("Generated pairings for Bracket: {:?}", b);
     }
 }

@@ -6,7 +6,6 @@ CREATE TABLE if not exists bracket_races (
     player_1_id     INTEGER NOT NULL,
     player_2_id     INTEGER NOT NULL,
     async_race_id   INTEGER NULL,
-    scheduled_for   BIGINT NULL,
     state           TEXT NOT NULL,
     player_1_result TEXT NULL,
     player_2_result TEXT NULL,

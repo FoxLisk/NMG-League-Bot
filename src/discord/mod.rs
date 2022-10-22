@@ -3,8 +3,8 @@ mod webhooks;
 
 use std::fmt::{Display, Formatter};
 use crate::discord::discord_state::DiscordState;
-use crate::models::race::Race;
-use crate::models::race_run::RaceRun;
+use nmg_league_bot::models::race::Race;
+use nmg_league_bot::models::race_run::RaceRun;
 use std::sync::Arc;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::component::button::ButtonStyle;

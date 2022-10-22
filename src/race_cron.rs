@@ -1,8 +1,8 @@
 use crate::constants::CRON_TICKS_VAR;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
-use crate::models::race::{Race, RaceState};
-use crate::models::race_run::{RaceRun, RaceRunState};
+use nmg_league_bot::models::race::{Race, RaceState};
+use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use crate::schema::races;
 use crate::shutdown::Shutdown;
 use crate::utils::{env_default, format_hms};

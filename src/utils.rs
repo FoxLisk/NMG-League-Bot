@@ -1,3 +1,4 @@
+use std::error::Error;
 use chrono::{Duration, NaiveDateTime};
 use std::ffi::OsStr;
 use std::str::FromStr;
@@ -85,4 +86,31 @@ impl<T> ResultCollapse<T> for Result<T, T> {
             Err(e) => e,
         }
     }
+}
+
+pub trait ResultErrToString<T> {
+    fn map_err_to_string(self) -> Result<T, String>;
+}
+
+impl<T, E: Error> ResultErrToString<T> for Result<T, E> {
+    fn map_err_to_string(self) -> Result<T, String> {
+        self.map_err(|e| e.to_string())
+    }
+}
+
+
+pub fn uuid_string() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+pub fn epoch_timestamp() -> u32 {
+    let timestamp = chrono::Utc::now().timestamp();
+    let t_u32 = timestamp as u32;
+    if t_u32 as i64 != timestamp {
+        println!(
+            "Error: timestamp too big?? got {} secs since epoch, which converted to {}",
+            timestamp, t_u32
+        );
+    }
+    t_u32
 }
