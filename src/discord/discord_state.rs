@@ -1,4 +1,4 @@
-use crate::constants::GUILD_ID_VAR;
+use crate::constants::{COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR, GUILD_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR};
 use crate::db::DieselConnectionManager;
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
@@ -7,6 +7,7 @@ use dashmap::DashMap;
 use diesel::ConnectionError;
 use std::env;
 use std::ops::DerefMut;
+use std::str::FromStr;
 use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
@@ -31,6 +32,39 @@ pub struct DiscordState {
     private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
     application_id: Id<ApplicationMarker>,
     gid: Id<GuildMarker>,
+    pub channel_config: ChannelConfig,
+}
+
+pub struct ChannelConfig {
+   pub commportunities: Id<ChannelMarker>,
+    pub  sirius_inbox: Id<ChannelMarker>,
+    pub   zsr: Id<ChannelMarker>,
+    pub  commentary_discussion: Id<ChannelMarker>,
+}
+
+impl ChannelConfig {
+    fn new_from_env() -> Self {
+        let commportunities = Id::from_str(
+            &std::env::var(COMMPORTUNITIES_CHANNEL_ID_VAR).unwrap()
+        ).unwrap();
+        let sirius_inbox = Id::from_str(
+            &std::env::var(SIRIUS_INBOX_CHANNEL_ID_VAR).unwrap()
+        ).unwrap();
+
+        let zsr = Id::from_str(
+            &std::env::var(ZSR_CHANNEL_ID_VAR).unwrap()
+        ).unwrap();
+
+        let commentary_discussion = Id::from_str(
+            &std::env::var(COMMENTARY_DISCUSSION_CHANNEL_ID_VAR).unwrap()
+        ).unwrap();
+        Self {
+            commportunities,
+            sirius_inbox,
+            zsr,
+            commentary_discussion
+        }
+    }
 }
 
 impl DiscordState {
@@ -44,6 +78,7 @@ impl DiscordState {
     ) -> Self {
         let gid_s = env::var(GUILD_ID_VAR).unwrap();
         let gid = Id::<GuildMarker>::new(gid_s.parse::<u64>().unwrap());
+        let channel_config = ChannelConfig::new_from_env();
         Self {
             cache,
             client,
@@ -53,6 +88,7 @@ impl DiscordState {
             application_id: aid,
             private_channels: Default::default(),
             gid,
+            channel_config
         }
     }
 

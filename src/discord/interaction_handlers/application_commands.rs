@@ -5,16 +5,13 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{
-    notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD,
-    CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD,
-};
+use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, race_to_nice_embeds};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
 use crate::{get_focused_opt, get_opt};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError, BracketRace};
+use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError};
 use nmg_league_bot::models::brackets::NewBracket;
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -44,6 +41,7 @@ use twilight_model::scheduled_event::GuildScheduledEvent;
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
+use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
@@ -266,7 +264,8 @@ async fn _handle_schedule_race(
             }
             Err(e) => { println!("Error creating event: {}", e); }
         };
-        match create_commportunities_post(&dt, &p1, &p2, &the_race, state).await {
+
+        match create_commportunities_post(&info, state).await {
             Ok(m) => {
                 info.set_commportunities_message_id(m.id);
             },
@@ -305,20 +304,19 @@ async fn _handle_schedule_race(
 }
 
 /// "commentary opportunities"
-async fn create_commportunities_post<Tz: TimeZone> (
-    when: &DateTime<Tz>, p1: &Player, p2: &Player, race: &BracketRace, state: &Arc<DiscordState>
+async fn create_commportunities_post (
+    info: &BracketRaceInfo, state: &Arc<DiscordState>
 ) -> Result<Message, String> {
-    let t_l = MentionTimestamp::new(when.timestamp() as u64, Some(TimestampStyle::LongDateTime));
-    let t_r = MentionTimestamp::new(when.timestamp() as u64, Some(TimestampStyle::RelativeTime));
-    let when = format!("{} ({})", t_l.mention(), t_r.mention());
-
-    let text_content = format!("{} vs {}{when}", p1.mention_or_name(), p2.mention_or_name());
+    // TODO: i'm losing my mind at the number of extra SQL queries here
+    // it doesn't REALLY matter but alksdjflkajsklfj 😱
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let fields = race_to_nice_embeds(info, cxn.deref_mut()).map_err(|e| e.to_string())?;
     let embeds = vec![
             Embed {
                 author: None,
                 color: Some(0x00b0f0),
-                description: Some(text_content),
-                fields: vec![],
+                description: None,
+                fields,
                 footer: Some(EmbedFooterBuilder::new("React to volunteer").build()),
                 image: None,
                 kind: "rich".to_string(),
@@ -330,11 +328,11 @@ async fn create_commportunities_post<Tz: TimeZone> (
                 video: None
             }
         ];
-    let msg = state.webhooks.prepare_execute_commportunities()
+    let msg = state.client.create_message(state.channel_config.commportunities.clone())
         .embeds(&embeds).map_err_to_string()?
-        .wait()
         .exec().await
         .map_err_to_string()?;
+
     let m = msg.model().await.map_err_to_string()?;
     let emojum = RequestReactionType::Unicode { name: "🎙" };
     if let Err(e) = state.client.create_reaction(m.channel_id, m.id, &emojum)

@@ -30,6 +30,10 @@ pub struct Bracket {
     state: String,
 }
 
+impl Bracket {
+
+}
+
 #[derive(Debug)]
 pub enum BracketError {
     InvalidState,
@@ -179,6 +183,10 @@ impl Bracket {
         bracket_races::table
             .filter(bracket_races::bracket_id.eq(self.id))
             .load(conn)
+    }
+
+    pub(crate) fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Bracket, Error> {
+        brackets::table.find(id).first(conn)
     }
 
     fn generate_initial_pairings(

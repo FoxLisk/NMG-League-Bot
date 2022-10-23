@@ -7,6 +7,7 @@ diesel::table! {
         scheduled_for -> Nullable<BigInt>,
         scheduled_event_id -> Nullable<Text>,
         commportunities_message_id -> Nullable<Text>,
+        restream_request_message_id -> Nullable<Text>,
     }
 }
 

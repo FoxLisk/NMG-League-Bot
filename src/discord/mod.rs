@@ -6,12 +6,16 @@ use crate::discord::discord_state::DiscordState;
 use nmg_league_bot::models::race::Race;
 use nmg_league_bot::models::race_run::RaceRun;
 use std::sync::Arc;
+use diesel::SqliteConnection;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{ActionRow, Component};
 use twilight_model::application::interaction::application_command::CommandDataOption;
+use twilight_model::channel::embed::EmbedField;
 use twilight_model::channel::Message;
 use twilight_model::gateway::payload::incoming::ReactionAdd;
+use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_races::BracketRace;
 pub(crate) use webhooks::Webhooks;
 
 pub(crate) mod discord_state;
@@ -193,4 +197,30 @@ impl Display for ErrorResponse {
         write!(f, "{}", &self.user_facing_error)?;
         write!(f, " (Internal error: {})", &self.internal_error)
     }
+}
+
+pub fn race_to_nice_embeds(info: &BracketRaceInfo, conn: &mut SqliteConnection) -> Result<Vec<EmbedField>, diesel::result::Error> {
+    // TODO: less queries!
+    let race = info.race(conn)?;
+    let bracket = race.bracket(conn)?;
+    let title = race.title(conn)?;
+    let when = info
+        .scheduled_time_formatted()
+        .unwrap_or("ERROR: Unknown time".to_string());
+
+    let fields = vec![
+        EmbedField {
+            inline: false,
+            name: "Division".to_string(),
+            value: bracket.name,
+        },
+        EmbedField {
+            inline: false,
+            name: "Race".to_string(),
+            value: format!("{when} - {title}"),
+        },
+    ];
+
+    Ok(fields)
+
 }

@@ -12,6 +12,7 @@ use serde::Serialize;
 use serde_json::Error;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
+use twilight_mention::timestamp::TimestampStyle;
 use crate::models::bracket_race_infos::BracketRaceInfo;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
@@ -80,6 +81,10 @@ pub struct BracketRace {
     pub(crate) outcome: Option<String>,
 }
 
+impl BracketRace {
+
+}
+
 #[derive(Debug)]
 pub enum MatchResultError {
     InvalidOutcome,
@@ -120,6 +125,16 @@ impl BracketRace {
         let p1 = Player::get_by_id(self.player_1_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
         let p2 = Player::get_by_id(self.player_2_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
         Ok((p1, p2))
+    }
+
+    pub fn bracket(&self, conn: &mut SqliteConnection) -> Result<Bracket, diesel::result::Error> {
+        Bracket::get_by_id(self.bracket_id, conn)
+    }
+
+    /// this hits the db (twice!) to find players, so uh. i guess if that matters to you don't call it
+    pub fn title(&self, conn: &mut SqliteConnection) -> Result<String, diesel::result::Error> {
+        let (p1, p2) = self.players(conn)?;
+        Ok(format!("{} vs {}", p1.mention_or_name(), p2.mention_or_name()))
     }
 
     /// returns the prior scheduled time, if any (as timestamp)

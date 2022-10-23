@@ -91,3 +91,21 @@ so remove the 1️⃣ and react with 2️⃣
     I included a short demo of how the workflow should work. the current example for notifications is just any comm sign up, but the bot is currently set up to do 2+.
 
 https://discord.com/channels/982502396590698498/982508018577051749/1000292512809881661
+
+-- further info (for ZSR folks, again from clearmouse)
+
+oh yeah, because I didn't post anything for ZSR:
+- the bot will post something like that above, whenever we (sirius) assigns comms to a race
+- once ZSR figures out a channel for the race, anyone in this channel can react to the message 
+  to assign that channel:
+    - react with 1️⃣  for ZSR main
+    - react with 2️⃣  for ZSR2
+    - react with 3️⃣  for ZSR3
+    - react with 4️⃣  for ZSR4
+    - react with :greenham: for FGFM (greenham's channel)
+- the bot will then update the event, and then ping out the formal assignment
+
+So as a request, once you guys end up figuring out a channel, can you (or someone) react to it? Would be much appreciated!
+
+As a note, if the channel ends up changing, like ZSR2 -> ZSR3, you can always unreact with the current emote, and then 
+react with the new one, e.g., remove 2️⃣  and then react with 3️⃣ 

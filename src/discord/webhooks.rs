@@ -1,4 +1,4 @@
-use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, COMMPORTUNITIES_WEBHOOK_VAR, SIRIUS_INBOX_WEBHOOK_VAR, TOKEN_VAR, ZSR_WEBHOOK_VAR};
+use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, COMMENTARY_DISCUSSION_WEBHOOK_VAR, COMMPORTUNITIES_WEBHOOK_VAR, SIRIUS_INBOX_WEBHOOK_VAR, TOKEN_VAR, ZSR_WEBHOOK_VAR};
 use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
@@ -14,18 +14,20 @@ pub struct Webhooks {
     http_client: Arc<Client>,
     async_channel: WebhookInfo,
     admin_channel: WebhookInfo,
-    commportunities: WebhookInfo,
+    /// public for deleting messages
+    pub commportunities: WebhookInfo,
     sirius_inbox: WebhookInfo,
     zsr: WebhookInfo,
+    commentary_discussion: WebhookInfo,
 }
 
 #[derive(Clone)]
 // this structure is because we *really* need webhooks with tokens here, to be able to execute them,
 // but the API returns a nullable token, which the twilight API faithfully reproduces, and
 // I want zero .unwrap() calls in steady state code
-struct WebhookInfo {
-    id: Id<WebhookMarker>,
-    token: String,
+pub struct WebhookInfo {
+    pub id: Id<WebhookMarker>,
+    pub token: String,
 }
 
 // TODO we're up to enough API requests here that we should maybe stop remotely validating every
@@ -58,12 +60,14 @@ impl Webhooks {
         let commportunities_webhook_url = std::env::var(COMMPORTUNITIES_WEBHOOK_VAR).unwrap();
         let sirius_inbox_url = std::env::var(SIRIUS_INBOX_WEBHOOK_VAR).unwrap();
         let zsr_url = std::env::var(ZSR_WEBHOOK_VAR).unwrap();
+        let commentary_discussion_url = std::env::var(COMMENTARY_DISCUSSION_WEBHOOK_VAR).unwrap();
 
         let async_channel = get_webhook_by_url(&client, async_webhook_url).await?;
         let admin_channel = get_webhook_by_url(&client, admin_webhook_url).await?;
         let commportunities = get_webhook_by_url(&client, commportunities_webhook_url).await?;
         let sirius_inbox = get_webhook_by_url(&client, sirius_inbox_url).await?;
         let zsr = get_webhook_by_url(&client, zsr_url).await?;
+        let commentary_discussion = get_webhook_by_url(&client, commentary_discussion_url).await?;
 
         Ok(Self {
             http_client: client,
@@ -71,7 +75,8 @@ impl Webhooks {
             admin_channel,
             commportunities,
             sirius_inbox,
-            zsr
+            zsr,
+            commentary_discussion
         })
     }
 
@@ -113,17 +118,6 @@ impl Webhooks {
 
     pub fn prepare_execute_admin(&self) -> ExecuteWebhook {
         self._execute_webhook(&self.admin_channel)
-    }
-
-    pub fn prepare_execute_commportunities(&self)  -> ExecuteWebhook {
-        self._execute_webhook(&self.commportunities)
-    }
-
-    pub fn prepare_execute_sirius_inbox(&self)  -> ExecuteWebhook {
-        self._execute_webhook(&self.sirius_inbox)
-    }
-    pub fn prepare_execute_zsr(&self)  -> ExecuteWebhook {
-        self._execute_webhook(&self.zsr)
     }
 
     pub async fn message_async(&self, content: &str) -> Result<(), String> {
