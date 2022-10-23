@@ -49,6 +49,14 @@ impl BracketRaceInfo {
             .optional()
     }
 
+
+    pub fn get_by_restream_request_message_id(id: Id<MessageMarker>, conn: &mut SqliteConnection) -> Result<Option<Self>, diesel::result::Error> {
+        bracket_race_infos::table
+            .filter(bracket_race_infos::restream_request_message_id.eq(id.to_string()))
+            .first(conn)
+            .optional()
+    }
+
     pub fn race(&self, conn: &mut SqliteConnection) -> Result<BracketRace, diesel::result::Error> {
         BracketRace::get_by_id(self.bracket_race_id, conn)
     }

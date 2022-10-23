@@ -89,14 +89,16 @@ async fn _handle_reaction_add(
     let mut _conn = state.diesel_cxn().await?;
     let conn = _conn.deref_mut();
 
-
-    match BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, conn)? {
-        Some(i) => handle_commportunities_reaction(i, reaction, state).await,
-        None => {
-            println!("Uninteresting reaction");
-            Ok(())
-        }
+    if let Some(i) = BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, conn)? {
+        handle_commportunities_reaction(i, reaction, state).await
+    } else if let Some(i) = BracketRaceInfo::get_by_restream_request_message_id(reaction.message_id, conn)? {
+        handle_restream_request_reaction(i, reaction, state).await
+    } else {
+        println!("Uninteresting reaction");
+        Ok(())
     }
+
+
 }
 
 async fn is_admin_confirmation_reaction(
@@ -154,7 +156,7 @@ async fn handle_commentary_confirmation(
         .filter(|r| !r.bot)
         .collect();
     if let Some(gse) = info.get_scheduled_event_id() {
-        if let Err(e) = update_scheduled_event(gse, &commentators, state).await {
+        if let Err(e) = update_scheduled_event(gse, Some(&commentators), None, state).await {
             println!("Error updating scheduled event: {:?}", e);
         }
     }
@@ -262,7 +264,8 @@ async fn create_restream_request_post(fields: Vec<EmbedField>, state: &Arc<Disco
 
 async fn update_scheduled_event(
     gse_id: Id<ScheduledEventMarker>,
-    commentators: &HashSet<User>,
+    commentators: Option<&HashSet<User>>,
+    restream_channel: Option<String>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
     println!("[TODO] update scheduled event");
@@ -342,6 +345,45 @@ async fn create_sirius_inbox_post(
         .model()
         .await
         .map_err(From::from)
+}
+
+async fn handle_restream_request_reaction(
+    info: BracketRaceInfo,
+    reaction: Box<ReactionAdd>,
+    state: &Arc<DiscordState>,
+) -> Result<(), ReactionAddError> {
+    // TODO: ignore if the race is done or whatever
+    let chan = match emoji_to_restream_channel(&reaction.emoji) {
+        Some(c) => c,
+        None => { return Ok(()); }
+    };
+    if let Some(gse_id) = info.get_scheduled_event_id() {
+        if let Err(e) = update_scheduled_event(gse_id, None, Some(chan.to_string()), state).await {
+            println!("Error updating scheduled event: {:?}", e);
+        }
+    }
+
+    todo!()
+    // update_scheduled_event()
+}
+
+fn emoji_to_restream_channel(rt: &ReactionType) -> Option<&'static str> {
+    match rt {
+        ReactionType::Custom { name, .. } => {
+            name.as_ref().map(|s|
+                if s == "greenham" { Some("FGfm") } else { None }
+            ).flatten()
+        }
+        ReactionType::Unicode { name } => {
+            match name.as_str() {
+                "1️⃣" => Some("zeldaspeedruns"),
+                "2️⃣" => Some("zeldaspeedruns2"),
+                "3️⃣" => Some("zeldaspeedruns_3"),
+                "4️⃣" => Some("zeldaspeedruns_4"),
+                _ => None
+            }
+        }
+    }
 }
 
 fn reaction_message_url(r: &Box<ReactionAdd>) -> Option<String> {
