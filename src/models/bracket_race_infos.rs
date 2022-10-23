@@ -7,6 +7,7 @@ use diesel::SqliteConnection;
 use serde::Serialize;
 use twilight_model::id::Id;
 use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker};
+use twilight_model::util::Timestamp;
 
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
@@ -15,7 +16,7 @@ pub struct BracketRaceInfo {
     bracket_race_id: i32,
     scheduled_for: Option<i64>,
     scheduled_event_id: Option<String>,
-    commportunities_message_id: Option<String>
+    commportunities_message_id: Option<String>,
 }
 
 impl BracketRaceInfo {
@@ -40,6 +41,10 @@ impl BracketRaceInfo {
             .filter(bracket_race_infos::commportunities_message_id.eq(id.to_string()))
             .first(conn)
             .optional()
+    }
+
+    pub fn race(&self, conn: &mut SqliteConnection) -> Result<BracketRace, diesel::result::Error> {
+        BracketRace::get_by_id(self.bracket_race_id, conn)
     }
 
     pub fn scheduled(&self) -> Option<DateTime<Utc>> {

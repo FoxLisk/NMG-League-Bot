@@ -87,33 +87,10 @@ pub enum MatchResultError {
 }
 
 impl BracketRace {
-    pub fn try_into_match_result<'a>(&'a self) -> Result<MatchResult<'a, i32>, MatchResultError> {
-        if self
-            .state()
-            .map_err(|_| MatchResultError::RaceNotFinished)?
-            != BracketRaceState::Finished
-        {
-            return Err(MatchResultError::RaceNotFinished);
-        }
-        let o = self
-            .outcome()
-            .map_err(|_| MatchResultError::InvalidOutcome)?
-            .ok_or(MatchResultError::RaceNotFinished)?;
-        Ok(match o {
-            Outcome::Tie => MatchResult::Draw {
-                p1: &self.player_1_id,
-                p2: &self.player_2_id,
-            },
-            Outcome::P1Win => MatchResult::Player1Win {
-                p1: &self.player_1_id,
-                p2: &self.player_2_id,
-            },
-
-            Outcome::P2Win => MatchResult::Player2Win {
-                p1: &self.player_1_id,
-                p2: &self.player_2_id,
-            },
-        })
+    /// this expects the object to exist, so it returns Self instead of Option<Self>
+    pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
+        bracket_races::table.find(id)
+            .first(conn)
     }
 }
 
@@ -136,7 +113,13 @@ impl BracketRace {
 
     pub fn info(&self, conn: &mut SqliteConnection) -> Result<BracketRaceInfo, diesel::result::Error> {
         BracketRaceInfo::get_or_create_for_bracket(self, conn)
+    }
 
+    pub fn players(&self, conn: &mut SqliteConnection) -> Result<(Player, Player), diesel::result::Error> {
+        // TODO multiple queries bad 😫
+        let p1 = Player::get_by_id(self.player_1_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
+        let p2 = Player::get_by_id(self.player_2_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
+        Ok((p1, p2))
     }
 
     /// returns the prior scheduled time, if any (as timestamp)
@@ -222,6 +205,35 @@ impl BracketRace {
         self.outcome = Some(serde_json::to_string(&outcome)?);
         self.set_state(BracketRaceState::Finished);
         Ok(())
+    }
+
+    pub fn try_into_match_result<'a>(&'a self) -> Result<MatchResult<'a, i32>, MatchResultError> {
+        if self
+            .state()
+            .map_err(|_| MatchResultError::RaceNotFinished)?
+            != BracketRaceState::Finished
+        {
+            return Err(MatchResultError::RaceNotFinished);
+        }
+        let o = self
+            .outcome()
+            .map_err(|_| MatchResultError::InvalidOutcome)?
+            .ok_or(MatchResultError::RaceNotFinished)?;
+        Ok(match o {
+            Outcome::Tie => MatchResult::Draw {
+                p1: &self.player_1_id,
+                p2: &self.player_2_id,
+            },
+            Outcome::P1Win => MatchResult::Player1Win {
+                p1: &self.player_1_id,
+                p2: &self.player_2_id,
+            },
+
+            Outcome::P2Win => MatchResult::Player2Win {
+                p1: &self.player_1_id,
+                p2: &self.player_2_id,
+            },
+        })
     }
 
     update_fn! {}

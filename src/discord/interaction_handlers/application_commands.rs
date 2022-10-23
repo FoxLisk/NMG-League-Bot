@@ -26,7 +26,7 @@ use std::sync::Arc;
 use twilight_http::Client;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_mention::timestamp::TimestampStyle;
+use twilight_mention::timestamp::{TimestampStyle, Timestamp as MentionTimestamp};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::component::button::ButtonStyle;
@@ -41,7 +41,7 @@ use twilight_model::http::interaction::{
 use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
 use twilight_model::id::Id;
 use twilight_model::scheduled_event::GuildScheduledEvent;
-use twilight_model::util::Timestamp;
+use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
 
@@ -114,7 +114,7 @@ fn parse_day(s: &str) -> Option<(i32, u32, u32)> {
 
     let y = caps.get(1)?.as_str().parse().ok()?;
     let m = caps.get(2)?.as_str().parse().ok()?;
-    let d = caps.get(2)?.as_str().parse().ok()?;
+    let d = caps.get(3)?.as_str().parse().ok()?;
     Some((y, m, d))
 }
 
@@ -281,7 +281,7 @@ async fn _handle_schedule_race(
         }
     }
 
-    let new_t = twilight_mention::timestamp::Timestamp::new(
+    let new_t = MentionTimestamp::new(
         dt.timestamp() as u64,
         Some(TimestampStyle::LongDateTime),
     )
@@ -290,7 +290,7 @@ async fn _handle_schedule_race(
         .map(|t| {
             format!(
                 " (was {})",
-                twilight_mention::timestamp::Timestamp::new(
+                MentionTimestamp::new(
                     t as u64,
                     Some(TimestampStyle::LongDateTime)
                 )
@@ -308,7 +308,11 @@ async fn _handle_schedule_race(
 async fn create_commportunities_post<Tz: TimeZone> (
     when: &DateTime<Tz>, p1: &Player, p2: &Player, race: &BracketRace, state: &Arc<DiscordState>
 ) -> Result<Message, String> {
-    let text_content = format!("{} vs {}", p1.mention_or_name(), p2.mention_or_name());
+    let t_l = MentionTimestamp::new(when.timestamp() as u64, Some(TimestampStyle::LongDateTime));
+    let t_r = MentionTimestamp::new(when.timestamp() as u64, Some(TimestampStyle::RelativeTime));
+    let when = format!("{} ({})", t_l.mention(), t_r.mention());
+
+    let text_content = format!("{} vs {}{when}", p1.mention_or_name(), p2.mention_or_name());
     let embeds = vec![
             Embed {
                 author: None,
@@ -320,7 +324,7 @@ async fn create_commportunities_post<Tz: TimeZone> (
                 kind: "rich".to_string(),
                 provider: None,
                 thumbnail: None,
-                timestamp: Timestamp::from_secs(when.timestamp()).ok(),
+                timestamp: None,
                 title: Some(format!("New match available for commentary")),
                 url: None,
                 video: None
@@ -348,8 +352,8 @@ async fn create_discord_event<Tz: TimeZone>(
     gid: Id<GuildMarker>,
     client: &Client,
 ) -> Result<GuildScheduledEvent, String> {
-    let start = Timestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
-    let end = Timestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
+    let start = ModelTimestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
+    let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
         .map_err(|e| e.to_string())?;
     let req = client
         .create_guild_scheduled_event(gid)
