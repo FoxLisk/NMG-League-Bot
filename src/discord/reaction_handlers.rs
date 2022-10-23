@@ -399,7 +399,7 @@ async fn handle_restream_request_reaction(
         EmbedField {
             inline: false,
             name: "Channel".to_string(),
-            value: chan.to_string()
+            value: format!("https://twitch.tv/{chan}")
         }
     );
 
