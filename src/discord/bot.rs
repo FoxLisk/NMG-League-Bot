@@ -44,7 +44,7 @@ use crate::{Shutdown, Webhooks};
 use crate::discord::application_commands::application_command_definitions;
 use crate::discord::components::action_row;
 use crate::discord::interaction_handlers::application_commands::handle_application_interaction;
-use crate::discord::reaction_handlers::handle_reaction_add;
+use crate::discord::reaction_handlers::{handle_reaction_add, handle_reaction_remove};
 
 
 pub(crate) async fn launch(
@@ -640,7 +640,7 @@ async fn handle_event(event: Event, state: Arc<DiscordState>) {
             handle_reaction_add(ra, &state).await;
         }
         Event::ReactionRemove(rr) => {
-            println!("Reaction removed: {:?}", rr);
+            handle_reaction_remove(rr, &state).await;
         }
         _ => {}
     }

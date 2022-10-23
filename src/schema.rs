@@ -44,6 +44,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    commentator_signups (id) {
+        id -> Integer,
+        bracket_race_info_id -> Integer,
+        discord_id -> Text,
+    }
+}
+
+diesel::table! {
     player_bracket_entry (id) {
         id -> Integer,
         bracket_id -> Integer,
@@ -103,6 +111,7 @@ diesel::joinable!(bracket_races -> brackets (bracket_id));
 diesel::joinable!(bracket_races -> races (async_race_id));
 diesel::joinable!(bracket_rounds -> brackets (bracket_id));
 diesel::joinable!(brackets -> seasons (season_id));
+diesel::joinable!(commentator_signups -> bracket_race_infos (bracket_race_info_id));
 diesel::joinable!(player_bracket_entry -> brackets (bracket_id));
 diesel::joinable!(player_bracket_entry -> players (player_id));
 diesel::joinable!(race_runs -> races (race_id));
@@ -112,6 +121,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     bracket_races,
     bracket_rounds,
     brackets,
+    commentator_signups,
     player_bracket_entry,
     players,
     race_runs,
