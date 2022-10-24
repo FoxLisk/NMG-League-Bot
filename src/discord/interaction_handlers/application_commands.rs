@@ -274,7 +274,6 @@ async fn _handle_schedule_race(
             }
         };
 
-        // if(dirty)
         if let Err(e) = info.update(cxn.deref_mut()) {
             println!("Error updating bracket race info: {:?}", e);
         }

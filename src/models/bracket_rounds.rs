@@ -5,6 +5,7 @@ use crate::schema::bracket_rounds;
 use diesel::prelude::*;
 
 #[derive(Queryable)]
+#[allow(unused)]
 pub struct BracketRound {
     pub id: i32,
     pub round_num: i32,

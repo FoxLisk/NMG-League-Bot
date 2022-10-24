@@ -3,8 +3,6 @@ use diesel::{ConnectionError};
 use itertools::Itertools;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use rocket::http::ext::IntoCollection;
-use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::embed::{Embed, EmbedField};
@@ -279,6 +277,8 @@ async fn create_restream_request_post(fields: Vec<EmbedField>, state: &Arc<Disco
         .map_err(From::from)
 }
 
+// TODO when twilight has a patch up
+#[allow(unused)]
 async fn update_scheduled_event(
     gse_id: Id<ScheduledEventMarker>,
     commentators: Option<&Vec<Id<UserMarker>>>,

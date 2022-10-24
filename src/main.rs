@@ -4,11 +4,11 @@ use shutdown::Shutdown;
 mod constants;
 mod db;
 mod discord;
-mod race_cron;
 mod schema;
 mod shutdown;
 mod utils;
 mod web;
+mod workers;
 
 extern crate bb8;
 extern crate chrono;
@@ -48,7 +48,7 @@ async fn main() {
         println!("Migrations: {:?}", res);
     }
 
-    tokio::spawn(race_cron::cron(
+    tokio::spawn(workers::async_race_worker::cron(
         shutdown_send.subscribe(),
         webhooks.clone(),
         state.clone(),
@@ -57,6 +57,11 @@ async fn main() {
     tokio::spawn(web::launch_website(
         state.clone(),
         shutdown_send.subscribe(),
+    ));
+
+    tokio::spawn(workers::racetime_scanner_worker::cron(
+        shutdown_send.subscribe(),
+        state.clone()
     ));
 
     drop(state);

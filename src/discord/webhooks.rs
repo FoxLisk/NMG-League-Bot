@@ -1,4 +1,4 @@
-use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, COMMENTARY_DISCUSSION_WEBHOOK_VAR, COMMPORTUNITIES_WEBHOOK_VAR, SIRIUS_INBOX_WEBHOOK_VAR, TOKEN_VAR, ZSR_WEBHOOK_VAR};
+use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR,  TOKEN_VAR};
 use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
@@ -14,11 +14,7 @@ pub struct Webhooks {
     http_client: Arc<Client>,
     async_channel: WebhookInfo,
     admin_channel: WebhookInfo,
-    /// public for deleting messages
-    pub commportunities: WebhookInfo,
-    sirius_inbox: WebhookInfo,
-    zsr: WebhookInfo,
-    commentary_discussion: WebhookInfo,
+
 }
 
 #[derive(Clone)]
@@ -57,26 +53,14 @@ impl Webhooks {
         let client = Arc::new(Client::new(std::env::var(TOKEN_VAR).unwrap()));
         let async_webhook_url = std::env::var(ASYNC_WEBHOOK_VAR).unwrap();
         let admin_webhook_url = std::env::var(ADMIN_WEBHOOK_VAR).unwrap();
-        let commportunities_webhook_url = std::env::var(COMMPORTUNITIES_WEBHOOK_VAR).unwrap();
-        let sirius_inbox_url = std::env::var(SIRIUS_INBOX_WEBHOOK_VAR).unwrap();
-        let zsr_url = std::env::var(ZSR_WEBHOOK_VAR).unwrap();
-        let commentary_discussion_url = std::env::var(COMMENTARY_DISCUSSION_WEBHOOK_VAR).unwrap();
 
         let async_channel = get_webhook_by_url(&client, async_webhook_url).await?;
         let admin_channel = get_webhook_by_url(&client, admin_webhook_url).await?;
-        let commportunities = get_webhook_by_url(&client, commportunities_webhook_url).await?;
-        let sirius_inbox = get_webhook_by_url(&client, sirius_inbox_url).await?;
-        let zsr = get_webhook_by_url(&client, zsr_url).await?;
-        let commentary_discussion = get_webhook_by_url(&client, commentary_discussion_url).await?;
 
         Ok(Self {
             http_client: client,
             async_channel,
             admin_channel,
-            commportunities,
-            sirius_inbox,
-            zsr,
-            commentary_discussion
         })
     }
 

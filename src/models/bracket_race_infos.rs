@@ -10,20 +10,18 @@ use diesel::SqliteConnection;
 use serde::Serialize;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
-use twilight_model::channel::Message;
-use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker, UserMarker, WebhookMarker};
+use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
-use twilight_model::util::Timestamp;
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
-#[changeset_options(treat_none_as_null = "true")]
+#[diesel(treat_none_as_null = true)]
 pub struct BracketRaceInfo {
-    id: i32,
-    bracket_race_id: i32,
-    scheduled_for: Option<i64>,
-    scheduled_event_id: Option<String>,
-    commportunities_message_id: Option<String>,
-    restream_request_message_id: Option<String>,
+    pub id: i32,
+    pub bracket_race_id: i32,
+    pub scheduled_for: Option<i64>,
+    pub scheduled_event_id: Option<String>,
+    pub commportunities_message_id: Option<String>,
+    pub restream_request_message_id: Option<String>,
 }
 
 impl BracketRaceInfo {

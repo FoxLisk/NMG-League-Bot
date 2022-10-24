@@ -1,3 +1,4 @@
+use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
@@ -5,15 +6,14 @@ use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Serialize;
 use serde_json::Error;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
-use twilight_mention::timestamp::TimestampStyle;
-use crate::models::bracket_race_infos::BracketRaceInfo;
+use thiserror::Error;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 pub enum BracketRaceState {
@@ -22,24 +22,16 @@ pub enum BracketRaceState {
     Finished,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum BracketRaceStateError {
+    #[error("Invalid state")]
     InvalidState,
-    ParseError(serde_json::Error),
-    DatabaseError(diesel::result::Error),
+    #[error("Deserialization error: {0}")]
+    ParseError(#[from] serde_json::Error),
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] diesel::result::Error),
 }
 
-impl From<diesel::result::Error> for BracketRaceStateError {
-    fn from(e: diesel::result::Error) -> Self {
-        Self::DatabaseError(e)
-    }
-}
-
-impl From<serde_json::Error> for BracketRaceStateError {
-    fn from(e: Error) -> Self {
-        Self::ParseError(e)
-    }
-}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
@@ -67,23 +59,21 @@ pub enum Outcome {
     P2Win,
 }
 
-#[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize)]
+#[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone)]
 pub struct BracketRace {
     pub id: i32,
-    bracket_id: i32,
+    pub bracket_id: i32,
     pub round_id: i32,
     pub player_1_id: i32,
     pub player_2_id: i32,
-    async_race_id: Option<i32>,
-    state: String,
-    player_1_result: Option<String>,
-    player_2_result: Option<String>,
-    pub(crate) outcome: Option<String>,
+    pub async_race_id: Option<i32>,
+    pub state: String,
+    pub player_1_result: Option<String>,
+    pub player_2_result: Option<String>,
+    pub outcome: Option<String>,
 }
 
-impl BracketRace {
-
-}
+impl BracketRace {}
 
 #[derive(Debug)]
 pub enum MatchResultError {
@@ -94,11 +84,9 @@ pub enum MatchResultError {
 impl BracketRace {
     /// this expects the object to exist, so it returns Self instead of Option<Self>
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
-        bracket_races::table.find(id)
-            .first(conn)
+        bracket_races::table.find(id).first(conn)
     }
 }
-
 
 impl BracketRace {
     pub fn state(&self) -> Result<BracketRaceState, BracketRaceStateError> {
@@ -116,14 +104,22 @@ impl BracketRace {
         }
     }
 
-    pub fn info(&self, conn: &mut SqliteConnection) -> Result<BracketRaceInfo, diesel::result::Error> {
+    pub fn info(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<BracketRaceInfo, diesel::result::Error> {
         BracketRaceInfo::get_or_create_for_bracket(self, conn)
     }
 
-    pub fn players(&self, conn: &mut SqliteConnection) -> Result<(Player, Player), diesel::result::Error> {
+    pub fn players(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<(Player, Player), diesel::result::Error> {
         // TODO multiple queries bad 😫
-        let p1 = Player::get_by_id(self.player_1_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
-        let p2 = Player::get_by_id(self.player_2_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
+        let p1 =
+            Player::get_by_id(self.player_1_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
+        let p2 =
+            Player::get_by_id(self.player_2_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
         Ok((p1, p2))
     }
 
@@ -134,7 +130,11 @@ impl BracketRace {
     /// this hits the db (twice!) to find players, so uh. i guess if that matters to you don't call it
     pub fn title(&self, conn: &mut SqliteConnection) -> Result<String, diesel::result::Error> {
         let (p1, p2) = self.players(conn)?;
-        Ok(format!("{} vs {}", p1.mention_or_name(), p2.mention_or_name()))
+        Ok(format!(
+            "{} vs {}",
+            p1.mention_or_name(),
+            p2.mention_or_name()
+        ))
     }
 
     /// returns the prior scheduled time, if any (as timestamp)
@@ -142,7 +142,7 @@ impl BracketRace {
     pub fn schedule<T: TimeZone>(
         &mut self,
         when: &DateTime<T>,
-        conn: &mut SqliteConnection
+        conn: &mut SqliteConnection,
     ) -> Result<Option<i64>, BracketRaceStateError> {
         match self.state()? {
             BracketRaceState::New | BracketRaceState::Scheduled => {}
@@ -188,6 +188,7 @@ impl BracketRace {
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())
     }
+
 
     pub fn player_2_result(&self) -> Option<PlayerResult> {
         self.player_2_result

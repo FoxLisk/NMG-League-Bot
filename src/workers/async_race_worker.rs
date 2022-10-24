@@ -1,4 +1,4 @@
-use crate::constants::CRON_TICKS_VAR;
+use crate::constants::{CRON_TICKS_VAR, RACETIME_TICK_SECS};
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
 use nmg_league_bot::models::race::{Race, RaceState};
@@ -13,6 +13,7 @@ use tokio::sync::broadcast::Receiver;
 use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
+use crate::workers;
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {
@@ -193,14 +194,10 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
     }
 }
 
-fn get_tick_duration() -> Duration {
-    Duration::from_secs(env_default(CRON_TICKS_VAR, 60))
-}
-
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {
-    let tick_duration = get_tick_duration();
+    let tick_duration = workers::get_tick_duration(RACETIME_TICK_SECS);
     println!(
-        "Starting cron: running every {} seconds",
+        "Starting async race worker: running every {} seconds",
         tick_duration.as_secs()
     );
     let mut intv = tokio::time::interval(tick_duration);
@@ -210,7 +207,7 @@ pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: 
                 sweep(&state, &webhooks).await;
             }
             _sd = sd.recv() => {
-                println!("Cron shutting down");
+                println!("async race worker shutting down");
                 break;
             }
         }

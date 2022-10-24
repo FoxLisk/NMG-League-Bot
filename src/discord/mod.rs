@@ -12,10 +12,7 @@ use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{ActionRow, Component};
 use twilight_model::application::interaction::application_command::CommandDataOption;
 use twilight_model::channel::embed::EmbedField;
-use twilight_model::channel::Message;
-use twilight_model::gateway::payload::incoming::ReactionAdd;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::BracketRace;
 pub(crate) use webhooks::Webhooks;
 
 pub(crate) mod discord_state;

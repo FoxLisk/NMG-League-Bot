@@ -14,7 +14,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use swiss_pairings::{PairingError, TourneyConfig};
 
-#[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 enum BracketState {
     Unstarted,
     Started,
@@ -287,7 +287,7 @@ mod tests {
     fn test_deserialize() {
         assert_eq!(
             BracketState::Unstarted,
-            serde_json::from_str(r#""Unstarted""#)
+            serde_json::from_str(r#""Unstarted""#).unwrap()
         );
     }
 }

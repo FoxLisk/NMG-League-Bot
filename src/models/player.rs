@@ -19,7 +19,7 @@ pub struct Player {
     pub name: String,
     pub discord_id: String,
     pub racetime_username: String,
-    restreams_ok: i32,
+    pub restreams_ok: i32,
 }
 
 impl Player {
