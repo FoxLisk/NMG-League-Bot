@@ -13,7 +13,7 @@ use twilight_mention::Mention;
 use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
 
-#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
+#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone)]
 #[diesel(treat_none_as_null = true)]
 pub struct BracketRaceInfo {
     pub id: i32,
@@ -79,8 +79,14 @@ impl BracketRaceInfo {
     }
 
     /// returns the prior scheduled time, if any (as timestamp)
-    pub fn schedule<T: TimeZone>(&mut self, when: &DateTime<T>) -> Option<i64> {
-        std::mem::replace(&mut self.scheduled_for, Some(when.timestamp()))
+    /// Deletes any existing commentary signups
+    /// does *not* persist self
+    pub fn schedule<T: TimeZone>(&mut self, when: &DateTime<T>, conn: &mut SqliteConnection) -> Result<Option<i64>, diesel::result::Error> {
+        diesel::delete(
+        commentator_signups::table.filter(
+            commentator_signups::bracket_race_info_id.eq(self.id)
+        )).execute(conn)?;
+        Ok( std::mem::replace(&mut self.scheduled_for, Some(when.timestamp())))
     }
 
     pub fn get_scheduled_event_id(&self) -> Option<Id<ScheduledEventMarker>> {

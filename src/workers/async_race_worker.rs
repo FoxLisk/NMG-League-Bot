@@ -1,16 +1,15 @@
-use crate::constants::{CRON_TICKS_VAR, RACETIME_TICK_SECS};
+use crate::constants::{ RACETIME_TICK_SECS};
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
 use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use crate::schema::races;
 use crate::shutdown::Shutdown;
-use crate::utils::{env_default, format_hms};
+use crate::utils::{ format_hms};
 use diesel::prelude::*;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
-use tokio::time::Duration;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
 use crate::workers;

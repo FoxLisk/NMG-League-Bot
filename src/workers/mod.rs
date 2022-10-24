@@ -1,5 +1,4 @@
 use std::time::Duration;
-use crate::constants::CRON_TICKS_VAR;
 use crate::utils::env_default;
 
 pub mod async_race_worker;

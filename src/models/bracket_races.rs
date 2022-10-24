@@ -10,7 +10,6 @@ use chrono::{DateTime, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Serialize;
-use serde_json::Error;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
 use thiserror::Error;
@@ -137,13 +136,13 @@ impl BracketRace {
         ))
     }
 
-    /// returns the prior scheduled time, if any (as timestamp)
+    /// returns (old_info, new_info) (before and after the update from this method
     /// updates the database
     pub fn schedule<T: TimeZone>(
         &mut self,
         when: &DateTime<T>,
         conn: &mut SqliteConnection,
-    ) -> Result<Option<i64>, BracketRaceStateError> {
+    ) -> Result<(BracketRaceInfo, BracketRaceInfo), BracketRaceStateError> {
         match self.state()? {
             BracketRaceState::New | BracketRaceState::Scheduled => {}
             BracketRaceState::Finished => {
@@ -151,13 +150,14 @@ impl BracketRace {
             }
         };
         let mut info = self.info(conn)?;
-        let before = info.schedule(when);
+        let prior = info.clone();
+        info.schedule(when, conn)?;
         self.set_state(BracketRaceState::Scheduled);
         conn.transaction(|c| {
             info.update(c)?;
             self.update(c)
         })?;
-        Ok(before)
+        Ok((prior, info))
     }
 
     /// only works on runs in the New or Scheduled state

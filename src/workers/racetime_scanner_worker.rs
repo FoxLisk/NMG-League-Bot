@@ -13,9 +13,8 @@ use racetime_api::client::RacetimeClient;
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::{PastCategoryRaces, PastCategoryRacesBuilder};
 use racetime_api::err::RacetimeError;
-use racetime_api::types::{PastRaceEntrant, RaceWithEntrants};
 use serde::Deserialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap};
 use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
@@ -88,7 +87,6 @@ struct Entrant {
     user: User,
     status: EntrantStatus,
     finish_time: Option<String>,
-    place: u32,
 }
 
 impl Entrant {
@@ -113,6 +111,7 @@ struct Goal {
 }
 
 #[derive(Deserialize, Debug)]
+#[allow(unused)]
 struct RacetimeRace {
     name: String,
     status: RaceStatus,
@@ -140,6 +139,12 @@ fn interesting_race<'a>(
     (&'a Player, Entrant),
     (&'a Player, Entrant),
 )> {
+    if race.goal.name != "Any% NMG" {
+        return None;
+    }
+    if race.status.value != "finished" {
+        return None;
+    }
     let mut entrant_ids = race
         .entrants
         .into_iter()
@@ -175,6 +180,7 @@ async fn scan(
         .filter(bracket_races::state.ne(finished_state))
         .load(cxn.deref_mut())?;
 
+    println!("Racetime scanner: interested in {} races", bracket_races.len());
     // *shrug*
     // it's like 40 rows
     let all_players: Vec<Player> = players::table.load(cxn.deref_mut())?;
@@ -209,11 +215,11 @@ async fn scan(
     let finished_races: Races = recent_races.query(racetime_client).await?;
 
     for race in finished_races.races {
-        if let Some((bri, br, p1, p2)) = interesting_race(
+        if let Some((_bri, br, p1, p2)) = interesting_race(
             race, &interesting_rtgg_ids
         ) {
             // this is awful, i hate doing it this way, i'm just tired of thinking about this
-            let mut mutable_br = br.clone();
+            let mutable_br = br.clone();
             if let Err(e) = update_race_stuff(mutable_br, p1, p2, cxn.deref_mut()) {
                 println!("Error updating {:?}: {}", br, e);
             }
@@ -246,6 +252,7 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     loop {
         tokio::select! {
             _ = intv.tick() => {
+                println!("Racetime scan starting...");
                 if let Err(e) = scan(&state, &client).await {
                     println!("Error running racetime scan: {}", e);
                 }
@@ -261,10 +268,8 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use crate::workers::racetime_scanner_worker::{Entrant, EntrantStatus, Goal, interesting_race, RaceStatus, RacetimeRace, User};
-    use iso8601_duration::Duration;
-    use racetime_api::types::{Race, RaceWithEntrants};
-    use std::fmt::Debug;
+    use std::fs::read_to_string;
+    use crate::workers::racetime_scanner_worker::{Entrant, EntrantStatus, Goal, interesting_race, Races, RaceStatus, RacetimeRace, User};
     use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
     use nmg_league_bot::models::bracket_races::BracketRace;
     use nmg_league_bot::models::player::Player;
@@ -286,7 +291,6 @@ mod tests {
                         value: "done".to_string(),
                     },
                     finish_time: Option::from("PT1H23M45S".to_string()),
-                    place: 1,
                 },
                 Entrant {
                     user: User {
@@ -296,7 +300,6 @@ mod tests {
                         value: "done".to_string(),
                     },
                     finish_time: Option::from("PT1H34M56S".to_string()),
-                    place: 2,
                 },
             ],
             opened_at: "".to_string(),
@@ -368,7 +371,6 @@ mod tests {
                         value: "done".to_string(),
                     },
                     finish_time: Option::from("PT1H23M45S".to_string()),
-                    place: 1,
                 },
                 Entrant {
                     user: User {
@@ -378,7 +380,6 @@ mod tests {
                         value: "done".to_string(),
                     },
                     finish_time: Option::from("PT1H34M56S".to_string()),
-                    place: 2,
                 },
             ],
             opened_at: "".to_string(),
@@ -428,5 +429,21 @@ mod tests {
         races.insert(p3.racetime_username.clone(), (&bri, &br, &p1, &p3));
         let whatever = interesting_race(race, &races);
         assert!(whatever.is_none());
+    }
+
+    #[test]
+    fn test_deserialize() {
+        let contents = read_to_string("test_data/recent_alttp_races.json").unwrap();
+
+        let value: serde_json::Value = serde_json::from_str(&contents).unwrap();
+        let races = value.get("races").unwrap();
+        for race in races.as_array().unwrap() {
+            let re_serialized = serde_json::to_string(race).unwrap();
+            let re_de_ser_ial_ized = serde_json::from_str::<RacetimeRace>(&re_serialized);
+            assert!(re_de_ser_ial_ized.is_ok(), "{}: {:?}", re_serialized, re_de_ser_ial_ized);
+        }
+
+        let races = serde_json::from_str::<Races>(&contents);
+        assert!(races.is_ok());
     }
 }

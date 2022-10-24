@@ -116,6 +116,35 @@ fn parse_day(s: &str) -> Option<(i32, u32, u32)> {
     Some((y, m, d))
 }
 
+fn datetime_from_options(day_string: &str, hour: i64, minute: i64, ampm: &str) -> Result<DateTime<chrono_tz::Tz>, &'static str> {
+    let (y, m, d) = parse_day(&day_string).ok_or("Invalid day. Expected YYYY/MM/DD format. You should see helpful autocomplete options.")?;
+    let hour_adjusted = match ampm {
+        "AM" => {
+            if hour == 12 {
+                0
+            } else {
+                hour
+            }
+        },
+        "PM" => {
+            if hour == 12 {
+                hour
+            } else {
+                hour + 12
+            }
+        },
+        _ => {
+            return Err("Invalid value for AM/PM");
+        }
+    };
+
+    chrono_tz::US::Eastern
+        .ymd_opt(y, m, d)
+        .and_hms_opt(hour_adjusted as u32, minute as u32, 0)
+        .earliest()
+        .ok_or("Invalid datetime")
+}
+
 async fn _handle_schedule_race(
     mut ac: Box<CommandData>,
     mut interaction: Box<InteractionCreate>,
@@ -133,25 +162,14 @@ async fn _handle_schedule_race(
     let day_string = match get_opt!("day", &mut ac.options, String) {
         Ok(d) => d,
         Err(_e) => {
-            // this doesn't, IMO, merit alerting admins separately
             return Ok(Some(plain_interaction_response(
                 "Missing required day option",
-            )));
-        }
-    };
-    println!("Day string: {}", day_string);
-    let (year, month, day) = match parse_day(&day_string) {
-        Some(ymd) => ymd,
-        None => {
-            return Ok(Some(plain_interaction_response(
-                "Invalid day. Expected YYYY/MM/DD format. You should see helpful autocomplete options.",
             )));
         }
     };
     let hour = match get_opt!("hour", &mut ac.options, Integer) {
         Ok(h) => h,
         Err(_e) => {
-            // this doesn't, IMO, merit alerting admins separately
             return Ok(Some(plain_interaction_response(
                 "Missing required hour option",
             )));
@@ -160,34 +178,23 @@ async fn _handle_schedule_race(
     let minute = match get_opt!("minute", &mut ac.options, Integer) {
         Ok(m) => m,
         Err(_e) => {
-            // this doesn't, IMO, merit alerting admins separately
             return Ok(Some(plain_interaction_response(
                 "Missing required minute option",
             )));
         }
     };
     // TODO: this cannot possibly be the best way to do this, lmao
-    let ampm_offset = match get_opt!("am_pm", &mut ac.options, String)
-        .map_err(|_e| "Missing required am_pm option")
-        .and_then(|o| match o.as_str() {
-            "AM" => Ok(0),
-            "PM" => Ok(12),
-            _ => Err("Invalid value for AM/PM"),
-        }) {
+    let ampm_offset = match get_opt!("am_pm", &mut ac.options, String) {
         Ok(ap) => ap,
-        Err(e) => {
-            return Ok(Some(plain_interaction_response(e)));
+        Err(_e) => {
+            return Ok(Some(plain_interaction_response("Missing required AM/PM option")));
         }
     };
 
-    let dt: DateTime<_> = match chrono_tz::US::Eastern
-        .ymd_opt(year, month, day)
-        .and_hms_opt((hour as u32) + ampm_offset, minute as u32, 0)
-        .earliest()
-    {
-        Some(dt) => dt,
-        None => {
-            return Ok(Some(plain_interaction_response("Invalid datetime")));
+    let dt: DateTime<_> = match datetime_from_options(&day_string, hour, minute, &ampm_offset) {
+        Ok(dt) => dt,
+        Err(e) => {
+            return Ok(Some(plain_interaction_response(e)));
         }
     };
 
@@ -225,8 +232,8 @@ async fn _handle_schedule_race(
         }
     };
 
-    let was = match the_race.schedule(&dt, cxn.deref_mut()) {
-        Ok(w) => w,
+    let (old_info, mut new_info) = match the_race.schedule(&dt, cxn.deref_mut()) {
+        Ok(bri) => bri,
         Err(BracketRaceStateError::InvalidState) => {
             return Ok(Some(plain_interaction_response(
                 "That race cannot be scheduled anymore.",
@@ -239,12 +246,6 @@ async fn _handle_schedule_race(
             ));
         }
     };
-    the_race.update(cxn.deref_mut()).map_err(|e| {
-        ErrorResponse::new(
-            BLAND_USER_FACING_ERROR,
-            format!("Error saving scheduled race: {}", e),
-        )
-    })?;
 
     let p1r = Player::get_by_id(the_race.player_1_id, cxn.deref_mut());
     let p1_name = p1r
@@ -255,26 +256,31 @@ async fn _handle_schedule_race(
     let p2_name = p2r
         .mention_maybe()
         .unwrap_or("Error finding player".to_string());
-    let info = the_race.info(cxn.deref_mut());
-    if let (Ok(Some(p1)), Ok(Some(p2)), Some(gid), Ok(mut info)) = (p1r, p2r, ac.guild_id, info) {
-        // create event
-        match create_discord_event(&dt, &p1, &p2, gid, &state.client).await {
+    if let (Ok(Some(p1)), Ok(Some(p2)), Some(gid)) = (p1r, p2r, ac.guild_id) {
+        match create_or_update_event(&old_info, &new_info, &p1, &p2, gid, &state.client).await {
             Ok(evt) => {
-                info.set_scheduled_event_id(evt.id);
+                new_info.set_scheduled_event_id(evt.id);
             }
             Err(e) => { println!("Error creating event: {}", e); }
         };
 
-        match create_commportunities_post(&info, state).await {
+        match create_commportunities_post(&new_info, state).await {
             Ok(m) => {
-                info.set_commportunities_message_id(m.id);
+                new_info.set_commportunities_message_id(m.id);
             },
             Err(e) => {
                 println!("Error creating commportunities post: {:?}", e);
             }
         };
+        if let Some(old_commp_id) = old_info.get_commportunities_message_id() {
+            if let Err(err) = state.client.delete_message(state.channel_config.commportunities, old_commp_id)
+                .exec()
+                .await {
+                println!("Error deleting old commportunities post upon reschedule: {}", err);
+            }
+        }
 
-        if let Err(e) = info.update(cxn.deref_mut()) {
+        if let Err(e) = new_info.update(cxn.deref_mut()) {
             println!("Error updating bracket race info: {:?}", e);
         }
     }
@@ -284,12 +290,12 @@ async fn _handle_schedule_race(
         Some(TimestampStyle::LongDateTime),
     )
     .mention();
-    let old_t = was
+    let old_t = old_info.scheduled()
         .map(|t| {
             format!(
                 " (was {})",
                 MentionTimestamp::new(
-                    t as u64,
+                    t.timestamp() as u64,
                     Some(TimestampStyle::LongDateTime)
                 )
                 .mention()
@@ -342,27 +348,38 @@ async fn create_commportunities_post (
     Ok(m)
 }
 
-async fn create_discord_event<Tz: TimeZone>(
-    when: &DateTime<Tz>,
+
+async fn create_or_update_event(
+    old_info: &BracketRaceInfo,
+    new_info: &BracketRaceInfo,
     p1: &Player,
     p2: &Player,
     gid: Id<GuildMarker>,
     client: &Client,
 ) -> Result<GuildScheduledEvent, String> {
+    let when = new_info.scheduled().ok_or("Error: No timestamp on new bracket race info".to_string())?;
     let start = ModelTimestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
     let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
         .map_err(|e| e.to_string())?;
-    let req = client
-        .create_guild_scheduled_event(gid)
-        .external(
-            &format!("{} vs {}", p1.name, p2.name),
-            &format!("https://multistre.am/{}/{}/layout4/", p1.name, p2.name),
-            &start,
-            &end,
-        )
-        .and_then(|gse|  gse.description("Bracket info or something maybe?"))
-        .map_err(|e| e.to_string())?
-        .exec();
+
+    let req = if let Some(existing_id) = old_info.get_scheduled_event_id() {
+       client.update_guild_scheduled_event(gid, existing_id)
+            .scheduled_start_time(&start)
+            .scheduled_end_time(Some(&end))
+            .exec()
+    } else {
+        client
+            .create_guild_scheduled_event(gid)
+            .external(
+                &format!("{} vs {}", p1.name, p2.name),
+                &format!("https://multistre.am/{}/{}/layout4/", p1.name, p2.name),
+                &start,
+                &end,
+            )
+            .and_then(|gse|  gse.description("Bracket info or something maybe?"))
+            .map_err(|e| e.to_string())?
+            .exec()
+    };
     let resp = req.await.map_err(|e| e.to_string())?;
     resp.model().await.map_err(|e| {
         format!(
@@ -874,4 +891,25 @@ async fn handle_create_bracket(
     let nb = NewBracket::new(&szn, name);
     nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response("Bracket created!"))
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{Datelike, Timelike};
+    use crate::discord::interaction_handlers::application_commands::datetime_from_options;
+
+    #[test]
+    fn test_datetime_thingy() {
+        let thing = datetime_from_options("2022/10/28", 12, 13, "AM").unwrap();
+        assert_eq!( thing.day(), 28);
+        assert_eq!(thing.month(), 10);
+        assert_eq!(thing.hour(), 0);
+        assert_eq!(thing.format("%v %r").to_string(), "28-Oct-2022 12:13:00 AM");
+
+        let other_thing = datetime_from_options("2022/10/28", 12, 13, "PM").unwrap();
+        assert_eq!( other_thing.day(), 28);
+        assert_eq!(other_thing.month(), 10);
+        assert_eq!(other_thing.hour(), 12);
+        assert_eq!(other_thing.format("%v %r").to_string(), "28-Oct-2022 12:13:00 PM");
+    }
 }
