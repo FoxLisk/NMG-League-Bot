@@ -7,14 +7,16 @@ use bb8::RunError;
 use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError, PlayerResult};
+use nmg_league_bot::models::bracket_races::{
+    BracketRace, BracketRaceState, BracketRaceStateError, PlayerResult,
+};
 use nmg_league_bot::models::player::Player;
 use racetime_api::client::RacetimeClient;
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::{PastCategoryRaces, PastCategoryRacesBuilder};
 use racetime_api::err::RacetimeError;
 use serde::Deserialize;
-use std::collections::{HashMap};
+use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
@@ -38,7 +40,7 @@ enum ScanError {
     RacetimeError(#[from] RacetimeError),
 
     #[error("Error determing player's race result: {0}")]
-    PlayerResultError(#[from]  PlayerResultError),
+    PlayerResultError(#[from] PlayerResultError),
 
     #[error("Error updating bracket race state: {0}")]
     BracketRaceStateError(#[from] BracketRaceStateError),
@@ -93,14 +95,16 @@ impl Entrant {
     fn result(&self) -> Result<PlayerResult, PlayerResultError> {
         match self.status.value.as_str() {
             "dnf" | "dq" => Ok(PlayerResult::Forfeit),
-            "done" =>  {
-                let ft = self.finish_time.as_ref().ok_or(PlayerResultError::NoFinishTime)?;
-                let t= iso8601_duration::Duration::parse(ft).map_err(|e| PlayerResultError::ParseError(e.to_string()))?;
-                Ok(PlayerResult::Finish(
-                    t.to_std().as_secs() as u32
-                ))
+            "done" => {
+                let ft = self
+                    .finish_time
+                    .as_ref()
+                    .ok_or(PlayerResultError::NoFinishTime)?;
+                let t = iso8601_duration::Duration::parse(ft)
+                    .map_err(|e| PlayerResultError::ParseError(e.to_string()))?;
+                Ok(PlayerResult::Finish(t.to_std().as_secs() as u32))
             }
-            _ => Err(PlayerResultError::NoFinishTime)
+            _ => Err(PlayerResultError::NoFinishTime),
         }
     }
 }
@@ -180,7 +184,10 @@ async fn scan(
         .filter(bracket_races::state.ne(finished_state))
         .load(cxn.deref_mut())?;
 
-    println!("Racetime scanner: interested in {} races", bracket_races.len());
+    println!(
+        "Racetime scanner: interested in {} races",
+        bracket_races.len()
+    );
     // *shrug*
     // it's like 40 rows
     let all_players: Vec<Player> = players::table.load(cxn.deref_mut())?;
@@ -215,22 +222,31 @@ async fn scan(
     let finished_races: Races = recent_races.query(racetime_client).await?;
 
     for race in finished_races.races {
-        if let Some((_bri, br, p1, p2)) = interesting_race(
-            race, &interesting_rtgg_ids
-        ) {
-            // this is awful, i hate doing it this way, i'm just tired of thinking about this
-            let mutable_br = br.clone();
-            if let Err(e) = update_race_stuff(mutable_br, p1, p2, cxn.deref_mut()) {
-                println!("Error updating {:?}: {}", br, e);
-            }
-        }
+        maybe_do_race_stuff(race, &interesting_rtgg_ids, cxn.deref_mut());
     }
     Ok(())
 }
 
+fn maybe_do_race_stuff(
+    race: RacetimeRace,
+    bracket_races: &HashMap<String, (&BracketRaceInfo, &BracketRace, &Player, &Player)>,
+    conn: &mut SqliteConnection,
+) {
+    if let Some((_bri, br, p1, p2)) = interesting_race(race, bracket_races) {
+        // this is awful, i hate doing it this way, i'm just tired of thinking about this
+        let mutable_br = br.clone();
+        if let Err(e) = update_race_stuff(mutable_br, p1, p2, conn) {
+            println!("Error updating {:?}: {}", br, e);
+        }
+    }
+}
 
-
-fn update_race_stuff(mut br: BracketRace, p1_info: (&Player, Entrant), p2_info: (&Player, Entrant), conn: &mut SqliteConnection) -> Result<(), ScanError> {
+fn update_race_stuff(
+    mut br: BracketRace,
+    p1_info: (&Player, Entrant),
+    p2_info: (&Player, Entrant),
+    conn: &mut SqliteConnection,
+) -> Result<(), ScanError> {
     let (_p1, e1) = p1_info;
     let (_p2, e2) = p2_info;
     let p1_result = e1.result()?;
@@ -239,7 +255,6 @@ fn update_race_stuff(mut br: BracketRace, p1_info: (&Player, Entrant), p2_info: 
     br.update(conn)?;
     Ok(())
 }
-
 
 pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     let tick_duration = get_tick_duration(CRON_TICKS_VAR);
@@ -267,12 +282,14 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
-    use std::fs::read_to_string;
-    use crate::workers::racetime_scanner_worker::{Entrant, EntrantStatus, Goal, interesting_race, Races, RaceStatus, RacetimeRace, User};
+    use crate::workers::racetime_scanner_worker::{
+        interesting_race, Entrant, EntrantStatus, Goal, RaceStatus, Races, RacetimeRace, User,
+    };
     use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
     use nmg_league_bot::models::bracket_races::BracketRace;
     use nmg_league_bot::models::player::Player;
+    use std::collections::HashMap;
+    use std::fs::read_to_string;
 
     #[test]
     fn test_interesting_race() {
@@ -306,8 +323,8 @@ mod tests {
             started_at: "".to_string(),
             ended_at: "".to_string(),
             goal: Goal {
-                name: "Any% NMG".to_string()
-            }
+                name: "Any% NMG".to_string(),
+            },
         };
         let br = BracketRace {
             id: 1,
@@ -319,7 +336,7 @@ mod tests {
             state: "Scheduled".to_string(),
             player_1_result: None,
             player_2_result: None,
-            outcome: None
+            outcome: None,
         };
         let bri = BracketRaceInfo {
             id: 1,
@@ -327,21 +344,21 @@ mod tests {
             scheduled_for: None, // little white lie
             scheduled_event_id: None,
             commportunities_message_id: None,
-            restream_request_message_id: None
+            restream_request_message_id: None,
         };
-        let p1 = Player{
+        let p1 = Player {
             id: 1,
             name: "player 1".to_string(),
             discord_id: "1234".to_string(),
             racetime_username: "p1#1234".to_string(),
-            restreams_ok: 1
+            restreams_ok: 1,
         };
-        let p2 = Player{
+        let p2 = Player {
             id: 2,
             name: "player 2".to_string(),
             discord_id: "3456".to_string(),
             racetime_username: "p2#1234".to_string(),
-            restreams_ok: 1
+            restreams_ok: 1,
         };
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone(), (&bri, &br, &p1, &p2));
@@ -352,7 +369,6 @@ mod tests {
         assert_eq!(p1.racetime_username, e1.user.full_name);
         assert_eq!(p2.racetime_username, e2.user.full_name);
     }
-
 
     #[test]
     fn test_uninteresting_race() {
@@ -387,8 +403,8 @@ mod tests {
             ended_at: "".to_string(),
 
             goal: Goal {
-                name: "Any% NMG".to_string()
-            }
+                name: "Any% NMG".to_string(),
+            },
         };
         let br = BracketRace {
             id: 1,
@@ -400,7 +416,7 @@ mod tests {
             state: "Scheduled".to_string(),
             player_1_result: None,
             player_2_result: None,
-            outcome: None
+            outcome: None,
         };
         let bri = BracketRaceInfo {
             id: 1,
@@ -408,21 +424,21 @@ mod tests {
             scheduled_for: None, // little white lie
             scheduled_event_id: None,
             commportunities_message_id: None,
-            restream_request_message_id: None
+            restream_request_message_id: None,
         };
-        let p1 = Player{
+        let p1 = Player {
             id: 1,
             name: "player 1".to_string(),
             discord_id: "1234".to_string(),
             racetime_username: "p1#1234".to_string(),
-            restreams_ok: 1
+            restreams_ok: 1,
         };
-        let p3 = Player{
+        let p3 = Player {
             id: 3,
             name: "player 3".to_string(),
             discord_id: "3456".to_string(),
             racetime_username: "p3#1234".to_string(),
-            restreams_ok: 1
+            restreams_ok: 1,
         };
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone(), (&bri, &br, &p1, &p3));
@@ -440,7 +456,12 @@ mod tests {
         for race in races.as_array().unwrap() {
             let re_serialized = serde_json::to_string(race).unwrap();
             let re_de_ser_ial_ized = serde_json::from_str::<RacetimeRace>(&re_serialized);
-            assert!(re_de_ser_ial_ized.is_ok(), "{}: {:?}", re_serialized, re_de_ser_ial_ized);
+            assert!(
+                re_de_ser_ial_ized.is_ok(),
+                "{}: {:?}",
+                re_serialized,
+                re_de_ser_ial_ized
+            );
         }
 
         let races = serde_json::from_str::<Races>(&contents);
