@@ -1418,7 +1418,7 @@ dependencies = [
  "tokio-stream",
  "twilight-cache-inmemory",
  "twilight-gateway",
- "twilight-http",
+ "twilight-http 0.13.2",
  "twilight-mention",
  "twilight-model",
  "twilight-standby",
@@ -2477,7 +2477,6 @@ checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
 [[package]]
 name = "swiss-pairings"
 version = "0.1.0"
-source = "git+https://github.com/FoxLisk/swiss-pairings.git#60c06e470caeac6ab133553b3b1c6612c142a5bf"
 dependencies = [
  "itertools",
  "permutator",
@@ -2834,7 +2833,7 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "twilight-gateway-queue",
- "twilight-http",
+ "twilight-http 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "twilight-model",
  "url",
  "webpki-roots",
@@ -2848,7 +2847,25 @@ checksum = "0083e5c38dfd74df50ef554e79a5487f7df6efa777a18556479a3c1e66f7f1b4"
 dependencies = [
  "tokio",
  "tracing",
- "twilight-http",
+ "twilight-http 0.13.2 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "twilight-http"
+version = "0.13.2"
+dependencies = [
+ "brotli",
+ "hyper",
+ "hyper-rustls",
+ "percent-encoding",
+ "rand",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "twilight-http-ratelimiting",
+ "twilight-model",
+ "twilight-validate",
 ]
 
 [[package]]
@@ -2857,7 +2874,6 @@ version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4bb51e1a73e14ddd1ccbad0e3d0b739ef11b101e4acf5fe2e39d079c275cb3db"
 dependencies = [
- "brotli",
  "hyper",
  "hyper-rustls",
  "percent-encoding",

@@ -562,7 +562,7 @@ impl DisplayRace {
         };
         let player_2 = match race.player_2_result() {
             Some(r) => DisplayPlayer {
-                name_and_status: format!("{} ({})", p1.name.clone(), r),
+                name_and_status: format!("{} ({})", p2.name.clone(), r),
                 winner: outcome == Some(P2Win),
                 loser: outcome == Some(P1Win),
             },

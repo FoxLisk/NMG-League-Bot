@@ -2,6 +2,9 @@ use std::error::Error;
 use chrono::{Duration, NaiveDateTime};
 use std::ffi::OsStr;
 use std::str::FromStr;
+use diesel::SqliteConnection;
+use twilight_model::channel::embed::EmbedField;
+use crate:: models::bracket_race_infos::BracketRaceInfo;
 
 pub fn format_hms(secs: u64) -> String {
     let mins = secs / 60;
@@ -113,4 +116,28 @@ pub fn epoch_timestamp() -> u32 {
         );
     }
     t_u32
+}
+
+pub fn race_to_nice_embeds(info: &BracketRaceInfo, conn: &mut SqliteConnection) -> Result<Vec<EmbedField>, diesel::result::Error> {
+    // TODO: less queries!
+    let race = info.race(conn)?;
+    let bracket = race.bracket(conn)?;
+    let title = race.title(conn)?;
+    let when = info
+        .scheduled_time_formatted()
+        .unwrap_or("ERROR: Unknown time".to_string());
+
+    let fields = vec![
+        EmbedField {
+            inline: false,
+            name: "Division".to_string(),
+            value: bracket.name,
+        },
+        EmbedField {
+            inline: false,
+            name: "Race".to_string(),
+            value: format!("{when} - {title}"),
+        },
+    ];
+    Ok(fields)
 }

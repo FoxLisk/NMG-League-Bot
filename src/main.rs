@@ -6,7 +6,6 @@ mod db;
 mod discord;
 mod schema;
 mod shutdown;
-mod utils;
 mod web;
 mod workers;
 

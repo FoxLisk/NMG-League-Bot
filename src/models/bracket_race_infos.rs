@@ -22,6 +22,7 @@ pub struct BracketRaceInfo {
     pub scheduled_event_id: Option<String>,
     pub commportunities_message_id: Option<String>,
     pub restream_request_message_id: Option<String>,
+    pub racetime_gg_url: Option<String>,
 }
 
 impl BracketRaceInfo {
@@ -168,6 +169,7 @@ pub struct NewBracketRaceInfo {
     scheduled_event_id: Option<String>,
     commportunities_message_id: Option<String>,
     restream_request_message_id: Option<String>,
+    racetime_gg_url: Option<String>
 }
 
 impl NewBracketRaceInfo {
@@ -178,6 +180,7 @@ impl NewBracketRaceInfo {
             scheduled_event_id: None,
             commportunities_message_id: None,
             restream_request_message_id: None,
+            racetime_gg_url: None,
         }
     }
 

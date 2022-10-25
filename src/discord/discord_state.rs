@@ -1,4 +1,6 @@
-use crate::constants::{COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR, GUILD_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR};
+use crate::constants::{
+    GUILD_ID_VAR,
+};
 use crate::db::DieselConnectionManager;
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
@@ -7,7 +9,6 @@ use dashmap::DashMap;
 use diesel::ConnectionError;
 use std::env;
 use std::ops::DerefMut;
-use std::str::FromStr;
 use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
@@ -21,6 +22,7 @@ use twilight_model::id::marker::{
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
+use nmg_league_bot::ChannelConfig;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
@@ -33,38 +35,6 @@ pub struct DiscordState {
     application_id: Id<ApplicationMarker>,
     gid: Id<GuildMarker>,
     pub channel_config: ChannelConfig,
-}
-
-pub struct ChannelConfig {
-   pub commportunities: Id<ChannelMarker>,
-    pub  sirius_inbox: Id<ChannelMarker>,
-    pub   zsr: Id<ChannelMarker>,
-    pub  commentary_discussion: Id<ChannelMarker>,
-}
-
-impl ChannelConfig {
-    fn new_from_env() -> Self {
-        let commportunities = Id::from_str(
-            &std::env::var(COMMPORTUNITIES_CHANNEL_ID_VAR).unwrap()
-        ).unwrap();
-        let sirius_inbox = Id::from_str(
-            &std::env::var(SIRIUS_INBOX_CHANNEL_ID_VAR).unwrap()
-        ).unwrap();
-
-        let zsr = Id::from_str(
-            &std::env::var(ZSR_CHANNEL_ID_VAR).unwrap()
-        ).unwrap();
-
-        let commentary_discussion = Id::from_str(
-            &std::env::var(COMMENTARY_DISCUSSION_CHANNEL_ID_VAR).unwrap()
-        ).unwrap();
-        Self {
-            commportunities,
-            sirius_inbox,
-            zsr,
-            commentary_discussion
-        }
-    }
 }
 
 impl DiscordState {
@@ -88,11 +58,11 @@ impl DiscordState {
             application_id: aid,
             private_channels: Default::default(),
             gid,
-            channel_config
+            channel_config,
         }
     }
 
-    pub fn interaction_client<'a>(&'a self) -> InteractionClient<'a> {
+    pub fn interaction_client(&self) -> InteractionClient {
         self.client.interaction(self.application_id.clone())
     }
 
@@ -156,10 +126,7 @@ impl DiscordState {
     }
 
     // convenience for website which i have negative interest in adding guild info to
-    pub async fn has_nmg_league_admin_role(
-        &self,
-        user_id: Id<UserMarker>,
-    ) -> Result<bool, String> {
+    pub async fn has_nmg_league_admin_role(&self, user_id: Id<UserMarker>) -> Result<bool, String> {
         self.has_admin_role(user_id, self.gid.clone()).await
     }
 

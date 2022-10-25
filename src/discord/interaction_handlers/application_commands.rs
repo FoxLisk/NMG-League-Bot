@@ -5,25 +5,25 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, race_to_nice_embeds};
+use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, ErrorResponse, notify_racer, SCHEDULE_RACE_CMD};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
 use crate::{get_focused_opt, get_opt};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError};
+use nmg_league_bot::models::bracket_races::{BracketRaceStateError, get_current_round_race_for_player};
 use nmg_league_bot::models::brackets::NewBracket;
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::season::{NewSeason, Season};
-use nmg_league_bot::utils::{env_default, ResultCollapse, ResultErrToString};
+use nmg_league_bot::utils::{env_default, race_to_nice_embeds, ResultCollapse, ResultErrToString};
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_http::Client;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_mention::timestamp::{TimestampStyle, Timestamp as MentionTimestamp};
+use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::component::button::ButtonStyle;
@@ -37,7 +37,7 @@ use twilight_model::http::interaction::{
 };
 use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
 use twilight_model::id::Id;
-use twilight_model::scheduled_event::GuildScheduledEvent;
+use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
@@ -257,7 +257,8 @@ async fn _handle_schedule_race(
         .mention_maybe()
         .unwrap_or("Error finding player".to_string());
     if let (Ok(Some(p1)), Ok(Some(p2)), Some(gid)) = (p1r, p2r, ac.guild_id) {
-        match create_or_update_event(&old_info, &new_info, &p1, &p2, gid, &state.client).await {
+        let bracket_name = the_race.bracket(cxn.deref_mut()).map(|b| b.name).unwrap_or("".to_string());
+        match create_or_update_event(bracket_name, &old_info, &new_info, &p1, &p2, gid, &state.client).await {
             Ok(evt) => {
                 new_info.set_scheduled_event_id(evt.id);
             }
@@ -350,6 +351,7 @@ async fn create_commportunities_post (
 
 
 async fn create_or_update_event(
+    bracket_name: String,
     old_info: &BracketRaceInfo,
     new_info: &BracketRaceInfo,
     p1: &Player,
@@ -368,15 +370,16 @@ async fn create_or_update_event(
             .scheduled_end_time(Some(&end))
             .exec()
     } else {
+
         client
-            .create_guild_scheduled_event(gid)
+            .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
             .external(
                 &format!("{} vs {}", p1.name, p2.name),
                 &format!("https://multistre.am/{}/{}/layout4/", p1.name, p2.name),
                 &start,
                 &end,
             )
-            .and_then(|gse|  gse.description("Bracket info or something maybe?"))
+
             .map_err(|e| e.to_string())?
             .exec()
     };

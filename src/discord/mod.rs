@@ -195,29 +195,3 @@ impl Display for ErrorResponse {
         write!(f, " (Internal error: {})", &self.internal_error)
     }
 }
-
-pub fn race_to_nice_embeds(info: &BracketRaceInfo, conn: &mut SqliteConnection) -> Result<Vec<EmbedField>, diesel::result::Error> {
-    // TODO: less queries!
-    let race = info.race(conn)?;
-    let bracket = race.bracket(conn)?;
-    let title = race.title(conn)?;
-    let when = info
-        .scheduled_time_formatted()
-        .unwrap_or("ERROR: Unknown time".to_string());
-
-    let fields = vec![
-        EmbedField {
-            inline: false,
-            name: "Division".to_string(),
-            value: bracket.name,
-        },
-        EmbedField {
-            inline: false,
-            name: "Race".to_string(),
-            value: format!("{when} - {title}"),
-        },
-    ];
-
-    Ok(fields)
-
-}

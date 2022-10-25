@@ -43,7 +43,7 @@ points are:
 i think this link has the correct permissions. `client_id` is the bot's client id. if you're joining my bot testing
 server this is irrelevant.
 
-https://discord.com/api/oauth2/authorize?client_id=<>&permissions=535061589072&scope=bot%20applications.commands
+https://discord.com/api/oauth2/authorize?client_id=<>&permissions=1644905888848&scope=bot%20applications.commands
 
 # expectations for contributing
 

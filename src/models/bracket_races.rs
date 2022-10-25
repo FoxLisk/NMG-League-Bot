@@ -58,6 +58,7 @@ pub enum Outcome {
     P2Win,
 }
 
+
 #[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone)]
 pub struct BracketRace {
     pub id: i32,
@@ -165,17 +166,17 @@ impl BracketRace {
     /// updates state & outcome to finished if that is the case
     pub fn add_results(
         &mut self,
-        p1: Option<PlayerResult>,
-        p2: Option<PlayerResult>,
+        p1: Option<&PlayerResult>,
+        p2: Option<&PlayerResult>,
     ) -> Result<(), BracketRaceStateError> {
         if self.state()? == BracketRaceState::Finished {
             return Err(BracketRaceStateError::InvalidState);
         }
         if let Some(p1r) = p1 {
-            self.player_1_result = Some(serde_json::to_string(&p1r)?);
+            self.player_1_result = Some(serde_json::to_string(p1r)?);
         }
         if let Some(p2r) = p2 {
-            self.player_2_result = Some(serde_json::to_string(&p2r)?);
+            self.player_2_result = Some(serde_json::to_string(p2r)?);
         }
         if self.player_1_result.is_some() && self.player_2_result.is_some() {
             self.finish()?;
@@ -223,7 +224,7 @@ impl BracketRace {
         Ok(())
     }
 
-    pub fn try_into_match_result<'a>(&'a self) -> Result<MatchResult<'a, i32>, MatchResultError> {
+    pub fn try_into_match_result(&self) -> Result<MatchResult<i32>, MatchResultError> {
         if self
             .state()
             .map_err(|_| MatchResultError::RaceNotFinished)?

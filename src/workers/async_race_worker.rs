@@ -5,7 +5,7 @@ use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use crate::schema::races;
 use crate::shutdown::Shutdown;
-use crate::utils::{ format_hms};
+use nmg_league_bot::utils::{ format_hms};
 use diesel::prelude::*;
 use std::ops::DerefMut;
 use std::sync::Arc;

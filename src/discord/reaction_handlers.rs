@@ -1,21 +1,23 @@
 use bb8::RunError;
-use diesel::{ConnectionError};
+use diesel::ConnectionError;
 use itertools::Itertools;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::embed::{Embed, EmbedField};
-use twilight_model::channel::{Message, ReactionType};
 use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
+use twilight_model::channel::{Message, ReactionType};
 use twilight_model::gateway::payload::incoming::{ReactionAdd, ReactionRemove};
-use twilight_model::id::marker::{ScheduledEventMarker, UserMarker};
+use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
 use crate::discord::discord_state::DiscordState;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use crate::discord::race_to_nice_embeds;
+use nmg_league_bot::models::player::Player;
+use nmg_league_bot::utils::race_to_nice_embeds;
 
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {
     println!("Handling reaction removed: {:?}", reaction);
@@ -34,44 +36,22 @@ pub async fn handle_reaction_add(reaction: Box<ReactionAdd>, state: &Arc<Discord
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 enum ReactionAddError {
-    DatabaseError(diesel::result::Error),
-    RunError(bb8::RunError<ConnectionError>),
+    #[error("Error running database query: {0}")]
+    DatabaseError(#[from] diesel::result::Error),
+    #[error("Error getting a database connection: {0}")]
+    RunError(#[from] bb8::RunError<ConnectionError>),
+    #[error("Reaction had no member?")]
     InexplicablyMissingMember,
-    HttpError(twilight_http::Error),
-    DeserializeBodyError(DeserializeBodyError),
-    ValidationError(MessageValidationError),
-}
-
-impl From<diesel::result::Error> for ReactionAddError {
-    fn from(e: diesel::result::Error) -> Self {
-        Self::DatabaseError(e)
-    }
-}
-
-impl From<RunError<ConnectionError>> for ReactionAddError {
-    fn from(e: RunError<ConnectionError>) -> Self {
-        Self::RunError(e)
-    }
-}
-
-impl From<twilight_http::Error> for ReactionAddError {
-    fn from(e: twilight_http::Error) -> Self {
-        Self::HttpError(e)
-    }
-}
-
-impl From<twilight_validate::message::MessageValidationError> for ReactionAddError {
-    fn from(e: MessageValidationError) -> Self {
-        Self::ValidationError(e)
-    }
-}
-
-impl From<DeserializeBodyError> for ReactionAddError {
-    fn from(e: DeserializeBodyError) -> Self {
-        Self::DeserializeBodyError(e)
-    }
+    #[error("HTTP Error: {0}")]
+    HttpError(#[from] twilight_http::Error),
+    #[error("Error deserializing a response body: {0}")]
+    DeserializeBodyError(#[from] DeserializeBodyError),
+    #[error("Error validating a message: {0}")]
+    MessageValidationError(#[from] MessageValidationError),
+    #[error("Error validating a request: {0}")]
+    RequestValidationError(#[from] twilight_validate::request::ValidationError),
 }
 
 async fn _handle_reaction_remove(
@@ -79,8 +59,9 @@ async fn _handle_reaction_remove(
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
     let mut cxn = state.diesel_cxn().await?;
-    println!("alksdjflakjsdf");
-    if let Some(mut info) = BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, cxn.deref_mut())? {
+    if let Some(mut info) =
+        BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, cxn.deref_mut())?
+    {
         let res = info.remove_commentator(reaction.user_id, cxn.deref_mut())?;
         println!("{} comms removed", res);
     } else {
@@ -110,16 +91,17 @@ async fn _handle_reaction_add(
     let mut _conn = state.diesel_cxn().await?;
     let conn = _conn.deref_mut();
 
-    if let Some(i) = BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, conn)? {
+    if let Some(i) = BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, conn)?
+    {
         handle_commportunities_reaction(i, reaction, state).await
-    } else if let Some(i) = BracketRaceInfo::get_by_restream_request_message_id(reaction.message_id, conn)? {
+    } else if let Some(i) =
+        BracketRaceInfo::get_by_restream_request_message_id(reaction.message_id, conn)?
+    {
         handle_restream_request_reaction(i, reaction, state).await
     } else {
         println!("Uninteresting reaction");
         Ok(())
     }
-
-
 }
 
 async fn is_admin_confirmation_reaction(
@@ -175,24 +157,39 @@ async fn handle_commentary_confirmation(
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
     let comms = info.commentator_signups(conn)?;
-    let comm_ids = comms.iter().map(|c| c.discord_id()).flatten().collect();
+    let comm_ids = comms
+        .iter()
+        .map(|c| c.discord_id())
+        .flatten()
+        .map(|did| {
+            (
+                did,
+                state
+                    .cache
+                    .user(did)
+                    .map(|u| u.name.clone())
+                    .unwrap_or("unknown".to_string()),
+            )
+        })
+        .collect();
     if let Some(gse) = info.get_scheduled_event_id() {
-        if let Err(e) = update_scheduled_event(gse, Some(&comm_ids), None, state).await {
-            println!("Error updating scheduled event: {:?}", e);
+        // gsus let me live
+        if let Some(gid) = _reaction.guild_id {
+            if let Err(e) = update_scheduled_event(gid, gse, Some(&comm_ids), None, state).await {
+                println!("Error updating scheduled event: {:?}", e);
+            }
         }
     }
 
     // we're sending almost identical messages to zsr & commentary-discussion
     let mut fields = race_to_nice_embeds(&info, conn)?;
 
-    let comms_string = comm_ids.iter().map(|c| c.mention()).join(" and ");
-    fields.push(
-        EmbedField {
-            inline: false,
-            name: "Commentators".to_string(),
-            value: comms_string,
-        },
-    );
+    let comms_string = comm_ids.iter().map(|(id, _)| id.mention()).join(" and ");
+    fields.push(EmbedField {
+        inline: false,
+        name: "Commentators".to_string(),
+        value: comms_string,
+    });
 
     if let Err(e) = create_tentative_commentary_discussion_post(fields.clone(), state).await {
         println!("Error creating commentary discussion post: {:?}", e);
@@ -200,18 +197,18 @@ async fn handle_commentary_confirmation(
     match create_restream_request_post(fields.clone(), state).await {
         Ok(m) => {
             info.set_restream_request_message_id(m.id);
-        },
+        }
         Err(e) => {
             println!("Error creating restream request post: {:?}", e);
         }
     }
     if let Some(commp_msg_id) = info.get_commportunities_message_id() {
-        if let Err(e) = state.client.delete_message(
-            state.channel_config.commportunities,
-            commp_msg_id
-        )
+        if let Err(e) = state
+            .client
+            .delete_message(state.channel_config.commportunities, commp_msg_id)
             .exec()
-            .await {
+            .await
+        {
             println!("Error deleting commportunities message: {}", e);
         } else {
             info.clear_commportunities_message_id();
@@ -221,7 +218,6 @@ async fn handle_commentary_confirmation(
     info.update(conn)?;
     Ok(())
 }
-
 
 async fn create_tentative_commentary_discussion_post(
     fields: Vec<EmbedField>,
@@ -242,17 +238,21 @@ async fn create_tentative_commentary_discussion_post(
         url: None,
         video: None,
     }];
-    state.client.create_message(state.channel_config.commentary_discussion.clone())
-    .embeds(&embeds)?
+    state
+        .client
+        .create_message(state.channel_config.commentary_discussion.clone())
+        .embeds(&embeds)?
         .exec()
         .await?
         .model()
         .await
         .map_err(From::from)
-
 }
 
-async fn create_restream_request_post(fields: Vec<EmbedField>, state: &Arc<DiscordState>) -> Result<Message, ReactionAddError> {
+async fn create_restream_request_post(
+    fields: Vec<EmbedField>,
+    state: &Arc<DiscordState>,
+) -> Result<Message, ReactionAddError> {
     let embeds = vec![Embed {
         author: None,
         color: None,
@@ -268,7 +268,9 @@ async fn create_restream_request_post(fields: Vec<EmbedField>, state: &Arc<Disco
         url: None,
         video: None,
     }];
-    state.client.create_message(state.channel_config.zsr.clone())
+    state
+        .client
+        .create_message(state.channel_config.zsr.clone())
         .embeds(&embeds)?
         .exec()
         .await?
@@ -280,12 +282,30 @@ async fn create_restream_request_post(fields: Vec<EmbedField>, state: &Arc<Disco
 // TODO when twilight has a patch up
 #[allow(unused)]
 async fn update_scheduled_event(
+    gid: Id<GuildMarker>,
     gse_id: Id<ScheduledEventMarker>,
-    commentators: Option<&Vec<Id<UserMarker>>>,
+    commentators: Option<&Vec<(Id<UserMarker>, String)>>,
     restream_channel: Option<String>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
-    println!("[TODO] update scheduled event");
+    let mut s = String::new();
+
+    let mut req = state.client.update_guild_scheduled_event(gid, gse_id);
+    let thingy = commentators.map(
+        |comms| format!(
+            " with comms by {}",
+            comms.iter().map(|(id, name)| name).join(" and ")
+        )
+    );
+
+    if let Some(comm_str) = thingy.as_ref() {
+        req = req.description(Some(comm_str))?;
+    }
+
+    if let Some(chan) = restream_channel.as_ref() {
+        req = req.location(Some(chan));
+    }
+    req.exec().await?;
     Ok(())
 }
 
@@ -300,8 +320,11 @@ async fn handle_commentary_signup(
         if commentators.len() >= 2 {
             // flatten just throws away any that fail to parse, which seems... sketchy?
             // but fine, and easy
-            let ids = commentators.into_iter().map(|c| c.discord_id())
-                .flatten().collect();
+            let ids = commentators
+                .into_iter()
+                .map(|c| c.discord_id())
+                .flatten()
+                .collect();
             create_sirius_inbox_post(&reaction, ids, &info, state).await?;
         }
     }
@@ -357,7 +380,9 @@ async fn create_sirius_inbox_post(
         video: None,
     }];
 
-    state.client.create_message(state.channel_config.sirius_inbox.clone())
+    state
+        .client
+        .create_message(state.channel_config.sirius_inbox.clone())
         .embeds(&embeds)?
         .exec()
         .await?
@@ -374,65 +399,71 @@ async fn handle_restream_request_reaction(
     // TODO: ignore if the race is done or whatever
     let chan = match emoji_to_restream_channel(&reaction.emoji) {
         Some(c) => c,
-        None => { return Ok(()); }
+        None => {
+            return Ok(());
+        }
     };
     if let Some(gse_id) = info.get_scheduled_event_id() {
-        if let Err(e) = update_scheduled_event(gse_id, None, Some(chan.to_string()), state).await {
-            println!("Error updating scheduled event: {:?}", e);
+        if let Some(gid) = reaction.guild_id {
+            if let Err(e) =
+                update_scheduled_event(gid, gse_id, None, Some(format!("https://twitch.tv/{chan}")), state).await
+            {
+                println!("Error updating scheduled event: {:?}", e);
+            }
         }
     }
 
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
     let comms = info.commentator_signups(conn)?;
-    
-    let mut fields = race_to_nice_embeds(&info, conn)?;
-    let comm_ids = comms.iter().map(|c| c.discord_id()).flatten().collect::<Vec<_>>();
-    fields.push (
-        EmbedField{
-            inline: false,
-            name: "Commentators".to_string(),
-            value: comm_ids.iter().map(|id| id.mention()).join(" and ")
-        }
-    );
-    fields.push(
-        EmbedField {
-            inline: false,
-            name: "Channel".to_string(),
-            value: format!("https://twitch.tv/{chan}")
-        }
-    );
 
-    let embeds = vec![
-        Embed {
-            author: None,
-            color: Some(0x00b0f0),
-            description: None,
-            fields,
-            footer: None,
-            image: None,
-            kind: "rich".to_string(),
-            provider: None,
-            thumbnail: None,
-            timestamp: None,
-            title: Some(format!("Commentary Assignment")),
-            url: None,
-            video: None
-        }
-    ];
+    let mut fields = race_to_nice_embeds(&info, conn)?;
+    let comm_ids = comms
+        .iter()
+        .map(|c| c.discord_id())
+        .flatten()
+        .collect::<Vec<_>>();
+    fields.push(EmbedField {
+        inline: false,
+        name: "Commentators".to_string(),
+        value: comm_ids.iter().map(|id| id.mention()).join(" and "),
+    });
+    fields.push(EmbedField {
+        inline: false,
+        name: "Channel".to_string(),
+        value: format!("https://twitch.tv/{chan}"),
+    });
+
+    let embeds = vec![Embed {
+        author: None,
+        color: Some(0x00b0f0),
+        description: None,
+        fields,
+        footer: None,
+        image: None,
+        kind: "rich".to_string(),
+        provider: None,
+        thumbnail: None,
+        timestamp: None,
+        title: Some(format!("Commentary Assignment")),
+        url: None,
+        video: None,
+    }];
     let (p1, p2) = info.race(conn)?.players(conn)?;
-    let mut pings = comm_ids.into_iter().map(|i| i.mention().to_string()).collect::<Vec<_>>();
+    let mut pings = comm_ids
+        .into_iter()
+        .map(|i| i.mention().to_string())
+        .collect::<Vec<_>>();
     pings.push(p1.mention_or_name());
     pings.push(p2.mention_or_name());
 
-    state.client.create_message(state.channel_config.commentary_discussion)
+    state
+        .client
+        .create_message(state.channel_config.commentary_discussion)
         .embeds(&embeds)?
         .content(&pings.join(" "))?
-        .allowed_mentions(
-            Some(
-                &AllowedMentionsBuilder::new().users().build()
-            )
-        ).exec()
+        .allowed_mentions(Some(&AllowedMentionsBuilder::new().users().build()))
+        .exec()
         .await?;
 
     Ok(())
@@ -440,20 +471,17 @@ async fn handle_restream_request_reaction(
 
 fn emoji_to_restream_channel(rt: &ReactionType) -> Option<&'static str> {
     match rt {
-        ReactionType::Custom { name, .. } => {
-            name.as_ref().map(|s|
-                if s == "greenham" { Some("FGfm") } else { None }
-            ).flatten()
-        }
-        ReactionType::Unicode { name } => {
-            match name.as_str() {
-                "1️⃣" => Some("zeldaspeedruns"),
-                "2️⃣" => Some("zeldaspeedruns2"),
-                "3️⃣" => Some("zeldaspeedruns_3"),
-                "4️⃣" => Some("zeldaspeedruns_4"),
-                _ => None
-            }
-        }
+        ReactionType::Custom { name, .. } => name
+            .as_ref()
+            .map(|s| if s == "greenham" { Some("FGfm") } else { None })
+            .flatten(),
+        ReactionType::Unicode { name } => match name.as_str() {
+            "1️⃣" => Some("zeldaspeedruns"),
+            "2️⃣" => Some("zeldaspeedruns2"),
+            "3️⃣" => Some("zeldaspeedruns_3"),
+            "4️⃣" => Some("zeldaspeedruns_4"),
+            _ => None,
+        },
     }
 }
 

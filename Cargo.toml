@@ -39,8 +39,7 @@ itertools = "0.10"
 thiserror = "1.0"
 iso8601-duration = "0.1.0"
 
-twilight-http = "0.13.0"
-twilight-model = "0.13.2"
+twilight-model = "0.13.5"
 twilight-validate = "0.13.1"
 twilight-mention = "0.13.0"
 twilight-cache-inmemory = "0.13.0"
@@ -58,11 +57,16 @@ rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
 diesel_enum_derive = {git = "https://github.com/FoxLisk/diesel_enum_derive"}
 
 [dependencies.swiss-pairings]
-#path = "../swiss-pairings"
-git = "https://github.com/FoxLisk/swiss-pairings.git"
+path = "../swiss-pairings"
+#git = "https://github.com/FoxLisk/swiss-pairings.git"
 
 [dependencies.racetime-api]
 path = "../racetime-api"
+
+[dependencies.twilight-http]
+#git = "https://github.com/twilight-rs/twilight.git"
+#rev = "f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
+path = "../twilight/twilight-http"
 
 [build-dependencies]
 tokio = { version = "1.19.0", features = ["rt-multi-thread", "macros"]}
