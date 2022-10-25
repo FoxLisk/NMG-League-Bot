@@ -19,6 +19,7 @@ pub struct Player {
     pub name: String,
     pub discord_id: String,
     pub racetime_username: String,
+    pub twitch_user_login: String,
     pub restreams_ok: i32,
 }
 
@@ -70,6 +71,7 @@ pub struct NewPlayer {
     pub name: String,
     pub discord_id: String,
     pub racetime_username: String,
+    pub twitch_user_login: String,
     pub restreams_ok: i32,
 }
 
@@ -78,12 +80,14 @@ impl NewPlayer {
         name: S,
         discord_id: S,
         racetime_username: S,
+        twitch_user_login: S,
         restreams_ok: bool,
     ) -> Self {
         Self {
             name: name.into(),
             discord_id: discord_id.into(),
             racetime_username: racetime_username.into(),
+            twitch_user_login: twitch_user_login.into(),
             restreams_ok: if restreams_ok { 1 } else { 0 },
         }
     }

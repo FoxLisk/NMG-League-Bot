@@ -3,5 +3,6 @@ CREATE TABLE IF NOT EXISTS players (
     name                 TEXT UNIQUE NOT NULL,
     discord_id           TEXT UNIQUE NOT NULL,
     racetime_username    TEXT UNIQUE NOT NULL,
+    twitch_user_login    TEXT UNIQUE NOT NULL,
     restreams_ok         INTEGER NOT NULL
 );

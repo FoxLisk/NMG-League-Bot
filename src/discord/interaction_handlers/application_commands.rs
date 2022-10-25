@@ -375,7 +375,7 @@ async fn create_or_update_event(
             .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
             .external(
                 &format!("{} vs {}", p1.name, p2.name),
-                &format!("https://multistre.am/{}/{}/layout4/", p1.name, p2.name),
+                &format!("https://multistre.am/{}/{}/layout4/", p1.twitch_user_login, p2.twitch_user_login),
                 &start,
                 &end,
             )
@@ -464,6 +464,7 @@ async fn create_player(
 ) -> Result<InteractionResponse, String> {
     let discord_user = get_opt!("user", &mut ac.options, User)?;
     let rt_un = get_opt!("rtgg_username", &mut ac.options, String)?;
+    let twitch_name = get_opt!("twitch_username", &mut ac.options, String)?;
     let name_override = get_opt!("name", &mut ac.options, String).ok();
     let name = match name_override {
         Some(name) => name,
@@ -476,7 +477,7 @@ async fn create_player(
         }
     };
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let np = NewPlayer::new(name, discord_user.to_string(), rt_un, true);
+    let np = NewPlayer::new(name, discord_user.to_string(), rt_un, twitch_name,true);
 
     match np.save(cxn.deref_mut()) {
         Ok(_) => Ok(plain_interaction_response("Player added!")),

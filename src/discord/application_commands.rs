@@ -157,6 +157,17 @@ pub fn application_command_definitions() -> Vec<Command> {
             name_localizations: None,
             required: false
         }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Twitch username".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "twitch_username".to_string(),
+            name_localizations: None,
+            required: false
+        }))
         .build();
 
     let hours = (1..=12).map(|s| CommandOptionChoice::Int {

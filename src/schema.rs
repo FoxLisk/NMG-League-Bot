@@ -66,6 +66,7 @@ diesel::table! {
         name -> Text,
         discord_id -> Text,
         racetime_username -> Text,
+        twitch_user_login -> Text,
         restreams_ok -> Integer,
     }
 }

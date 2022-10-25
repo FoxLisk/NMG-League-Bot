@@ -23,9 +23,7 @@ async fn main() {
     let b = nb.save(&mut db).unwrap();
     println!("season: {:?}, bracket: {:?}", sn, b);
     for np in get_players() {
-
         let p = np.save(&mut db).unwrap();
-
         let entry = NewPlayerBracketEntry::new(&b, &p);
         let pbe = entry.save(&mut db).unwrap();
         println!("Player {:?}, pbe {:?}", p, pbe);
@@ -35,15 +33,16 @@ async fn main() {
 fn get_players() -> Vec<NewPlayer> {
     let mut players = vec![];
     for i in 0..14 {
-        let name = format!("player_{}", i);
-        let discord_id = format!("{}", i);
-        let racetime_username = format!("player_{}#{}", i, i);
-        let np = NewPlayer::new(name, discord_id, racetime_username, true);
+        let name = format!("player_{i}");
+        let discord_id = format!("{i}");
+        let racetime_username = format!("player_{i}#{i}");
+        let twitch_id = format!("player_{i}_ttv");
+        let np = NewPlayer::new(name, discord_id, racetime_username, twitch_id, true);
         players.push(np);
     }
 
-    let me = NewPlayer::new("FoxLisk", "255676979460702210", "FoxLisk#8582", true);
-    let me_alt = NewPlayer::new("Me Test", "1031811909223206912", "NA#1234", true);
+    let me = NewPlayer::new("FoxLisk", "255676979460702210", "FoxLisk#8582", "foxlisk", true);
+    let me_alt = NewPlayer::new("Me Test", "1031811909223206912", "NA#1234", "foxtest69", true);
     players.push(me);
     players.push(me_alt);
     players
