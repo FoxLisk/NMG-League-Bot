@@ -29,6 +29,7 @@ extern crate nmg_league_bot;
 
 use crate::db::raw_diesel_cxn_from_env;
 use discord::Webhooks;
+use nmg_league_bot::db::run_migrations;
 
 #[tokio::main]
 async fn main() {
@@ -41,9 +42,7 @@ async fn main() {
 
     {
         let mut conn = raw_diesel_cxn_from_env().unwrap();
-        let migrations =
-            diesel_migrations::FileBasedMigrations::from_path("diesel-migrations").unwrap();
-        let res = conn.run_pending_migrations(migrations).unwrap();
+        let res = run_migrations(&mut conn).unwrap();
         println!("Migrations: {:?}", res);
     }
 

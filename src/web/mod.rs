@@ -689,7 +689,6 @@ fn get_brackets_context(
 
 #[get("/brackets")]
 async fn brackets(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
-    // rocket::http::Status::InternalServerError
     let mut conn = db.get().await.map_err(|_| Status::InternalServerError)?;
 
     let ctx = get_brackets_context(&mut conn).map_err(|_| Status::InternalServerError)?;

@@ -1,8 +1,11 @@
+use std::error::Error;
 use async_trait::async_trait;
 use bb8::{ManageConnection, Pool};
 use diesel::{Connection, ConnectionError, SqliteConnection};
+use diesel::migration::MigrationVersion;
+use diesel_migrations::{MigrationError, MigrationHarness};
 use tokio::sync::{Mutex, MutexGuard};
-
+use thiserror::Error;
 use lazy_static::lazy_static;
 
 lazy_static! {
@@ -27,6 +30,22 @@ pub fn raw_diesel_cxn_from_env() -> diesel::ConnectionResult<SqliteConnection> {
     let sqlite_db_path = std::env::var("DATABASE_URL").unwrap();
     let path = munge_path(sqlite_db_path);
     SqliteConnection::establish(&path)
+}
+
+#[derive(Error, Debug)]
+pub enum RunMigrationsError {
+    #[error("Migration error {0}")]
+    MigrationsError(#[from] MigrationError),
+
+    #[error("Database error {0}")]
+    DatabaseError(#[from] Box<dyn Error + Send + Sync>)
+}
+
+
+pub fn run_migrations(conn: &mut SqliteConnection) -> Result<Vec<MigrationVersion>, RunMigrationsError> {
+    let migrations =
+        diesel_migrations::FileBasedMigrations::from_path("diesel-migrations")?;
+    conn.run_pending_migrations(migrations).map_err(From::from)
 }
 
 impl DieselConnectionManager {
