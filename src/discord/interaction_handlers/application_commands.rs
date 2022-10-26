@@ -5,13 +5,14 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, ErrorResponse, notify_racer, SCHEDULE_RACE_CMD};
+use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, REPORT_RACE_CMD};
+use crate::{get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
-use crate::{get_focused_opt, get_opt};
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use nmg_league_bot::models::bracket_races::{BracketRaceStateError, get_current_round_race_for_player};
+use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError, PlayerResult, BracketRace};
 use nmg_league_bot::models::brackets::NewBracket;
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -20,9 +21,12 @@ use nmg_league_bot::utils::{env_default, race_to_nice_embeds, ResultCollapse, Re
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use twilight_http::Client;
+use diesel::Connection;
+use diesel::result::Error;
+use serde_json::de::Read;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::request::channel::reaction::RequestReactionType;
+use twilight_http::Client;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
@@ -41,7 +45,7 @@ use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::worker_funcs::trigger_race_finish;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
@@ -71,6 +75,7 @@ pub async fn handle_application_interaction(
             return Err(ErrorResponse::new("Error running command", s));
         }
     };
+
     match ac.name.as_str() {
         CREATE_PLAYER_CMD => {
             admin_command_wrapper(create_player(ac, interaction, state).await.map(|i| Some(i)))
@@ -82,16 +87,19 @@ pub async fn handle_application_interaction(
         ),
         // admin commands
         CREATE_RACE_CMD => {
-            admin_command_wrapper(handle_create_race(ac, state).await.map(|i| Some(i)))
+            admin_command_wrapper(handle_create_race(ac, state).await.map(Option::from))
         }
 
         CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
         CREATE_SEASON_CMD => {
-            admin_command_wrapper(handle_create_season(ac, state).await.map(|i| Some(i)))
+            admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
 
         CREATE_BRACKET_CMD => {
-            admin_command_wrapper(handle_create_bracket(ac, state).await.map(|i| Some(i)))
+            admin_command_wrapper(handle_create_bracket(ac, state).await.map(Option::from))
+        }
+        REPORT_RACE_CMD => {
+            admin_command_wrapper( handle_report_race(ac, state).await.map(Option::from))
         }
 
         _ => {
@@ -116,8 +124,15 @@ fn parse_day(s: &str) -> Option<(i32, u32, u32)> {
     Some((y, m, d))
 }
 
-fn datetime_from_options(day_string: &str, hour: i64, minute: i64, ampm: &str) -> Result<DateTime<chrono_tz::Tz>, &'static str> {
-    let (y, m, d) = parse_day(&day_string).ok_or("Invalid day. Expected YYYY/MM/DD format. You should see helpful autocomplete options.")?;
+fn datetime_from_options(
+    day_string: &str,
+    hour: i64,
+    minute: i64,
+    ampm: &str,
+) -> Result<DateTime<chrono_tz::Tz>, &'static str> {
+    let (y, m, d) = parse_day(&day_string).ok_or(
+        "Invalid day. Expected YYYY/MM/DD format. You should see helpful autocomplete options.",
+    )?;
     let hour_adjusted = match ampm {
         "AM" => {
             if hour == 12 {
@@ -125,14 +140,14 @@ fn datetime_from_options(day_string: &str, hour: i64, minute: i64, ampm: &str) -
             } else {
                 hour
             }
-        },
+        }
         "PM" => {
             if hour == 12 {
                 hour
             } else {
                 hour + 12
             }
-        },
+        }
         _ => {
             return Err("Invalid value for AM/PM");
         }
@@ -187,7 +202,9 @@ async fn _handle_schedule_race(
     let ampm_offset = match get_opt!("am_pm", &mut ac.options, String) {
         Ok(ap) => ap,
         Err(_e) => {
-            return Ok(Some(plain_interaction_response("Missing required AM/PM option")));
+            return Ok(Some(plain_interaction_response(
+                "Missing required AM/PM option",
+            )));
         }
     };
 
@@ -257,27 +274,48 @@ async fn _handle_schedule_race(
         .mention_maybe()
         .unwrap_or("Error finding player".to_string());
     if let (Ok(Some(p1)), Ok(Some(p2)), Some(gid)) = (p1r, p2r, ac.guild_id) {
-        let bracket_name = the_race.bracket(cxn.deref_mut()).map(|b| b.name).unwrap_or("".to_string());
-        match create_or_update_event(bracket_name, &old_info, &new_info, &p1, &p2, gid, &state.client).await {
+        let bracket_name = the_race
+            .bracket(cxn.deref_mut())
+            .map(|b| b.name)
+            .unwrap_or("".to_string());
+        match create_or_update_event(
+            bracket_name,
+            &old_info,
+            &new_info,
+            &p1,
+            &p2,
+            gid,
+            &state.client,
+        )
+        .await
+        {
             Ok(evt) => {
                 new_info.set_scheduled_event_id(evt.id);
             }
-            Err(e) => { println!("Error creating event: {}", e); }
+            Err(e) => {
+                println!("Error creating event: {}", e);
+            }
         };
 
         match create_commportunities_post(&new_info, state).await {
             Ok(m) => {
                 new_info.set_commportunities_message_id(m.id);
-            },
+            }
             Err(e) => {
                 println!("Error creating commportunities post: {:?}", e);
             }
         };
         if let Some(old_commp_id) = old_info.get_commportunities_message_id() {
-            if let Err(err) = state.client.delete_message(state.channel_config.commportunities, old_commp_id)
+            if let Err(err) = state
+                .client
+                .delete_message(state.channel_config.commportunities, old_commp_id)
                 .exec()
-                .await {
-                println!("Error deleting old commportunities post upon reschedule: {}", err);
+                .await
+            {
+                println!(
+                    "Error deleting old commportunities post upon reschedule: {}",
+                    err
+                );
             }
         }
 
@@ -286,20 +324,15 @@ async fn _handle_schedule_race(
         }
     }
 
-    let new_t = MentionTimestamp::new(
-        dt.timestamp() as u64,
-        Some(TimestampStyle::LongDateTime),
-    )
-    .mention();
-    let old_t = old_info.scheduled()
+    let new_t =
+        MentionTimestamp::new(dt.timestamp() as u64, Some(TimestampStyle::LongDateTime)).mention();
+    let old_t = old_info
+        .scheduled()
         .map(|t| {
             format!(
                 " (was {})",
-                MentionTimestamp::new(
-                    t.timestamp() as u64,
-                    Some(TimestampStyle::LongDateTime)
-                )
-                .mention()
+                MentionTimestamp::new(t.timestamp() as u64, Some(TimestampStyle::LongDateTime))
+                    .mention()
             )
         })
         .unwrap_or("".to_string());
@@ -310,45 +343,53 @@ async fn _handle_schedule_race(
 }
 
 /// "commentary opportunities"
-async fn create_commportunities_post (
-    info: &BracketRaceInfo, state: &Arc<DiscordState>
+async fn create_commportunities_post(
+    info: &BracketRaceInfo,
+    state: &Arc<DiscordState>,
 ) -> Result<Message, String> {
     // TODO: i'm losing my mind at the number of extra SQL queries here
     // it doesn't REALLY matter but alksdjflkajsklfj 😱
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let fields = race_to_nice_embeds(info, cxn.deref_mut()).map_err(|e| e.to_string())?;
-    let embeds = vec![
-            Embed {
-                author: None,
-                color: Some(0x00b0f0),
-                description: None,
-                fields,
-                footer: Some(EmbedFooterBuilder::new("React to volunteer").build()),
-                image: None,
-                kind: "rich".to_string(),
-                provider: None,
-                thumbnail: None,
-                timestamp: None,
-                title: Some(format!("New match available for commentary")),
-                url: None,
-                video: None
-            }
-        ];
-    let msg = state.client.create_message(state.channel_config.commportunities.clone())
-        .embeds(&embeds).map_err_to_string()?
-        .exec().await
+    let embeds = vec![Embed {
+        author: None,
+        color: Some(0x00b0f0),
+        description: None,
+        fields,
+        footer: Some(EmbedFooterBuilder::new("React to volunteer").build()),
+        image: None,
+        kind: "rich".to_string(),
+        provider: None,
+        thumbnail: None,
+        timestamp: None,
+        title: Some(format!("New match available for commentary")),
+        url: None,
+        video: None,
+    }];
+    let msg = state
+        .client
+        .create_message(state.channel_config.commportunities.clone())
+        .embeds(&embeds)
+        .map_err_to_string()?
+        .exec()
+        .await
         .map_err_to_string()?;
 
     let m = msg.model().await.map_err_to_string()?;
     let emojum = RequestReactionType::Unicode { name: "🎙" };
-    if let Err(e) = state.client.create_reaction(m.channel_id, m.id, &emojum)
+    if let Err(e) = state
+        .client
+        .create_reaction(m.channel_id, m.id, &emojum)
         .exec()
-        .await {
-        println!("Error adding initial reaction to commportunity post: {:?}", e);
+        .await
+    {
+        println!(
+            "Error adding initial reaction to commportunity post: {:?}",
+            e
+        );
     }
     Ok(m)
 }
-
 
 async fn create_or_update_event(
     bracket_name: String,
@@ -359,27 +400,31 @@ async fn create_or_update_event(
     gid: Id<GuildMarker>,
     client: &Client,
 ) -> Result<GuildScheduledEvent, String> {
-    let when = new_info.scheduled().ok_or("Error: No timestamp on new bracket race info".to_string())?;
+    let when = new_info
+        .scheduled()
+        .ok_or("Error: No timestamp on new bracket race info".to_string())?;
     let start = ModelTimestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
     let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
         .map_err(|e| e.to_string())?;
 
     let req = if let Some(existing_id) = old_info.get_scheduled_event_id() {
-       client.update_guild_scheduled_event(gid, existing_id)
+        client
+            .update_guild_scheduled_event(gid, existing_id)
             .scheduled_start_time(&start)
             .scheduled_end_time(Some(&end))
             .exec()
     } else {
-
         client
             .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
             .external(
                 &format!("{} vs {}", p1.name, p2.name),
-                &format!("https://multistre.am/{}/{}/layout4/", p1.twitch_user_login, p2.twitch_user_login),
+                &format!(
+                    "https://multistre.am/{}/{}/layout4/",
+                    p1.twitch_user_login, p2.twitch_user_login
+                ),
                 &start,
                 &end,
             )
-
             .map_err(|e| e.to_string())?
             .exec()
     };
@@ -477,7 +522,7 @@ async fn create_player(
         }
     };
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let np = NewPlayer::new(name, discord_user.to_string(), rt_un, twitch_name,true);
+    let np = NewPlayer::new(name, discord_user.to_string(), rt_un, twitch_name, true);
 
     match np.save(cxn.deref_mut()) {
         Ok(_) => Ok(plain_interaction_response("Player added!")),
@@ -612,7 +657,9 @@ async fn handle_create_race(
         .diesel_cxn()
         .await
         .map_err(|e| format!("Error getting database connection: {}", e))?;
-    let race = new_race.save(cxn.deref_mut()).map_err(|e| format!("Error saving race: {}", e))?;
+    let race = new_race
+        .save(cxn.deref_mut())
+        .map_err(|e| format!("Error saving race: {}", e))?;
 
     let (mut r1, mut r2) = race
         .select_racers(p1.clone(), p2.clone(), &mut cxn)
@@ -897,23 +944,96 @@ async fn handle_create_bracket(
     Ok(plain_interaction_response("Bracket created!"))
 }
 
+
+async fn handle_report_race(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
+    let p1_res = get_opt!("p1_result", &mut ac.options, String)?;
+    let p2_res = get_opt!("p2_result", &mut ac.options, String)?;
+    let racetime_url = get_opt!("racetime_url", &mut ac.options, String).ok();
+    let r1 = if p1_res == "forfeit" {
+        PlayerResult::Forfeit
+    } else {
+        PlayerResult::Finish(
+        parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?
+        )
+    };
+
+    let r2 =  if p2_res == "forfeit" {
+        PlayerResult::Forfeit
+    } else {
+        PlayerResult::Finish(
+        parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?
+        )
+    };
+    let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
+    let mut race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
+        Ok(r) => r,
+        Err(diesel::result::Error::NotFound) => {
+            return Err("That race ID does not exist".to_string());
+        }
+        Err(e) => {
+            return Err(format!("Other database error: {e}"));
+        }
+    };
+    let mut info = race.info(cxn.deref_mut()).map_err_to_string()?;
+    if let Some(rt) = racetime_url {
+        info.racetime_gg_url = Some(rt);
+    }
+    let (p1, p2) = race.players(cxn.deref_mut()).map_err_to_string()?;
+    trigger_race_finish(race, &info, (&p1, r1), (&p2, r2), cxn.deref_mut(), Some(&state.client), &state.channel_config)
+        .await
+        .map(|_|plain_interaction_response(format!(
+            "Race {} vs {} has been updated. You should see a post in {}",
+            p1.mention_or_name(), p2.mention_or_name(),
+            state.channel_config.match_results.mention()
+        )))
+        .map_err_to_string()
+}
+
+fn parse_hms(s: &str) -> Option<u32> {
+    let re = Regex::new(r#"(\d+):(\d{2}):(\d{2})"#).ok()?;
+    let caps = re.captures(s)?;
+    let mut it = caps.iter().skip(1).flatten();
+    let h = it.next()?.as_str().parse::<u32>().ok()?;
+    let m = it.next()?.as_str().parse::<u32>().ok()?;
+    let s = it.next()?.as_str().parse::<u32>().ok()?;
+    if m >= 60 {
+        return None;
+    }
+    if s >= 60 {
+        return None;
+    }
+
+    Some(
+        h * 60 * 60 +
+        m * 60 +
+            s
+    )
+}
+
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, Timelike};
     use crate::discord::interaction_handlers::application_commands::datetime_from_options;
+    use chrono::{Datelike, Timelike};
 
     #[test]
     fn test_datetime_thingy() {
         let thing = datetime_from_options("2022/10/28", 12, 13, "AM").unwrap();
-        assert_eq!( thing.day(), 28);
+        assert_eq!(thing.day(), 28);
         assert_eq!(thing.month(), 10);
         assert_eq!(thing.hour(), 0);
         assert_eq!(thing.format("%v %r").to_string(), "28-Oct-2022 12:13:00 AM");
 
         let other_thing = datetime_from_options("2022/10/28", 12, 13, "PM").unwrap();
-        assert_eq!( other_thing.day(), 28);
+        assert_eq!(other_thing.day(), 28);
         assert_eq!(other_thing.month(), 10);
         assert_eq!(other_thing.hour(), 12);
-        assert_eq!(other_thing.format("%v %r").to_string(), "28-Oct-2022 12:13:00 PM");
+        assert_eq!(
+            other_thing.format("%v %r").to_string(),
+            "28-Oct-2022 12:13:00 PM"
+        );
     }
 }

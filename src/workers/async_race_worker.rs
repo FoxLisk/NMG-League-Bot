@@ -12,6 +12,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
+use nmg_league_bot::constants::CRON_TICKS_VAR;
 use crate::workers;
 
 fn format_finisher(run: &RaceRun) -> String {
@@ -194,7 +195,7 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {
-    let tick_duration = workers::get_tick_duration(RACETIME_TICK_SECS);
+    let tick_duration = workers::get_tick_duration(CRON_TICKS_VAR);
     println!(
         "Starting async race worker: running every {} seconds",
         tick_duration.as_secs()

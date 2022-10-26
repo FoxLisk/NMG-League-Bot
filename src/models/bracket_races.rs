@@ -121,6 +121,7 @@ impl BracketRace {
         BracketRaceInfo::get_or_create_for_bracket(self, conn)
     }
 
+    /// returns (Player 1, Player 2), specifically in order
     pub fn players(
         &self,
         conn: &mut SqliteConnection,

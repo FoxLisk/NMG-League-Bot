@@ -121,6 +121,13 @@ pub enum RaceFinishError {
     NotFinished,
 }
 
+/**
+This function does these things:
+
+    1. set the result fields on the race, and update its state to finished if relevant
+    2. saves that race
+    3. if a [Client] is supplied, posts a message in #match-results
+*/
 pub async fn trigger_race_finish(
     mut br: BracketRace,
     bri: &BracketRaceInfo,
@@ -135,10 +142,8 @@ pub async fn trigger_race_finish(
     br.add_results(Some(&p1res), Some(&p2res))?;
     br.update(conn)?;
 
-
     if let Some(c) = client {
         let bracket = br.bracket(conn)?;
-
         let outcome = br.outcome()?.ok_or(RaceFinishError::NotFinished)?;
         let winner = match outcome {
             Outcome::Tie => {

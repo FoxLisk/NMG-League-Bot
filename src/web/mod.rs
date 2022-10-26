@@ -539,6 +539,7 @@ struct DisplayPlayer {
 
 #[derive(Serialize)]
 struct DisplayRace {
+    race_id: i32,
     player_1: DisplayPlayer,
     player_2: DisplayPlayer,
     scheduled: Option<String>,
@@ -589,6 +590,7 @@ impl DisplayRace {
             }
         };
         Self {
+            race_id: race.id,
             player_1,
             player_2,
             scheduled,

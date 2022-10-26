@@ -22,6 +22,7 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
+use nmg_league_bot::constants::RACETIME_TICK_SECS;
 
 #[derive(Error, Debug)]
 enum ScanError {
@@ -105,7 +106,7 @@ async fn maybe_do_race_stuff(
 }
 
 pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
-    let tick_duration = get_tick_duration(CRON_TICKS_VAR);
+    let tick_duration = get_tick_duration(RACETIME_TICK_SECS);
     println!(
         "Starting racetime scanner worker: running every {} seconds",
         tick_duration.as_secs()

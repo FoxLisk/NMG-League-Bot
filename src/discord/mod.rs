@@ -47,6 +47,7 @@ const CREATE_BRACKET_CMD: &str = "create_bracket";
 const ADD_PLAYER_TO_BRACKET_CMD: &str = "add_player_to_bracket";
 const CREATE_PLAYER_CMD: &str = "create_player";
 const SCHEDULE_RACE_CMD: &str = "schedule_race";
+const REPORT_RACE_CMD: &str = "report_race";
 
 /// DM the player & save the run model if the DM sends successfully
 pub(crate) async fn notify_racer(
