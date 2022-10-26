@@ -63,7 +63,7 @@ async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, c
                 (&player, p1r),
                 (&other_guy, p2r),
                 conn,
-                &client,
+                None,
                 &chans
             ).await.unwrap();
         } else {

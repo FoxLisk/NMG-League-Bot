@@ -1,4 +1,3 @@
-use diesel_migrations::MigrationHarness;
 use shutdown::Shutdown;
 
 mod constants;

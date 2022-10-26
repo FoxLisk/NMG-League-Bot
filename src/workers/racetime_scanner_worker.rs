@@ -93,7 +93,7 @@ async fn maybe_do_race_stuff(
             (p1, p1r),
             (p2, p2r),
             conn.deref_mut(),
-            &state.client,
+            Some(&state.client),
             &state.channel_config,
         )
         .await

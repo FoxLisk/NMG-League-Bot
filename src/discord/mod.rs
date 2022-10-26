@@ -6,13 +6,10 @@ use crate::discord::discord_state::DiscordState;
 use nmg_league_bot::models::race::Race;
 use nmg_league_bot::models::race_run::RaceRun;
 use std::sync::Arc;
-use diesel::SqliteConnection;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{ActionRow, Component};
 use twilight_model::application::interaction::application_command::CommandDataOption;
-use twilight_model::channel::embed::EmbedField;
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 pub(crate) use webhooks::Webhooks;
 
 pub(crate) mod discord_state;

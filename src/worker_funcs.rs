@@ -127,70 +127,73 @@ pub async fn trigger_race_finish(
     p1: (&Player, PlayerResult),
     p2: (&Player, PlayerResult),
     conn: &mut SqliteConnection,
-    client: &Client,
+    client: Option<&Client>,
     channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
     let (p1, p1res) = p1;
     let (p2, p2res) = p2;
     br.add_results(Some(&p1res), Some(&p2res))?;
     br.update(conn)?;
-    let bracket = br.bracket(conn)?;
 
-    let outcome = br.outcome()?.ok_or(RaceFinishError::NotFinished)?;
-    let winner = match outcome {
-        Outcome::Tie => {
-            format!(
-                "It's a tie?! **{}** ({}) vs **{}** ({})",
-                p1.name, p1res, p2.name, p2res
-            )
-        }
-        Outcome::P1Win => {
-            format!(
-                "**{}** ({}) defeats **{}** ({})",
-                p1.name, p1res, p2.name, p2res
-            )
-        }
-        Outcome::P2Win => {
-            format!(
-                "**{}** ({}) defeats **{}** ({})",
-                p2.name, p2res, p1.name, p1res
-            )
-        }
-    };
 
-    let mut fields = vec![EmbedField {
-        inline: false,
-        name: "Division".to_string(),
-        value: bracket.name,
-    }];
-    if let Some(url) = &bri.racetime_gg_url {
-        fields.push(EmbedField {
+    if let Some(c) = client {
+        let bracket = br.bracket(conn)?;
+
+        let outcome = br.outcome()?.ok_or(RaceFinishError::NotFinished)?;
+        let winner = match outcome {
+            Outcome::Tie => {
+                format!(
+                    "It's a tie?! **{}** ({}) vs **{}** ({})",
+                    p1.name, p1res, p2.name, p2res
+                )
+            }
+            Outcome::P1Win => {
+                format!(
+                    "**{}** ({}) defeats **{}** ({})",
+                    p1.name, p1res, p2.name, p2res
+                )
+            }
+            Outcome::P2Win => {
+                format!(
+                    "**{}** ({}) defeats **{}** ({})",
+                    p2.name, p2res, p1.name, p1res
+                )
+            }
+        };
+        let mut fields = vec![EmbedField {
             inline: false,
-            name: "RaceTime room".to_string(),
-            value: url.clone(),
-        })
-    }
+            name: "Division".to_string(),
+            value: bracket.name,
+        }];
+        if let Some(url) = &bri.racetime_gg_url {
+            fields.push(EmbedField {
+                inline: false,
+                name: "RaceTime room".to_string(),
+                value: url.clone(),
+            })
+        }
 
-    let embed = Embed {
-        author: None,
-        color: None,
-        description: Some(winner),
-        fields,
-        footer: None,
-        image: None,
-        kind: "rich".to_string(),
-        provider: None,
-        thumbnail: None,
-        timestamp: None,
-        title: None,
-        url: None,
-        video: None,
-    };
-    client
-        .create_message(channel_config.match_results)
-        .embeds(&vec![embed])?
-        .exec()
-        .await?;
+        let embed = Embed {
+            author: None,
+            color: None,
+            description: Some(winner),
+            fields,
+            footer: None,
+            image: None,
+            kind: "rich".to_string(),
+            provider: None,
+            thumbnail: None,
+            timestamp: None,
+            title: None,
+            url: None,
+            video: None,
+        };
+        c
+            .create_message(channel_config.match_results)
+            .embeds(&vec![embed])?
+            .exec()
+            .await?;
+    }
 
     Ok(())
 }

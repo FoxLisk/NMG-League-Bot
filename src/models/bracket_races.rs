@@ -51,6 +51,16 @@ impl Display for PlayerResult {
     }
 }
 
+impl PlayerResult {
+    /// finish time if given, 3:00:00 if forfeit
+    pub  fn time(&self) -> u32 {
+        match self {
+            Self::Forfeit => 60 * 60 * 180,
+            Self::Finish(t) => t.clone()
+        }
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq)]
 pub enum Outcome {
     Tie,

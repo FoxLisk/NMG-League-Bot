@@ -26,25 +26,26 @@ use crate::constants::{
 };
 use crate::db::{get_diesel_pool, DieselConnectionManager};
 use crate::discord::discord_state::DiscordState;
-use nmg_league_bot::models::bracket_races::BracketRace;
-use nmg_league_bot::models::bracket_rounds::BracketRound;
-use nmg_league_bot::models::brackets::Bracket;
-use nmg_league_bot::models::player::Player;
-use nmg_league_bot::models::race::{Race, RaceState};
-use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
-use nmg_league_bot::models::season::Season;
 use crate::schema;
 use crate::shutdown::Shutdown;
 use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
 use bb8::Pool;
 use diesel::prelude::*;
+use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_races::BracketRace;
+use nmg_league_bot::models::bracket_rounds::BracketRound;
+use nmg_league_bot::models::brackets::{Bracket, BracketError, PlayerInfo};
+use nmg_league_bot::models::player::Player;
+use nmg_league_bot::models::race::{Race, RaceState};
+use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
+use nmg_league_bot::models::season::Season;
+use nmg_league_bot::utils::format_hms;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::DerefMut;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 
 mod session_manager;
 
@@ -253,7 +254,7 @@ async fn index_logged_in(_a: Admin) -> Redirect {
 
 #[get("/<_..>", rank = 2)]
 async fn index_logged_out() -> Redirect {
-    Redirect::to(uri!(login_page))
+    Redirect::to(uri!(brackets))
 }
 
 #[get("/login")]
@@ -696,6 +697,90 @@ async fn brackets(db: &State<Pool<DieselConnectionManager>>) -> Result<Template,
     Ok(Template::render("brackets", ctx))
 }
 
+#[derive(Serialize)]
+struct StandingsPlayer {
+    name: String,
+    points: f32,
+    average_time: String,
+}
+
+#[derive(Serialize)]
+struct StandingsBracket {
+    name: String,
+    players: Vec<StandingsPlayer>,
+}
+
+#[derive(Serialize)]
+struct StandingsContext {
+    season: Option<Season>,
+    brackets: Vec<StandingsBracket>,
+}
+
+fn get_standings_context(
+    conn: &mut SqliteConnection,
+) -> Result<StandingsContext, diesel::result::Error> {
+    let mut ctx = StandingsContext {
+        season: None,
+        brackets: vec![],
+    };
+
+    let szn = match Season::get_active_season(conn)? {
+        Some(szn) => szn,
+        None => {
+            return Ok(ctx);
+        }
+    };
+
+    for bracket in szn.brackets(conn)? {
+        let standings = match bracket.standings(conn) {
+            Ok(s) => s,
+            Err(BracketError::DBError(e)) => {
+                return Err(e);
+            }
+            Err(e) => {
+                println!("Error getting standings for bracket {bracket:?}: {e:?}");
+                continue;
+            }
+        };
+        let players: HashMap<i32, String> = bracket
+            .players(conn)?
+            .into_iter()
+            .map(|p| (p.id, p.name))
+            .collect();
+        let sps = standings
+            .into_iter()
+            .map(|s| {
+                let total_time: u32 = s.times.iter().sum();
+                let avg_time = (total_time as f32) / (s.times.len() as f32);
+
+                // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
+                StandingsPlayer {
+                    name: players.get(&s.id).cloned().unwrap_or("Unknown".to_string()),
+                    points: (s.points as f32) / 2.0,
+                    average_time: format_hms(avg_time as u64),
+                }
+            })
+            .collect();
+        ctx.brackets.push(StandingsBracket {
+            name: bracket.name,
+            players: sps,
+        });
+    }
+
+    ctx.season = Some(szn);
+    Ok(ctx)
+}
+
+#[get("/standings")]
+async fn standings(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
+    let mut cxn = db.get().await.map_err(|_| Status::InternalServerError)?;
+    let ctx = get_standings_context(cxn.deref_mut()).map_err(|_| Status::InternalServerError)?;
+    Ok(Template::render(
+        "standings",
+        ctx,
+    ))
+}
+
 fn option_default(
     v: &Value,
     h: &HashMap<String, Value>,
@@ -736,6 +821,7 @@ pub(crate) async fn launch_website(
                 index_logged_in,
                 async_view,
                 brackets,
+                standings,
                 // it's important to keep this at the end, it functions like a 404 catcher
                 // TODO that's actually a bug
                 index_logged_out,

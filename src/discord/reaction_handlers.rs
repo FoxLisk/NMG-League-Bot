@@ -1,4 +1,3 @@
-use bb8::RunError;
 use diesel::ConnectionError;
 use itertools::Itertools;
 use std::ops::DerefMut;
@@ -16,7 +15,6 @@ use twilight_validate::message::MessageValidationError;
 
 use crate::discord::discord_state::DiscordState;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::player::Player;
 use nmg_league_bot::utils::race_to_nice_embeds;
 
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {

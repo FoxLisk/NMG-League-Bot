@@ -1,0 +1,49 @@
+{% extends "base" %}
+
+{% import "macros" as macros %}
+
+{% block pagename %}NMG League Season 2 Brackets{% endblock %}
+{% block body %}
+{% if season %}
+    Season {{ season.id }}: {{ season.format }}
+{% endif %}
+{% for bracket in brackets %}
+    <div class="p1 border border-1">
+        Bracket: {{ bracket.name }}
+        <div>
+        <table class="border border-slate-500">
+            <thead>
+                <tr>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        Player
+                    </td>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        Points
+                    </td>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        Average time
+                    </td>
+                </tr>
+            </thead>
+            <tbody>
+
+            {% for player in bracket.players %}
+                <tr class="border-b border-slate-500">
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        {{ player.name }}
+                    </td>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        {{ player.points }}
+                    </td>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        {{ player.average_time }}
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+
+        </table>
+        </div>
+    </div>
+{% endfor %}
+{% endblock %}

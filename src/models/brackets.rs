@@ -1,6 +1,4 @@
-use crate::models::bracket_races::{
-    insert_bulk, BracketRace, BracketRaceStateError, MatchResultError, NewBracketRace,
-};
+use crate::models::bracket_races::{insert_bulk, BracketRace, BracketRaceStateError, MatchResultError, NewBracketRace, Outcome};
 use crate::models::bracket_rounds::{BracketRound, NewBracketRound};
 use crate::models::player::Player;
 use crate::models::season::Season;
@@ -11,7 +9,8 @@ use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
 use rand::thread_rng;
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use itertools::Itertools;
 use swiss_pairings::{PairingError, TourneyConfig};
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
@@ -247,6 +246,90 @@ impl Bracket {
             .load(conn)?;
         Ok(brs.pop())
     }
+
+    pub fn standings(&self, conn: &mut SqliteConnection) -> Result<Vec<PlayerInfo>, BracketError> {
+        if self.state()? != BracketState::Started {
+            return Err(BracketError::InvalidState);
+        }
+        let rounds = self.rounds(conn)?;
+        let mut races = vec![];
+        for round in rounds {
+            let round_races = round.races(conn)?;
+            if ! all_races_complete(&round_races) {
+                // this either means we've reached the current round, or it means that
+                // we have a data issue, and in either case i'm giving up
+                break;
+            }
+            races.extend(round_races);
+        }
+
+        let mut info : HashMap<i32, PlayerInfo> = Default::default();
+        for race in races {
+            let p1r = race.player_1_result().ok_or(BracketError::InvalidState)?;
+            let p2r = race.player_2_result().ok_or(BracketError::InvalidState)?;
+            let o = race.outcome()?.ok_or(BracketError::InvalidState)?;
+            let (p1_adjust, p2_adjust) = match o {
+                Outcome::Tie => {
+                    (1, 1)
+                }
+                Outcome::P1Win => {
+                    (2, 0)
+                }
+                Outcome::P2Win => {
+                    (0, 2)
+                }
+            };
+            let p1_i = info.entry(race.player_1_id).or_insert(PlayerInfo::new(race.player_1_id));
+            p1_i.times.push(p1r.time());
+            p1_i.points += p1_adjust;
+            p1_i.opponents.push(race.player_2_id);
+
+
+            let p2_i = info.entry(race.player_2_id).or_insert(PlayerInfo::new(race.player_2_id));
+            p2_i.times.push(p2r.time());
+            p2_i.points += p2_adjust;
+            p2_i.opponents.push(race.player_1_id);
+        }
+        Ok(
+            info.into_values()
+
+                .sorted_by_key(
+                    |p| (-p.points, p.times.iter().sum::<u32>(), p.id)
+                )
+                .collect()
+        )
+    }
+}
+
+pub struct PlayerInfo {
+    pub id: i32,
+    /// this is really points*2, convert to float elsewhere
+    pub points: i32,
+    pub opponents: Vec<i32>,
+    pub times: Vec<u32>,
+}
+
+impl PlayerInfo {
+    fn new(id: i32,) -> Self {
+        Self {
+            id,
+            points: 0,
+            opponents: vec![],
+            times: vec![],
+        }
+    }
+}
+
+fn all_races_complete(races: &[BracketRace]) -> bool {
+    for race in races {
+        match race.outcome() {
+            Ok(Some(_)) => {},
+            _ => {
+                return false;
+            }
+        }
+    }
+    true
 }
 
 #[derive(Insertable)]
