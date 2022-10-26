@@ -51,7 +51,7 @@ async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, c
             } else {
                 (
                     PlayerResult::Finish(hms_to_secs(1, 25, 18)),
-                    PlayerResult::Finish(hms_to_secs(1, 34, 55)),
+                    PlayerResult::Finish(hms_to_secs(1, 24, 55)),
                     Player::get_by_id(race.player_1_id, conn).unwrap().unwrap()
                 )
             };
