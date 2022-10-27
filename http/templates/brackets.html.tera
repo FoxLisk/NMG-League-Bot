@@ -9,7 +9,7 @@
 {% endif %}
 {% for bracket in brackets %}
     <div class="p1 border border-1">
-        Bracket: {{ bracket.bracket.name }}
+        <span title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</span>
         {% for round in bracket.rounds %}
             <div class="p-1 bg-sky-300 border border-1">
                 Round {{ round.round_num }}
@@ -19,7 +19,7 @@
                         </thead>
                         <tbody>
                         {% for race in round.races %}
-                            <tr class="border-b border-slate-500" title="{{ race.race_id }}" >
+                            <tr class="border-b border-slate-500" title="Race id #{{ race.race_id }}" >
                                 <td class="border-x border-slate-500 pl-1 pr-3
                                  {% if race.player_1.winner %} bg-emerald-400 {% elif race.player_1.loser %} bg-red-400 {% endif %}
                                  ">

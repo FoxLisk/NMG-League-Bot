@@ -65,7 +65,8 @@ path = "../racetime-api"
 
 [dependencies.twilight-http]
 #git = "https://github.com/twilight-rs/twilight.git"
-#rev = "f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
+#branch = "7596ff/fix/http/scheduled-event-privacy-level"
+##rev = "f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
 path = "../twilight/twilight-http"
 
 [build-dependencies]

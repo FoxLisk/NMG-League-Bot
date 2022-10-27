@@ -1,8 +1,5 @@
 use crate::constants::WEBSITE_URL;
-use crate::discord::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD,
-    CREATE_RACE_CMD, CREATE_SEASON_CMD, REPORT_RACE_CMD, SCHEDULE_RACE_CMD,
-};
+use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, SCHEDULE_RACE_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,
     CommandOptionValue, CommandType, NumberCommandOptionData,
@@ -298,6 +295,27 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+
+    let generate_pairings = CommandBuilder::new(
+        GENERATE_PAIRINGS_CMD.to_string(),
+        "Generate next round pairings for a bracket".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Bracket ID".to_string(),
+            description_localizations: None,
+            max_value: None,
+            min_value: None,
+            name: "bracket_id".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+
+        .build();
+
     vec![
         create_race,
         cancel_race,
@@ -307,5 +325,6 @@ pub fn application_command_definitions() -> Vec<Command> {
         add_player_to_bracket,
         schedule_race,
         report_race,
+        generate_pairings
     ]
 }

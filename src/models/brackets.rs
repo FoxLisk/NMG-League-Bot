@@ -184,7 +184,7 @@ impl Bracket {
             .load(conn)
     }
 
-    pub(crate) fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Bracket, Error> {
+    pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Bracket, Error> {
         brackets::table.find(id).first(conn)
     }
 

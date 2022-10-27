@@ -1,11 +1,11 @@
-use crate::constants::CANCEL_RACE_TIMEOUT_VAR;
+use crate::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
 use crate::discord::components::action_row;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, REPORT_RACE_CMD};
+use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, REPORT_RACE_CMD, GENERATE_PAIRINGS_CMD, get_opt};
 use crate::{get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
@@ -13,7 +13,7 @@ use nmg_league_bot::models::race_run::RaceRun;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError, PlayerResult, BracketRace};
-use nmg_league_bot::models::brackets::NewBracket;
+use nmg_league_bot::models::brackets::{Bracket, NewBracket};
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::season::{NewSeason, Season};
@@ -89,6 +89,12 @@ pub async fn handle_application_interaction(
         CREATE_RACE_CMD => {
             admin_command_wrapper(handle_create_race(ac, state).await.map(Option::from))
         }
+        GENERATE_PAIRINGS_CMD => {
+            admin_command_wrapper(
+                handle_generate_pairings(ac, state).await.map(Option::from)
+            )
+        }
+
 
         CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
         CREATE_SEASON_CMD => {
@@ -496,6 +502,8 @@ async fn handle_schedule_race(
 fn admin_command_wrapper(
     result: Result<Option<InteractionResponse>, String>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+
+
     let out = Ok(result
         .map_err(|e| Some(plain_interaction_response(e)))
         .collapse());
@@ -991,6 +999,33 @@ async fn handle_report_race(
             state.channel_config.match_results.mention()
         )))
         .map_err_to_string()
+}
+
+
+async fn handle_generate_pairings(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let bracket_id = get_opt!("bracket_id", &mut ac.options, Integer)?;
+    let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
+    let mut b = match  Bracket::get_by_id(bracket_id as i32, cxn.deref_mut()) {
+        Ok(b) => b,
+        Err(Error::NotFound) => {return Err(format!("Bracket {bracket_id} not found."));}
+        Err(e) => {
+            return Err(e.to_string());
+        }
+    };
+
+    match b.generate_pairings(cxn.deref_mut()) {
+        Ok(()) => Ok(
+            plain_interaction_response(
+                format!(
+                    "Pairings generated! See them at {}/brackets", WEBSITE_URL
+                )
+            )
+        ),
+        Err(e) => Err(format!("Error generating pairings: {e:?}"))
+    }
 }
 
 fn parse_hms(s: &str) -> Option<u32> {
