@@ -5,7 +5,7 @@ Description=NMG League Bot
 StandardOutput=append:/var/log/nmg-league-bot.log
 StandardError=append:/var/log/nmg-league-bot.log
 WorkingDirectory=/opt/efs/nmg-league-bot
-ExecStart=/opt/efs/nmg-league-bot/target/debug/nmg-league-bot
+ExecStart=/opt/efs/nmg-league-bot/target/debug/bot
 KillSignal=SIGINT
 
 [Install]
