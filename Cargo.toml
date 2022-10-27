@@ -57,8 +57,8 @@ rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
 diesel_enum_derive = {git = "https://github.com/FoxLisk/diesel_enum_derive"}
 
 [dependencies.swiss-pairings]
-path = "../swiss-pairings"
-#git = "https://github.com/FoxLisk/swiss-pairings.git"
+#path = "../swiss-pairings"
+git = "https://github.com/FoxLisk/swiss-pairings.git"
 
 [dependencies.racetime-api]
 #path = "../racetime-api"
