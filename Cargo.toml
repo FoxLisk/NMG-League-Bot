@@ -61,7 +61,8 @@ path = "../swiss-pairings"
 #git = "https://github.com/FoxLisk/swiss-pairings.git"
 
 [dependencies.racetime-api]
-path = "../racetime-api"
+#path = "../racetime-api"
+git = "https://github.com/FoxLisk/racetime-api.git"
 
 [dependencies.twilight-http]
 git = "https://github.com/twilight-rs/twilight.git"
