@@ -64,11 +64,20 @@ path = "../swiss-pairings"
 path = "../racetime-api"
 
 [dependencies.twilight-http]
-#git = "https://github.com/twilight-rs/twilight.git"
-#branch = "7596ff/fix/http/scheduled-event-privacy-level"
+git = "https://github.com/twilight-rs/twilight.git"
+branch = "7596ff/fix/http/scheduled-event-privacy-level"
 ##rev = "f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-path = "../twilight/twilight-http"
+#path = "../twilight/twilight-http"
 
 [build-dependencies]
 tokio = { version = "1.19.0", features = ["rt-multi-thread", "macros"]}
 dotenv = "0.15.0"
+
+[patch.crates-io]
+twilight-model = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+twilight-validate = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+twilight-mention = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+twilight-cache-inmemory = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+twilight-gateway = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+twilight-util = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+twilight-standby = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
