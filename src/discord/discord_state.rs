@@ -1,7 +1,7 @@
 use crate::constants::{
     GUILD_ID_VAR,
 };
-use crate::db::DieselConnectionManager;
+use nmg_league_bot::db::DieselConnectionManager;
 use crate::discord::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use bb8::{Pool, RunError};

@@ -27,7 +27,7 @@ use twilight_standby::Standby;
 use twilight_util::builder::InteractionResponseDataBuilder;
 
 use crate::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
-use crate::db::get_diesel_pool;
+use nmg_league_bot::db::get_diesel_pool;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
     button_component, plain_interaction_response,

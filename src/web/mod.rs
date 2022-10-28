@@ -24,7 +24,7 @@ use tokio::time::{Duration, Instant};
 use crate::constants::{
     AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
 };
-use crate::db::{get_diesel_pool, DieselConnectionManager};
+use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use crate::discord::discord_state::DiscordState;
 use crate::schema;
 use crate::shutdown::Shutdown;

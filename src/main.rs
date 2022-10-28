@@ -1,7 +1,6 @@
 use shutdown::Shutdown;
 
 mod constants;
-mod db;
 mod discord;
 mod schema;
 mod shutdown;
@@ -26,7 +25,7 @@ extern crate twilight_validate;
 extern crate twilight_mention;
 extern crate nmg_league_bot;
 
-use crate::db::raw_diesel_cxn_from_env;
+use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use discord::Webhooks;
 use nmg_league_bot::db::run_migrations;
 
