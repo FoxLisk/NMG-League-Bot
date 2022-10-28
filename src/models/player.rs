@@ -7,6 +7,7 @@ use diesel::SqliteConnection;
 use twilight_mention::Mention;
 use twilight_model::id::Id;
 use twilight_model::id::marker::UserMarker;
+use serde::Deserialize;
 
 pub trait MentionOptional {
     fn mention_maybe(&self) -> Option<String>;
@@ -65,7 +66,7 @@ impl<T> MentionOptional for Result<Option<Player>, T> {
     }
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Deserialize, Debug)]
 #[diesel(table_name=players)]
 pub struct NewPlayer {
     pub name: String,
