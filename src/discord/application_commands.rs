@@ -168,7 +168,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         min_length: None,
         name: "twitch_username".to_string(),
         name_localizations: None,
-        required: false,
+        required: true,
     }))
     .build();
 
