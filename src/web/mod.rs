@@ -40,7 +40,7 @@ use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use nmg_league_bot::models::season::Season;
-use nmg_league_bot::utils::format_hms;
+use nmg_league_bot::utils::{env_var, format_hms};
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::DerefMut;
@@ -84,12 +84,12 @@ impl OauthClient {
     fn new() -> Self {
         Self {
             client: BasicClient::new(
-                ClientId::new(std::env::var(CLIENT_ID_VAR).unwrap()),
-                Some(ClientSecret::new(std::env::var(CLIENT_SECRET_VAR).unwrap())),
+                ClientId::new(env_var(CLIENT_ID_VAR)),
+                Some(ClientSecret::new(env_var(CLIENT_SECRET_VAR))),
                 AuthUrl::new(DISCORD_AUTHORIZE_URL.to_string()).unwrap(),
                 Some(TokenUrl::new(DISCORD_TOKEN_URL.to_string()).unwrap()),
             )
-            .set_redirect_uri(RedirectUrl::new(std::env::var(AUTHORIZE_URL_VAR).unwrap()).unwrap()),
+            .set_redirect_uri(RedirectUrl::new(env_var(AUTHORIZE_URL_VAR)).unwrap()),
             states: Arc::new(Mutex::new(HashMap::new())),
         }
     }

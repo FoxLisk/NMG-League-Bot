@@ -40,6 +40,7 @@ use crate::discord::{
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
 use nmg_league_bot::models::race_run::RaceRun;
+use nmg_league_bot::utils::env_var;
 use crate::{Shutdown, Webhooks};
 use crate::discord::application_commands::application_command_definitions;
 use crate::discord::components::action_row;
@@ -51,8 +52,8 @@ pub(crate) async fn launch(
     webhooks: Webhooks,
     shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Arc<DiscordState> {
-    let token = std::env::var(TOKEN_VAR).unwrap();
-    let aid_str = std::env::var(APPLICATION_ID_VAR).unwrap();
+    let token =  env_var(TOKEN_VAR);
+    let aid_str = env_var(APPLICATION_ID_VAR);
     let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
 
     let http = Client::new(token.clone());

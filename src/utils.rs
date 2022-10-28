@@ -40,6 +40,16 @@ pub fn env_default<K: AsRef<OsStr>, D: FromStr>(key: K, default: D) -> D {
     }
 }
 
+/// extracts the relevant env var, panics if missing
+pub fn env_var(key: &str) -> String {
+    match std::env::var(key) {
+        Ok(s) => s,
+        Err(_) => {
+            panic!("Missing required environment variable `{key}`")
+        }
+    }
+}
+
 pub fn timestamp_to_naivedatetime<T: Into<i64>>(ts: T) -> NaiveDateTime {
     NaiveDateTime::from_timestamp(ts.into(), 0)
 }

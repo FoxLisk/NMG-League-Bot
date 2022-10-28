@@ -8,6 +8,7 @@ use twilight_model::channel::Webhook;
 use twilight_model::id::marker::WebhookMarker;
 use twilight_model::id::Id;
 use twilight_util::link::webhook::parse;
+use nmg_league_bot::utils::env_var;
 
 #[derive(Clone)]
 pub struct Webhooks {
@@ -50,9 +51,9 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
 
 impl Webhooks {
     pub async fn new() -> Result<Self, String> {
-        let client = Arc::new(Client::new(std::env::var(TOKEN_VAR).unwrap()));
-        let async_webhook_url = std::env::var(ASYNC_WEBHOOK_VAR).unwrap();
-        let admin_webhook_url = std::env::var(ADMIN_WEBHOOK_VAR).unwrap();
+        let client = Arc::new(Client::new(env_var(TOKEN_VAR)));
+        let async_webhook_url = env_var(ASYNC_WEBHOOK_VAR);
+        let admin_webhook_url = env_var(ADMIN_WEBHOOK_VAR);
 
         let async_channel = get_webhook_by_url(&client, async_webhook_url).await?;
         let admin_channel = get_webhook_by_url(&client, admin_webhook_url).await?;

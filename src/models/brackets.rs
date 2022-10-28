@@ -9,7 +9,7 @@ use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
 use rand::thread_rng;
 use serde::Serialize;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap,};
 use itertools::Itertools;
 use swiss_pairings::{PairingError, TourneyConfig};
 

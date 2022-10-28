@@ -7,6 +7,7 @@ use std::str::FromStr;
 use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
 use crate::constants::{COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR, MATCH_RESULTS_CHANNEL_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR};
+use crate::utils::env_var;
 
 pub mod constants;
 pub mod db;
@@ -29,17 +30,17 @@ impl ChannelConfig {
     /// explodes if any env vars are missing
     pub fn new_from_env() -> Self {
         let commportunities =
-            Id::from_str(&std::env::var(COMMPORTUNITIES_CHANNEL_ID_VAR).unwrap()).unwrap();
+            Id::from_str(&env_var(COMMPORTUNITIES_CHANNEL_ID_VAR)).unwrap();
         let sirius_inbox =
-            Id::from_str(&std::env::var(SIRIUS_INBOX_CHANNEL_ID_VAR).unwrap()).unwrap();
+            Id::from_str(&env_var(SIRIUS_INBOX_CHANNEL_ID_VAR)).unwrap();
 
-        let zsr = Id::from_str(&std::env::var(ZSR_CHANNEL_ID_VAR).unwrap()).unwrap();
+        let zsr = Id::from_str(&env_var(ZSR_CHANNEL_ID_VAR)).unwrap();
 
         let commentary_discussion =
-            Id::from_str(&std::env::var(COMMENTARY_DISCUSSION_CHANNEL_ID_VAR).unwrap()).unwrap();
+            Id::from_str(&env_var(COMMENTARY_DISCUSSION_CHANNEL_ID_VAR)).unwrap();
 
         let match_results =
-            Id::from_str(&std::env::var(MATCH_RESULTS_CHANNEL_ID_VAR).unwrap()).unwrap();
+            Id::from_str(&env_var(MATCH_RESULTS_CHANNEL_ID_VAR)).unwrap();
         Self {
             commportunities,
             sirius_inbox,

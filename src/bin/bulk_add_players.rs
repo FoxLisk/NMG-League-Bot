@@ -1,7 +1,6 @@
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
-use diesel::QueryResult;
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::models::player::NewPlayer;
 

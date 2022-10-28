@@ -7,6 +7,7 @@ use diesel_migrations::{MigrationError, MigrationHarness};
 use tokio::sync::{Mutex, MutexGuard};
 use thiserror::Error;
 use lazy_static::lazy_static;
+use crate::utils::env_var;
 
 lazy_static! {
     static ref DB_LOCK: Mutex<Option<Pool<DieselConnectionManager>>> = Mutex::new(None);
@@ -27,7 +28,7 @@ fn munge_path(sqlite_db_path: String) -> String {
 }
 
 pub fn raw_diesel_cxn_from_env() -> diesel::ConnectionResult<SqliteConnection> {
-    let sqlite_db_path = std::env::var("DATABASE_URL").unwrap();
+    let sqlite_db_path = env_var("DATABASE_URL");
     let path = munge_path(sqlite_db_path);
     SqliteConnection::establish(&path)
 }
@@ -50,7 +51,7 @@ pub fn run_migrations(conn: &mut SqliteConnection) -> Result<Vec<MigrationVersio
 
 impl DieselConnectionManager {
     fn new_from_env() -> Self {
-        let sqlite_db_path = std::env::var("DATABASE_URL").unwrap();
+        let sqlite_db_path = env_var("DATABASE_URL");
         let path = munge_path(sqlite_db_path);
         Self { path }
     }

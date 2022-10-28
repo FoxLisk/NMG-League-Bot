@@ -9,6 +9,7 @@ use nmg_league_bot::models::bracket_races::{
 use nmg_league_bot::models::brackets::Bracket;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
+use nmg_league_bot::utils::env_var;
 use nmg_league_bot::worker_funcs::trigger_race_finish;
 
 fn hms_to_secs(h: u32, m: u32, s: u32) -> u32 {
@@ -19,7 +20,7 @@ fn hms_to_secs(h: u32, m: u32, s: u32) -> u32 {
 async fn main() {
     dotenv::dotenv().unwrap();
     let mut db = raw_diesel_cxn_from_env().unwrap();
-    let client = Client::new(std::env::var(TOKEN_VAR).unwrap());
+    let client = Client::new(env_var(TOKEN_VAR));
 
     let chans = ChannelConfig::new_from_env();
     let brackets = Season::get_active_season(&mut db)
