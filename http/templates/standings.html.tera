@@ -5,7 +5,7 @@
 {% block pagename %}NMG League Season 2 Brackets{% endblock %}
 {% block body %}
 {% if season %}
-    Season {{ season.id }}: {{ season.format }}
+    {{ season.format }}
 {% endif %}
 {% for bracket in brackets %}
     <div class="p1 border border-1">
