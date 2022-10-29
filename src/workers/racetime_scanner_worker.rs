@@ -1,4 +1,3 @@
-use crate::constants::CRON_TICKS_VAR;
 use crate::discord::discord_state::DiscordState;
 use crate::schema::players;
 use crate::workers::get_tick_duration;
@@ -8,7 +7,7 @@ use diesel::prelude::*;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
-use nmg_league_bot::racetime_types::{Entrant, PlayerResultError, Races, RacetimeRace};
+use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
 use nmg_league_bot::worker_funcs::{
     get_races_that_should_be_finishing_soon, interesting_race, races_by_player_rtgg,
     trigger_race_finish,

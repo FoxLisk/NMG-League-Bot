@@ -142,6 +142,10 @@ impl Bracket {
         serde_json::from_str(&self.state)
     }
 
+    pub fn is_unstarted(&self) -> Result<bool, serde_json::Error> {
+        Ok(self.state()? == BracketState::Unstarted)
+    }
+
     fn set_state(&mut self, state: BracketState) -> Result<(), serde_json::Error> {
         self.state = serde_json::to_string(&state)?;
         Ok(())

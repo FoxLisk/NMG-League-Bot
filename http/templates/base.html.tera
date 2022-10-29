@@ -10,6 +10,19 @@
 	</head>
 	<body class="bg-sky-400">
 	    <div class="bg-sky-600 h-7 mb-2">
+	        <div class="flex">
+	            <div class="flex md:w-1/5">
+	            </div>
+	            <div class="flex flex-auto">
+	                <a href="/brackets">Brackets</a>
+	            </div>
+
+	            <div class="flex flex-auto">
+	                <a href="/standings">Standings</a>
+	            </div>
+	            <div class="flex md:w-1/5">
+	            </div>
+	        </div>
             {# header #}
 	    </div>
 	    <div class="p-2 text-2xl md:text-xl lg:text-base">

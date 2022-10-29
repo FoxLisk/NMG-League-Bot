@@ -734,35 +734,46 @@ fn get_standings_context(
     };
 
     for bracket in szn.brackets(conn)? {
+        let mut players= bracket.players(conn)?;
         let standings = match bracket.standings(conn) {
             Ok(s) => s,
             Err(BracketError::DBError(e)) => {
                 return Err(e);
+            }
+            Err(BracketError::InvalidState) => {
+                vec![]
             }
             Err(e) => {
                 println!("Error getting standings for bracket {bracket:?}: {e:?}");
                 continue;
             }
         };
-        let players: HashMap<i32, String> = bracket
-            .players(conn)?
-            .into_iter()
-            .map(|p| (p.id, p.name))
-            .collect();
-        let sps = standings
-            .into_iter()
-            .map(|s| {
-                let total_time: u32 = s.times.iter().sum();
-                let avg_time = (total_time as f32) / (s.times.len() as f32);
+        let sps: Vec<StandingsPlayer> = if standings.is_empty() {
+            players.sort_by_key(|p| p.id);
+            players.into_iter().map(|p| StandingsPlayer {
+                name: p.name,
+                points: 0.0,
+                average_time: "".to_string()
+            }).collect()
+        } else {
+            let players_map: HashMap<i32, String> = players.into_iter()
+                .map(|p| (p.id, p.name))
+                .collect();
+            standings
+                .into_iter()
+                .map(|s| {
+                    let total_time: u32 = s.times.iter().sum();
+                    let avg_time = (total_time as f32) / (s.times.len() as f32);
 
-                // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
-                StandingsPlayer {
-                    name: players.get(&s.id).cloned().unwrap_or("Unknown".to_string()),
-                    points: (s.points as f32) / 2.0,
-                    average_time: format_hms(avg_time as u64),
-                }
-            })
-            .collect();
+                    // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
+                    StandingsPlayer {
+                        name: players_map.get(&s.id).cloned().unwrap_or("Unknown".to_string()),
+                        points: (s.points as f32) / 2.0,
+                        average_time: format_hms(avg_time as u64),
+                    }
+                })
+                .collect()
+        };
         ctx.brackets.push(StandingsBracket {
             name: bracket.name,
             players: sps,

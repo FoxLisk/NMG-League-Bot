@@ -1,4 +1,3 @@
-use crate::constants::{ RACETIME_TICK_SECS};
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
 use nmg_league_bot::models::race::{Race, RaceState};
