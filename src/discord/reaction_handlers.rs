@@ -155,25 +155,22 @@ async fn handle_commentary_confirmation(
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
     let comms = info.commentator_signups(conn)?;
-    let comm_ids = comms
+    let comm_names = comms
         .iter()
         .map(|c| c.discord_id())
         .flatten()
         .map(|did| {
-            (
-                did,
-                state
-                    .cache
-                    .user(did)
-                    .map(|u| u.name.clone())
-                    .unwrap_or("unknown".to_string()),
-            )
+            state
+                .cache
+                .user(did)
+                .map(|u| u.name.clone())
+                .unwrap_or("unknown".to_string())
         })
         .collect();
     if let Some(gse) = info.get_scheduled_event_id() {
         // gsus let me live
         if let Some(gid) = _reaction.guild_id {
-            if let Err(e) = update_scheduled_event(gid, gse, Some(&comm_ids), None, state).await {
+            if let Err(e) = update_scheduled_event(gid, gse, Some(&comm_names), None, state).await {
                 println!("Error updating scheduled event: {:?}", e);
             }
         }
@@ -182,7 +179,7 @@ async fn handle_commentary_confirmation(
     // we're sending almost identical messages to zsr & commentary-discussion
     let mut fields = race_to_nice_embeds(&info, conn)?;
 
-    let comms_string = comm_ids.iter().map(|(id, _)| id.mention()).join(" and ");
+    let comms_string = comm_names.iter().join(" and ");
     fields.push(EmbedField {
         inline: false,
         name: "Commentators".to_string(),
@@ -282,7 +279,7 @@ async fn create_restream_request_post(
 async fn update_scheduled_event(
     gid: Id<GuildMarker>,
     gse_id: Id<ScheduledEventMarker>,
-    commentators: Option<&Vec<(Id<UserMarker>, String)>>,
+    commentators: Option<&Vec<String>>,
     restream_channel: Option<String>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
@@ -292,7 +289,7 @@ async fn update_scheduled_event(
     let thingy = commentators.map(
         |comms| format!(
             " with comms by {}",
-            comms.iter().map(|(id, name)| name).join(" and ")
+            comms.iter().join(" and ")
         )
     );
 
@@ -411,20 +408,30 @@ async fn handle_restream_request_reaction(
         }
     }
 
+
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
     let comms = info.commentator_signups(conn)?;
-
-    let mut fields = race_to_nice_embeds(&info, conn)?;
-    let comm_ids = comms
+    let comm_ids: Vec<Id<UserMarker>> = comms
         .iter()
         .map(|c| c.discord_id())
         .flatten()
-        .collect::<Vec<_>>();
+        .collect();
+    let comm_names: Vec<String> = comm_ids.iter()
+        .map(|did| {
+            state
+                .cache
+                .user(did.clone())
+                .map(|u| u.name.clone())
+                .unwrap_or("unknown".to_string())
+        })
+        .collect();
+
+    let mut fields = race_to_nice_embeds(&info, conn)?;
     fields.push(EmbedField {
         inline: false,
         name: "Commentators".to_string(),
-        value: comm_ids.iter().map(|id| id.mention()).join(" and "),
+        value: comm_names.iter().join(" and "),
     });
     fields.push(EmbedField {
         inline: false,

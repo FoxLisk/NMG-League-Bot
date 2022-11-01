@@ -139,12 +139,13 @@ impl BracketRace {
     }
 
     /// this hits the db (twice!) to find players, so uh. i guess if that matters to you don't call it
+    /// has users names instead of mentions, because mentions don't work in embeds
     pub fn title(&self, conn: &mut SqliteConnection) -> Result<String, diesel::result::Error> {
         let (p1, p2) = self.players(conn)?;
         Ok(format!(
             "{} vs {}",
-            p1.mention_or_name(),
-            p2.mention_or_name()
+            p1.name,
+            p2.name
         ))
     }
 
