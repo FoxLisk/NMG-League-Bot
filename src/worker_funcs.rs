@@ -10,7 +10,7 @@ use crate::models::player::Player;
 use crate::racetime_types::{Entrant, RacetimeRace};
 use crate::schema::{bracket_race_infos, bracket_races};
 use crate::ChannelConfig;
-use chrono::{Duration, Utc};
+use chrono::{DateTime, Duration, FixedOffset, ParseError, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use std::collections::HashMap;
@@ -81,6 +81,14 @@ pub fn interesting_race<'a>(
     if race.status.value != "finished" {
         return None;
     }
+    let started = match race.started_at() {
+        Ok(dt) => {dt}
+        Err(e) => {
+            println!("Error parsing racetime started_at ({}): {e}", race.started_at);
+            return None;
+        }
+    };
+
     let mut entrant_ids = std::mem::take(&mut race.entrants)
         .into_iter()
         .map(|e| (e.user.full_name.clone(), e))
@@ -88,8 +96,22 @@ pub fn interesting_race<'a>(
 
     let ids = { entrant_ids.keys().cloned().collect::<Vec<_>>() };
     for id in ids {
-        // if *any* entrant is in one of the races we're looking for,
+        // if *any* entrant is in one of the races we're looking for, let's check if they all are
         if let Some((bri, br, p1, p2)) = bracket_races.get(&id) {
+            // but, okay, let's not pick up a weekly from 2 months ago, lmao
+
+            let scheduled = match bri.scheduled() {
+                Some(dt) => dt,
+                None => {
+                    println!("Checking if a racetime race is interesting but the bracket race wasn't scheduled? {:?}", bri);
+                    continue;
+                }
+            };
+            if scheduled.signed_duration_since(started).num_minutes() > 180 {
+                println!("This race was started a very long time ago: {}", race.started_at);
+                continue;
+            }
+
             let e1o = entrant_ids.remove(&p1.racetime_username);
             let e2o = entrant_ids.remove(&p2.racetime_username);
             if let (Some(e1), Some(e2)) = (e1o, e2o) {
@@ -124,9 +146,9 @@ pub enum RaceFinishError {
 /**
 This function does these things:
 
-    1. set the result fields on the race, and update its state to finished if relevant
-    2. saves that race
-    3. if a [Client] is supplied, posts a message in #match-results
+1. set the result fields on the race, and update its state to finished if relevant
+2. saves that race
+3. if a [Client] is supplied, posts a message in #match-results
 */
 pub async fn trigger_race_finish(
     mut br: BracketRace,
@@ -214,10 +236,27 @@ mod tests {
     use crate::worker_funcs::interesting_race;
     use std::collections::HashMap;
     use std::fs::read_to_string;
+    use chrono::{DateTime, TimeZone, Utc};
+
+    #[test]
+    fn test_rfc3339() {
+        let whatever = DateTime::parse_from_rfc3339("2022-11-02T00:58:02.790200800+00:00");
+        assert!(whatever.is_ok());
+    }
+    #[test]
+    fn test_date_math() {
+        let scheduled = Utc.timestamp(1667349918, 0);
+        let race_started_very_old = DateTime::parse_from_rfc3339("2022-10-23T19:07:20.025Z").unwrap();
+        let dur = scheduled.signed_duration_since(race_started_very_old);
+        assert!(dur.num_minutes() > 100);
+        let race_started = DateTime::parse_from_rfc3339("2022-11-02T00:58:02.790200800+00:00").unwrap();
+        assert!(dur.num_minutes() > 100);
+    }
 
     #[test]
     fn test_interesting_race() {
-        let race = RacetimeRace {
+        let now = Utc::now();
+        let mut race = RacetimeRace {
             name: "asdf".to_string(),
             status: RaceStatus {
                 value: "finished".to_string(),
@@ -244,7 +283,7 @@ mod tests {
                 },
             ],
             opened_at: "".to_string(),
-            started_at: "".to_string(),
+            started_at: now.to_rfc3339(),
             ended_at: "".to_string(),
             goal: Goal {
                 name: "Any% NMG".to_string(),
@@ -265,16 +304,18 @@ mod tests {
         let bri = BracketRaceInfo {
             id: 1,
             bracket_race_id: 1,
-            scheduled_for: None, // little white lie
+            scheduled_for: Some(now.timestamp()), // little white lie
             scheduled_event_id: None,
             commportunities_message_id: None,
             restream_request_message_id: None,
+            racetime_gg_url: None,
         };
         let p1 = Player {
             id: 1,
             name: "player 1".to_string(),
             discord_id: "1234".to_string(),
             racetime_username: "p1#1234".to_string(),
+            twitch_user_login: "p1_ttv".to_string(),
             restreams_ok: 1,
         };
         let p2 = Player {
@@ -282,13 +323,14 @@ mod tests {
             name: "player 2".to_string(),
             discord_id: "3456".to_string(),
             racetime_username: "p2#1234".to_string(),
+            twitch_user_login: "p2_ttv".to_string(),
             restreams_ok: 1,
         };
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone(), (&bri, &br, &p1, &p2));
         races.insert(p2.racetime_username.clone(), (&bri, &br, &p1, &p2));
-        let whatever = interesting_race(race, &races);
-        assert!(whatever.is_some());
+        let whatever = interesting_race(&mut race, &races);
+        assert!(whatever.is_some(), "{:?}", whatever);
         let (_, _, (p1, e1), (p2, e2)) = whatever.unwrap();
         assert_eq!(p1.racetime_username, e1.user.full_name);
         assert_eq!(p2.racetime_username, e2.user.full_name);
@@ -296,7 +338,8 @@ mod tests {
 
     #[test]
     fn test_uninteresting_race() {
-        let race = RacetimeRace {
+        let now = Utc::now();
+        let mut race = RacetimeRace {
             name: "asdf".to_string(),
             status: RaceStatus {
                 value: "finished".to_string(),
@@ -323,7 +366,7 @@ mod tests {
                 },
             ],
             opened_at: "".to_string(),
-            started_at: "".to_string(),
+            started_at: now.to_rfc3339(),
             ended_at: "".to_string(),
 
             goal: Goal {
@@ -345,10 +388,10 @@ mod tests {
         let bri = BracketRaceInfo {
             id: 1,
             bracket_race_id: 1,
-            scheduled_for: None, // little white lie
+            scheduled_for: Some(now.timestamp()), // little white lie
             scheduled_event_id: None,
             commportunities_message_id: None,
-            restream_request_message_id: None,
+            restream_request_message_id: None,racetime_gg_url: None,
         };
         let p1 = Player {
             id: 1,
@@ -356,18 +399,20 @@ mod tests {
             discord_id: "1234".to_string(),
             racetime_username: "p1#1234".to_string(),
             restreams_ok: 1,
+            twitch_user_login: "p1_ttv".to_string(),
         };
         let p3 = Player {
             id: 3,
             name: "player 3".to_string(),
             discord_id: "3456".to_string(),
             racetime_username: "p3#1234".to_string(),
+            twitch_user_login: "p3_ttv".to_string(),
             restreams_ok: 1,
         };
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone(), (&bri, &br, &p1, &p3));
         races.insert(p3.racetime_username.clone(), (&bri, &br, &p1, &p3));
-        let whatever = interesting_race(race, &races);
+        let whatever = interesting_race(&mut race, &races);
         assert!(whatever.is_none());
     }
 

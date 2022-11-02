@@ -1,3 +1,4 @@
+use chrono::{DateTime, FixedOffset};
 use serde::Deserialize;
 use thiserror::Error;
 use crate::models::bracket_races::PlayerResult;
@@ -83,7 +84,31 @@ pub struct RacetimeRace {
     pub goal: Goal,
 }
 
+impl RacetimeRace {
+    pub fn started_at(&self) -> Result<DateTime<FixedOffset>, chrono::ParseError> {
+        DateTime::parse_from_rfc3339(&self.started_at)
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct Races {
     pub races: Vec<RacetimeRace>,
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{Datelike, DateTime, Timelike};
+
+    #[test]
+    fn test_parse_rtgg_date() {
+        let date = "2022-10-23T18:45:05.135Z";
+        let dtr = DateTime::parse_from_rfc3339(date);
+        assert!(dtr.is_ok());
+        let dt = dtr.unwrap();
+        assert_eq!(2022, dt.year());
+        assert_eq!(10, dt.month());
+        assert_eq!(23, dt.day());
+        assert_eq!(18, dt.hour());
+
+    }
 }
