@@ -83,7 +83,7 @@ async fn maybe_do_race_stuff(
         // this is awful, i hate doing it this way, i'm just tired of thinking about this
         let mutable_br = br.clone();
         let mut mutable_bri = bri.clone();
-        mutable_bri.racetime_gg_url = Some(race.url.clone());
+        mutable_bri.racetime_gg_url = Some(format!("https://racetime.gg{}", race.url));
         let p1r = e1.result()?;
         let p2r = e2.result()?;
         let mut conn = state.diesel_cxn().await?;
