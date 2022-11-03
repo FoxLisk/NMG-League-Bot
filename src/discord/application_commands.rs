@@ -1,8 +1,5 @@
 use crate::constants::WEBSITE_URL;
-use crate::discord::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD,
-    CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, SCHEDULE_RACE_CMD,
-};
+use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,
     CommandOptionValue, CommandType, NumberCommandOptionData,
@@ -175,7 +172,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
-    let hours = (1..=12)
+    let hours: Vec<CommandOptionChoice> = (1..=12)
         .map(|s| CommandOptionChoice::Int {
             name: format!("{}", s),
             name_localizations: None,
@@ -202,7 +199,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     )
     .option(CommandOption::Integer(NumberCommandOptionData {
         autocomplete: false,
-        choices: hours,
+        choices: hours.clone(),
         description: "Hour".to_string(),
         description_localizations: None,
         max_value: None,
@@ -224,7 +221,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .option(CommandOption::String(ChoiceCommandOptionData {
         autocomplete: false,
-        choices: ampm_opts,
+        choices: ampm_opts.clone(),
         description: "AM/PM".to_string(),
         description_localizations: None,
         max_length: None,
@@ -317,6 +314,70 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+
+    let reschedule_race = CommandBuilder::new(
+        RESCHEDULE_RACE_CMD.to_string(),
+        "Reschedule someone else's race".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: format!("Race ID. Get this from {}", WEBSITE_URL),
+            description_localizations: None,
+            max_value: None,
+            min_value: None,
+            name: "race_id".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: hours,
+            description: "Hour".to_string(),
+            description_localizations: None,
+            max_value: None,
+            min_value: None,
+            name: "hour".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Minute (1-59 to avoid noon/midnight confusion)".to_string(),
+            description_localizations: None,
+            max_value: Some(CommandOptionValue::Integer(59)),
+            min_value: Some(CommandOptionValue::Integer(1)),
+            name: "minute".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: ampm_opts,
+            description: "AM/PM".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "am_pm".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: true,
+            choices: vec![],
+            description: "Day (yyyy/mm/dd format) (wait for suggestions)".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "day".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .build();
+
     vec![
         create_race,
         cancel_race,
@@ -327,5 +388,6 @@ pub fn application_command_definitions() -> Vec<Command> {
         schedule_race,
         report_race,
         generate_pairings,
+        reschedule_race
     ]
 }

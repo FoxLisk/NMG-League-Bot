@@ -1,6 +1,7 @@
 use std::error::Error;
 use chrono::{Duration, NaiveDateTime};
 use std::ffi::OsStr;
+use std::fmt::Display;
 use std::str::FromStr;
 use diesel::SqliteConnection;
 use twilight_model::channel::embed::EmbedField;
@@ -105,12 +106,11 @@ pub trait ResultErrToString<T> {
     fn map_err_to_string(self) -> Result<T, String>;
 }
 
-impl<T, E: Error> ResultErrToString<T> for Result<T, E> {
+impl<T, E: Display> ResultErrToString<T> for Result<T, E> {
     fn map_err_to_string(self) -> Result<T, String> {
         self.map_err(|e| e.to_string())
     }
 }
-
 
 pub fn uuid_string() -> String {
     uuid::Uuid::new_v4().to_string()

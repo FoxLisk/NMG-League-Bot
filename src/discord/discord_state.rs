@@ -33,6 +33,8 @@ pub struct DiscordState {
     // this isn't handled by the cache b/c it is not updated via Gateway events
     private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
     application_id: Id<ApplicationMarker>,
+    // this is really embarrassing and at some point i'll regret writing all this code that assumes
+    // this is a one-discord bot, maybe
     gid: Id<GuildMarker>,
     pub channel_config: ChannelConfig,
 }
@@ -180,5 +182,9 @@ impl DiscordState {
         // return Err(RunError::User(ConnectionError::BadConnection("asdf".to_string())));
         let pc = self.diesel_pool.get().await;
         pc
+    }
+
+    pub fn guild_id(&self) -> Id<GuildMarker> {
+        self.gid.clone()
     }
 }
