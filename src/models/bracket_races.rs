@@ -173,15 +173,16 @@ impl BracketRace {
         Ok((prior, info))
     }
 
-    /// only works on runs in the New or Scheduled state
+    /// only works on runs in the New or Scheduled state unless force is true
     /// will overwrite existing partial results with new results but won't set them to null
     /// updates state & outcome to finished if that is the case
     pub fn add_results(
         &mut self,
         p1: Option<&PlayerResult>,
         p2: Option<&PlayerResult>,
+        force: bool
     ) -> Result<(), BracketRaceStateError> {
-        if self.state()? == BracketRaceState::Finished {
+        if !force && self.state()? == BracketRaceState::Finished {
             return Err(BracketRaceStateError::InvalidState);
         }
         if let Some(p1r) = p1 {

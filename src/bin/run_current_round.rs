@@ -10,7 +10,7 @@ use nmg_league_bot::models::brackets::Bracket;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::utils::env_var;
-use nmg_league_bot::worker_funcs::trigger_race_finish;
+use nmg_league_bot::worker_funcs::{RaceFinishOptions, trigger_race_finish};
 
 fn hms_to_secs(h: u32, m: u32, s: u32) -> u32 {
     s + (m * 60) + (h * 60 * 60)
@@ -58,14 +58,20 @@ async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, c
             };
             let mut info = race.info(conn).unwrap();
             info.racetime_gg_url = Some("https://racetime.gg/whatever-this-is-fake-testing-stuff".to_string());
+            let opts = RaceFinishOptions {
+                bracket_race: race,
+                info,
+                player_1: player,
+                player_1_result: p1r,
+                player_2: other_guy,
+                player_2_result: p2r,
+                force_update: false,
+                channel_id: chans.match_results
+            };
             trigger_race_finish(
-                race,
-                &info,
-                (&player, p1r),
-                (&other_guy, p2r),
+                opts,
                 conn,
                 None,
-                &chans
             ).await.unwrap();
         } else {
             println!("Race already finished: {:?}", race);

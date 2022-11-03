@@ -13,7 +13,7 @@ pub trait MentionOptional {
     fn mention_maybe(&self) -> Option<String>;
 }
 
-#[derive(Queryable, Debug)]
+#[derive(Queryable, Debug, Clone)]
 pub struct Player {
     pub id: i32,
     /// display name

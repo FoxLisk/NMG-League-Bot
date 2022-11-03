@@ -8,10 +8,7 @@ use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
-use nmg_league_bot::worker_funcs::{
-    get_races_that_should_be_finishing_soon, interesting_race, races_by_player_rtgg,
-    trigger_race_finish,
-};
+use nmg_league_bot::worker_funcs::{get_races_that_should_be_finishing_soon, interesting_race, RaceFinishOptions, races_by_player_rtgg, trigger_race_finish};
 use racetime_api::client::RacetimeClient;
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::{PastCategoryRaces, PastCategoryRacesBuilder};
@@ -87,14 +84,20 @@ async fn maybe_do_race_stuff(
         let p1r = e1.result()?;
         let p2r = e2.result()?;
         let mut conn = state.diesel_cxn().await?;
+        let opts = RaceFinishOptions {
+            bracket_race: mutable_br,
+            info: mutable_bri,
+            player_1: p1.clone(),
+            player_1_result: p1r,
+            player_2: p2.clone(),
+            player_2_result: p2r,
+            channel_id: state.channel_config.match_results,
+            force_update: false
+        };
         if let Err(e) = trigger_race_finish(
-            mutable_br,
-            &mutable_bri,
-            (p1, p1r),
-            (p2, p2r),
+            opts,
             conn.deref_mut(),
             Some(&state.client),
-            &state.channel_config,
         )
         .await
         {

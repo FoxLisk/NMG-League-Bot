@@ -1,5 +1,5 @@
 use crate::constants::WEBSITE_URL;
-use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD};
+use crate::discord::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,
     CommandOptionValue, CommandType, NumberCommandOptionData,
@@ -295,6 +295,59 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+
+    let update_finished_race = CommandBuilder::new(
+        UPDATE_FINISHED_RACE_CMD.to_string(),
+        "Report race".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Race id".to_string(),
+            description_localizations: None,
+            max_value: None,
+            min_value: None,
+            name: "race_id".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: r#"Player 1 result ("forfeit" if forfeit, h:mm:ss otherwise)"#.to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "p1_result".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: r#"Player 2 result ("forfeit" if forfeit, h:mm:ss otherwise)"#.to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "p2_result".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Racetime url (if any)".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "racetime_url".to_string(),
+            name_localizations: None,
+            required: false,
+        }))
+        .build();
+
     let generate_pairings = CommandBuilder::new(
         GENERATE_PAIRINGS_CMD.to_string(),
         "Generate next round pairings for a bracket".to_string(),
@@ -388,6 +441,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         schedule_race,
         report_race,
         generate_pairings,
-        reschedule_race
+        reschedule_race,
+        update_finished_race
     ]
 }

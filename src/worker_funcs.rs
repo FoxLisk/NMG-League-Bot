@@ -17,6 +17,8 @@ use std::collections::HashMap;
 use thiserror::Error;
 use twilight_http::Client;
 use twilight_model::channel::embed::{Embed, EmbedField};
+use twilight_model::id::Id;
+use twilight_model::id::marker::ChannelMarker;
 use twilight_validate::message::MessageValidationError;
 
 /// races that are not in finished state and that are scheduled to have started recently
@@ -143,6 +145,20 @@ pub enum RaceFinishError {
     NotFinished,
 }
 
+// this really really sucks. lots of this stuff should be references, but that's just
+// not super how models work, or at least not the way they are working here in this application
+// so this ends up being constructed like "hurr durr race.clone()" sad sad sad
+pub struct RaceFinishOptions {
+    pub bracket_race: BracketRace,
+    pub info: BracketRaceInfo,
+    pub player_1: Player,
+    pub player_1_result: PlayerResult,
+    pub player_2: Player,
+    pub player_2_result: PlayerResult,
+    pub channel_id: Id<ChannelMarker>,
+    pub force_update: bool,
+}
+
 /**
 This function does these things:
 
@@ -151,39 +167,33 @@ This function does these things:
 3. if a [Client] is supplied, posts a message in #match-results
 */
 pub async fn trigger_race_finish(
-    mut br: BracketRace,
-    bri: &BracketRaceInfo,
-    p1: (&Player, PlayerResult),
-    p2: (&Player, PlayerResult),
+    mut options: RaceFinishOptions,
     conn: &mut SqliteConnection,
     client: Option<&Client>,
-    channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
-    let (p1, p1res) = p1;
-    let (p2, p2res) = p2;
-    br.add_results(Some(&p1res), Some(&p2res))?;
-    br.update(conn)?;
+    options.bracket_race.add_results(Some(&options.player_1_result), Some(&options.player_2_result), options.force_update)?;
+    options.bracket_race.update(conn)?;
 
     if let Some(c) = client {
-        let bracket = br.bracket(conn)?;
-        let outcome = br.outcome()?.ok_or(RaceFinishError::NotFinished)?;
+        let bracket = options.bracket_race.bracket(conn)?;
+        let outcome = options.bracket_race.outcome()?.ok_or(RaceFinishError::NotFinished)?;
         let winner = match outcome {
             Outcome::Tie => {
                 format!(
                     "It's a tie?! **{}** ({}) vs **{}** ({})",
-                    p1.name, p1res, p2.name, p2res
+                    options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
                 )
             }
             Outcome::P1Win => {
                 format!(
                     "**{}** ({}) defeats **{}** ({})",
-                    p1.name, p1res, p2.name, p2res
+                    options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
                 )
             }
             Outcome::P2Win => {
                 format!(
                     "**{}** ({}) defeats **{}** ({})",
-                    p2.name, p2res, p1.name, p1res
+                    options.player_2.name, options.player_2_result, options.player_1.name, options.player_1_result
                 )
             }
         };
@@ -192,7 +202,7 @@ pub async fn trigger_race_finish(
             name: "Division".to_string(),
             value: bracket.name,
         }];
-        if let Some(url) = &bri.racetime_gg_url {
+        if let Some(url) = &options.info.racetime_gg_url {
             fields.push(EmbedField {
                 inline: false,
                 name: "RaceTime room".to_string(),
@@ -216,7 +226,7 @@ pub async fn trigger_race_finish(
             video: None,
         };
         c
-            .create_message(channel_config.match_results)
+            .create_message(options.channel_id)
             .embeds(&vec![embed])?
             .exec()
             .await?;

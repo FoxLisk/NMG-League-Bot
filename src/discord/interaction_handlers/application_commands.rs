@@ -5,7 +5,7 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, REPORT_RACE_CMD, GENERATE_PAIRINGS_CMD, get_opt, RESCHEDULE_RACE_CMD};
+use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, REPORT_RACE_CMD, GENERATE_PAIRINGS_CMD, get_opt, RESCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
 use crate::{get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
@@ -46,7 +46,7 @@ use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
-use nmg_league_bot::worker_funcs::trigger_race_finish;
+use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
 use thiserror::Error;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
@@ -91,6 +91,7 @@ pub async fn handle_application_interaction(
         }
     };
 
+
     // admin commands
     match ac.name.as_str() {
         CREATE_PLAYER_CMD => {
@@ -126,6 +127,10 @@ pub async fn handle_application_interaction(
         }
         REPORT_RACE_CMD => {
             admin_command_wrapper( handle_report_race(ac, state).await.map(Option::from))
+        }
+
+        UPDATE_FINISHED_RACE_CMD => {
+            admin_command_wrapper( handle_rereport_race(ac, state).await.map(Option::from))
         }
 
         _ => {
@@ -1016,19 +1021,17 @@ async fn handle_create_bracket(
 }
 
 
-async fn handle_report_race(
-    mut ac: Box<CommandData>,
-    state: &Arc<DiscordState>,
-) -> Result<InteractionResponse, String> {
-    let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
-    let p1_res = get_opt!("p1_result", &mut ac.options, String)?;
-    let p2_res = get_opt!("p2_result", &mut ac.options, String)?;
-    let racetime_url = get_opt!("racetime_url", &mut ac.options, String).ok();
+// wow dude great function name
+async fn get_race_finish_opts_from_command_opts(options: &mut Vec<CommandDataOption>, state: &Arc<DiscordState>, force: bool) -> Result<RaceFinishOptions, String> {
+    let race_id = get_opt!("race_id", options, Integer)?;
+    let p1_res = get_opt!("p1_result", options, String)?;
+    let p2_res = get_opt!("p2_result", options, String)?;
+    let racetime_url = get_opt!("racetime_url", options, String).ok();
     let r1 = if p1_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
         PlayerResult::Finish(
-        parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?
+            parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?
         )
     };
 
@@ -1036,7 +1039,7 @@ async fn handle_report_race(
         PlayerResult::Forfeit
     } else {
         PlayerResult::Finish(
-        parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?
+            parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?
         )
     };
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
@@ -1054,11 +1057,58 @@ async fn handle_report_race(
         info.racetime_gg_url = Some(rt);
     }
     let (p1, p2) = race.players(cxn.deref_mut()).map_err_to_string()?;
-    trigger_race_finish(race, &info, (&p1, r1), (&p2, r2), cxn.deref_mut(), Some(&state.client), &state.channel_config)
+    Ok(RaceFinishOptions {
+        bracket_race: race,
+        info,
+        player_1: p1,
+        player_1_result: r1,
+        player_2: p2,
+        player_2_result: r2,
+        channel_id: state.channel_config.match_results,
+        force_update: force
+    })
+}
+
+
+
+async fn handle_report_race(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let opts = get_race_finish_opts_from_command_opts(&mut ac.options, state, false).await?;
+    let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
+    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client))
         .await
         .map(|_|plain_interaction_response(format!(
-            "Race {} vs {} has been updated. You should see a post in {}",
-            p1.mention_or_name(), p2.mention_or_name(),
+            "Race has been updated. You should see a post in {}",
+            state.channel_config.match_results.mention()
+        )))
+        .map_err(|e| match e {
+            RaceFinishError::BracketRaceStateError(BracketRaceStateError::InvalidState) => {
+                format!("That race is already finished. Please use `/{UPDATE_FINISHED_RACE_CMD}` if you are trying to \
+                change the results of a finished race.")
+            }
+            e => e.to_string()
+        })
+}
+
+
+async fn handle_rereport_race(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let opts = get_race_finish_opts_from_command_opts(&mut ac.options, state, true).await?;
+    if opts.bracket_race.state().map_err_to_string()? != BracketRaceState::Finished {
+        return Err(format!(
+            "That race is not yet reported. Please use `/{REPORT_RACE_CMD}` if you are trying to \
+            report an unfinished race."
+        ));
+    }
+    let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
+    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client))
+        .await
+        .map(|_|plain_interaction_response(format!(
+            "Race has been updated. You should see a post in {}",
             state.channel_config.match_results.mention()
         )))
         .map_err_to_string()
