@@ -72,6 +72,7 @@ async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, c
                 opts,
                 conn,
                 None,
+                &ChannelConfig::new_from_env(),
             ).await.unwrap();
         } else {
             println!("Race already finished: {:?}", race);

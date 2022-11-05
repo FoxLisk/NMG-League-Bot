@@ -5,14 +5,15 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, SCHEDULE_RACE_CMD, REPORT_RACE_CMD, GENERATE_PAIRINGS_CMD, get_opt, RESCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
-use crate::{get_focused_opt, get_opt};
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD,CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD,REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
+use crate::discord::{ErrorResponse,   notify_racer, };
+use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{get_current_round_race_for_player, BracketRaceStateError, PlayerResult, BracketRace, BracketRaceState};
+use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError, get_current_round_race_for_player, PlayerResult};
 use nmg_league_bot::models::brackets::{Bracket, NewBracket};
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -24,7 +25,6 @@ use std::sync::Arc;
 use bb8::RunError;
 use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel::result::Error;
-use serde_json::de::Read;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::Client;
@@ -43,11 +43,8 @@ use twilight_model::http::interaction::{
 use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
 use twilight_model::id::Id;
 use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
-use twilight_model::util::Timestamp as ModelTimestamp;
-use twilight_util::builder::embed::EmbedFooterBuilder;
 use twilight_validate::message::MessageValidationError;
 use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
-use thiserror::Error;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
@@ -278,7 +275,7 @@ async fn _handle_schedule_race_cmd(
             format!("Error fetching race for player: {}", e),
         )
     })?;
-    let mut the_race = match race_opt {
+    let the_race = match race_opt {
         Some(r) => r,
         None => {
             return Ok(Some(plain_interaction_response(
@@ -287,205 +284,10 @@ async fn _handle_schedule_race_cmd(
         }
     };
 
-    match schedule_race(the_race, dt, state).await {
+    match discord::schedule_race(the_race, dt, state).await {
         Ok(s) => Ok(Some(plain_interaction_response(s))),
         Err(e) => Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e))
     }
-}
-
-#[derive(Error, Debug)]
-enum ScheduleRaceError {
-    #[error("Connection error: {0}")]
-    ConnectionError(#[from] RunError<ConnectionError>),
-    #[error("Race already finished")]
-    RaceFinished,
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] diesel::result::Error),
-    #[error("Bracket race state error: {0}")]
-    BracketRaceStateError(#[from] BracketRaceStateError)
-}
-
-/// Returns a nicely formatted message to return to chat
-async fn schedule_race<Tz: TimeZone> (mut the_race: BracketRace, when: DateTime<Tz>, state: &Arc<DiscordState>) -> Result<String, ScheduleRaceError> {
-    if the_race.state()? == BracketRaceState::Finished {
-        return Err(ScheduleRaceError::RaceFinished);
-    }
-    let mut cxn = state.diesel_cxn().await?;
-    let conn = cxn.deref_mut();
-
-    let (old_info, mut new_info) = the_race.schedule(&when, conn)?;
-
-    let p1r = Player::get_by_id(the_race.player_1_id, conn);
-    let p1_name = p1r
-        .mention_maybe()
-        .unwrap_or("Error finding player".to_string());
-
-    let p2r = Player::get_by_id(the_race.player_2_id, conn);
-    let p2_name = p2r
-        .mention_maybe()
-        .unwrap_or("Error finding player".to_string());
-    if let (Ok(Some(p1)), Ok(Some(p2))) = (p1r, p2r) {
-        let bracket_name = the_race
-            .bracket(conn)
-            .map(|b| b.name)
-            .unwrap_or("".to_string());
-        match create_or_update_event(
-            bracket_name,
-            &old_info,
-            &new_info,
-            &p1,
-            &p2,
-            state.guild_id(),
-            &state.client,
-        )
-            .await
-        {
-            Ok(evt) => {
-                new_info.set_scheduled_event_id(evt.id);
-            }
-            Err(e) => {
-                println!("Error creating event: {}", e);
-            }
-        };
-
-        match create_commportunities_post(&new_info, state).await {
-            Ok(m) => {
-                new_info.set_commportunities_message_id(m.id);
-            }
-            Err(e) => {
-                println!("Error creating commportunities post: {:?}", e);
-            }
-        };
-        if let Some(old_commp_id) = old_info.get_commportunities_message_id() {
-            if let Err(err) = state
-                .client
-                .delete_message(state.channel_config.commportunities, old_commp_id)
-                .exec()
-                .await
-            {
-                println!(
-                    "Error deleting old commportunities post upon reschedule: {}",
-                    err
-                );
-            }
-        }
-
-        if let Err(e) = new_info.update(conn) {
-            println!("Error updating bracket race info: {:?}", e);
-        }
-    }
-
-    let new_t =
-        MentionTimestamp::new(when.timestamp() as u64, Some(TimestampStyle::LongDateTime)).mention();
-    let old_t = old_info
-        .scheduled()
-        .map(|t| {
-            format!(
-                " (was {})",
-                MentionTimestamp::new(t.timestamp() as u64, Some(TimestampStyle::LongDateTime))
-                    .mention()
-            )
-        })
-        .unwrap_or("".to_string());
-    Ok(format!(
-        "{p1_name} vs {p2_name} has been scheduled for {new_t}{old_t}"
-    ))
-}
-
-
-/// "commentary opportunities"
-async fn create_commportunities_post(
-    info: &BracketRaceInfo,
-    state: &Arc<DiscordState>,
-) -> Result<Message, String> {
-    // TODO: i'm losing my mind at the number of extra SQL queries here
-    // it doesn't REALLY matter but alksdjflkajsklfj 😱
-    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let fields = race_to_nice_embeds(info, cxn.deref_mut()).map_err(|e| e.to_string())?;
-    let embeds = vec![Embed {
-        author: None,
-        color: Some(0x00b0f0),
-        description: None,
-        fields,
-        footer: Some(EmbedFooterBuilder::new("React to volunteer").build()),
-        image: None,
-        kind: "rich".to_string(),
-        provider: None,
-        thumbnail: None,
-        timestamp: None,
-        title: Some(format!("New match available for commentary")),
-        url: None,
-        video: None,
-    }];
-    let msg = state
-        .client
-        .create_message(state.channel_config.commportunities.clone())
-        .embeds(&embeds)
-        .map_err_to_string()?
-        .exec()
-        .await
-        .map_err_to_string()?;
-
-    let m = msg.model().await.map_err_to_string()?;
-    let emojum = RequestReactionType::Unicode { name: "🎙" };
-    if let Err(e) = state
-        .client
-        .create_reaction(m.channel_id, m.id, &emojum)
-        .exec()
-        .await
-    {
-        println!(
-            "Error adding initial reaction to commportunity post: {:?}",
-            e
-        );
-    }
-    Ok(m)
-}
-
-async fn create_or_update_event(
-    bracket_name: String,
-    old_info: &BracketRaceInfo,
-    new_info: &BracketRaceInfo,
-    p1: &Player,
-    p2: &Player,
-    gid: Id<GuildMarker>,
-    client: &Client,
-) -> Result<GuildScheduledEvent, String> {
-    let when = new_info
-        .scheduled()
-        .ok_or("Error: No timestamp on new bracket race info".to_string())?;
-    let start = ModelTimestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
-    let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
-        .map_err(|e| e.to_string())?;
-
-    let req = if let Some(existing_id) = old_info.get_scheduled_event_id() {
-        client
-            .update_guild_scheduled_event(gid, existing_id)
-            .scheduled_start_time(&start)
-            .scheduled_end_time(Some(&end))
-            .exec()
-    } else {
-        client
-            .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
-            .external(
-                &format!("{} vs {}", p1.name, p2.name),
-                &format!(
-                    "https://multistre.am/{}/{}/layout4/",
-                    p1.twitch_user_login, p2.twitch_user_login
-                ),
-                &start,
-                &end,
-            )
-            .map_err(|e| e.to_string())?
-            .exec()
-    };
-    let resp = req.await.map_err(|e| e.to_string())?;
-    resp.model().await.map_err(|e| {
-        format!(
-            "Error setting event id on race: couldn't deserialize body?! {}",
-            e
-        )
-    })
 }
 
 fn handle_schedule_race_autocomplete(
@@ -544,20 +346,20 @@ async fn handle_schedule_race(
 
 async fn _handle_reschedule_race_cmd(
     mut ac: Box<CommandData>,
-    mut interaction: Box<InteractionCreate>,
+    mut _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
     let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
         Ok(br) => br,
-        Err(diesel::result::Error::NotFound) => {
+        Err(Error::NotFound) => {
             return Err(format!("Race #{race_id} not found."));
         },
         Err(e) => return Err(e.to_string())
     };
     let when = get_datetime_from_scheduling_cmd(&mut ac.options).map_err_to_string()?;
-    schedule_race(race, when, state).await.map(|s| Some(plain_interaction_response(s))).map_err_to_string()
+    discord::schedule_race(race, when, state).await.map(|s| Some(plain_interaction_response(s))).map_err_to_string()
 }
 
 async fn handle_reschedule_race(
@@ -1043,7 +845,7 @@ async fn get_race_finish_opts_from_command_opts(options: &mut Vec<CommandDataOpt
         )
     };
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    let mut race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
+    let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
         Ok(r) => r,
         Err(diesel::result::Error::NotFound) => {
             return Err("That race ID does not exist".to_string());
@@ -1077,7 +879,7 @@ async fn handle_report_race(
 ) -> Result<InteractionResponse, String> {
     let opts = get_race_finish_opts_from_command_opts(&mut ac.options, state, false).await?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client))
+    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client), &state.channel_config)
         .await
         .map(|_|plain_interaction_response(format!(
             "Race has been updated. You should see a post in {}",
@@ -1105,7 +907,7 @@ async fn handle_rereport_race(
         ));
     }
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client))
+    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client), &state.channel_config)
         .await
         .map(|_|plain_interaction_response(format!(
             "Race has been updated. You should see a post in {}",

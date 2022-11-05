@@ -1,6 +1,6 @@
-use std::num::ParseIntError;
 use crate::models::bracket_races::BracketRace;
 use crate::schema::{bracket_race_infos, commentator_signups};
+use std::num::ParseIntError;
 use std::str::FromStr;
 
 use crate::{save_fn, update_fn};
@@ -23,6 +23,8 @@ pub struct BracketRaceInfo {
     pub commportunities_message_id: Option<String>,
     pub restream_request_message_id: Option<String>,
     pub racetime_gg_url: Option<String>,
+    pub tentative_commentary_assignment_message_id: Option<String>,
+    pub commentary_assignment_message_id: Option<String>,
 }
 
 impl BracketRaceInfo {
@@ -82,12 +84,20 @@ impl BracketRaceInfo {
     /// returns the prior scheduled time, if any (as timestamp)
     /// Deletes any existing commentary signups
     /// does *not* persist self
-    pub fn schedule<T: TimeZone>(&mut self, when: &DateTime<T>, conn: &mut SqliteConnection) -> Result<Option<i64>, diesel::result::Error> {
+    pub fn schedule<T: TimeZone>(
+        &mut self,
+        when: &DateTime<T>,
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<i64>, diesel::result::Error> {
         diesel::delete(
-        commentator_signups::table.filter(
-            commentator_signups::bracket_race_info_id.eq(self.id)
-        )).execute(conn)?;
-        Ok( std::mem::replace(&mut self.scheduled_for, Some(when.timestamp())))
+            commentator_signups::table
+                .filter(commentator_signups::bracket_race_info_id.eq(self.id)),
+        )
+        .execute(conn)?;
+        Ok(std::mem::replace(
+            &mut self.scheduled_for,
+            Some(when.timestamp()),
+        ))
     }
 
     pub fn get_scheduled_event_id(&self) -> Option<Id<ScheduledEventMarker>> {
@@ -120,6 +130,28 @@ impl BracketRaceInfo {
         std::mem::replace(&mut self.restream_request_message_id, Some(id.to_string()))
     }
 
+
+    /// Returns the old tentative commentary assignment post ID, if any
+    /// (it's a string b/c sqlite)
+    pub fn set_tentative_commentary_assignment_message_id(&mut self, id: Id<MessageMarker>) -> Option<String> {
+        std::mem::replace(&mut self.tentative_commentary_assignment_message_id, Some(id.to_string()))
+    }
+
+    pub fn get_tentative_commentary_assignment_message_id(&self) -> Option<Id<MessageMarker>> {
+        attr_id_to_real_id(&self.tentative_commentary_assignment_message_id)
+    }
+
+    pub fn clear_tentative_commentary_assignment_message_id(&mut self) {
+        self.tentative_commentary_assignment_message_id = None;
+    }
+
+
+    /// Returns the old tentative commentary assignment post ID, if any
+    /// (it's a string b/c sqlite)
+    pub fn set_commentary_assignment_message_id(&mut self, id: Id<MessageMarker>) -> Option<String> {
+        std::mem::replace(&mut self.commentary_assignment_message_id, Some(id.to_string()))
+    }
+
     /// * true if the save succeed,
     /// * false if it failed for unique constraint violation,
     /// * err if any other error occurred
@@ -130,9 +162,12 @@ impl BracketRaceInfo {
     ) -> Result<bool, diesel::result::Error> {
         let nsi = NewCommentatorSignup::new(self, user_id);
         match nsi.save(conn) {
-            Ok(_) => {Ok(true)}
-            Err(diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _)) => {Ok(false)}
-            Err(e) => Err(e)
+            Ok(_) => Ok(true),
+            Err(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                _,
+            )) => Ok(false),
+            Err(e) => Err(e),
         }
     }
 
@@ -142,13 +177,19 @@ impl BracketRaceInfo {
         conn: &mut SqliteConnection,
     ) -> Result<usize, diesel::result::Error> {
         diesel::delete(
-            commentator_signups::table.filter(commentator_signups::discord_id.eq(user_id.to_string()))
-                .filter(commentator_signups::bracket_race_info_id.eq(self.id))
-        ).execute(conn)
+            commentator_signups::table
+                .filter(commentator_signups::discord_id.eq(user_id.to_string()))
+                .filter(commentator_signups::bracket_race_info_id.eq(self.id)),
+        )
+        .execute(conn)
     }
 
-    pub fn commentator_signups(&self, conn: &mut SqliteConnection) -> Result<Vec<CommentatorSignup>, diesel::result::Error> {
-        commentator_signups::table.filter(commentator_signups::bracket_race_info_id.eq(self.id))
+    pub fn commentator_signups(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<CommentatorSignup>, diesel::result::Error> {
+        commentator_signups::table
+            .filter(commentator_signups::bracket_race_info_id.eq(self.id))
             .load(conn)
     }
 
@@ -169,7 +210,9 @@ pub struct NewBracketRaceInfo {
     scheduled_event_id: Option<String>,
     commportunities_message_id: Option<String>,
     restream_request_message_id: Option<String>,
-    racetime_gg_url: Option<String>
+    racetime_gg_url: Option<String>,
+    tentative_commentary_assignment_message_id: Option<String>,
+    commentary_assignment_message_id: Option<String>,
 }
 
 impl NewBracketRaceInfo {
@@ -181,6 +224,8 @@ impl NewBracketRaceInfo {
             commportunities_message_id: None,
             restream_request_message_id: None,
             racetime_gg_url: None,
+            tentative_commentary_assignment_message_id: None,
+            commentary_assignment_message_id: None,
         }
     }
 
