@@ -3,3 +3,4 @@
 db/*
 http/static/css/tailwind.css.bak
 *.db3
+http/static/css/tailwind.css
