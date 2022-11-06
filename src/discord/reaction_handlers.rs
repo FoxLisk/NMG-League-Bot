@@ -3,6 +3,7 @@ use itertools::Itertools;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
+use twilight_http::error::ErrorType;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::embed::{Embed, EmbedField};
@@ -16,6 +17,7 @@ use twilight_validate::message::MessageValidationError;
 use crate::discord::discord_state::DiscordState;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::utils::race_to_nice_embeds;
+use crate::discord::{clear_commportunities_message, clear_tentative_commentary_assignment_message};
 
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {
     println!("Handling reaction removed: {:?}", reaction);
@@ -186,8 +188,13 @@ async fn handle_commentary_confirmation(
         value: comms_string,
     });
 
-    if let Err(e) = create_tentative_commentary_discussion_post(fields.clone(), state).await {
-        println!("Error creating commentary discussion post: {:?}", e);
+    match create_tentative_commentary_discussion_post(fields.clone(), state).await {
+        Ok(m) => {
+            info.set_tentative_commentary_assignment_message_id(m.id);
+        }
+        Err(e) => {
+            println!("Error creating commentary discussion post: {:?}", e);
+        }
     }
     match create_restream_request_post(fields.clone(), state).await {
         Ok(m) => {
@@ -197,17 +204,8 @@ async fn handle_commentary_confirmation(
             println!("Error creating restream request post: {:?}", e);
         }
     }
-    if let Some(commp_msg_id) = info.get_commportunities_message_id() {
-        if let Err(e) = state
-            .client
-            .delete_message(state.channel_config.commportunities, commp_msg_id)
-            .exec()
-            .await
-        {
-            println!("Error deleting commportunities message: {}", e);
-        } else {
-            info.clear_commportunities_message_id();
-        }
+    if let Err(e) = clear_commportunities_message(&mut info, &state.client, &state.channel_config).await {
+        println!("Error clearing commportunities state: {e}");
     }
 
     info.update(conn)?;
@@ -286,12 +284,7 @@ async fn update_scheduled_event(
     let mut s = String::new();
 
     let mut req = state.client.update_guild_scheduled_event(gid, gse_id);
-    let thingy = commentators.map(
-        |comms| format!(
-            " with comms by {}",
-            comms.iter().join(" and ")
-        )
-    );
+    let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
 
     if let Some(comm_str) = thingy.as_ref() {
         req = req.description(Some(comm_str))?;
@@ -387,7 +380,7 @@ async fn create_sirius_inbox_post(
 }
 
 async fn handle_restream_request_reaction(
-    info: BracketRaceInfo,
+    mut info: BracketRaceInfo,
     reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
@@ -400,24 +393,26 @@ async fn handle_restream_request_reaction(
     };
     if let Some(gse_id) = info.get_scheduled_event_id() {
         if let Some(gid) = reaction.guild_id {
-            if let Err(e) =
-                update_scheduled_event(gid, gse_id, None, Some(format!("https://twitch.tv/{chan}")), state).await
+            if let Err(e) = update_scheduled_event(
+                gid,
+                gse_id,
+                None,
+                Some(format!("https://twitch.tv/{chan}")),
+                state,
+            )
+            .await
             {
                 println!("Error updating scheduled event: {:?}", e);
             }
         }
     }
 
-
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
     let comms = info.commentator_signups(conn)?;
-    let comm_ids: Vec<Id<UserMarker>> = comms
+    let comm_ids: Vec<Id<UserMarker>> = comms.iter().map(|c| c.discord_id()).flatten().collect();
+    let comm_names: Vec<String> = comm_ids
         .iter()
-        .map(|c| c.discord_id())
-        .flatten()
-        .collect();
-    let comm_names: Vec<String> = comm_ids.iter()
         .map(|did| {
             state
                 .cache
@@ -462,14 +457,35 @@ async fn handle_restream_request_reaction(
     pings.push(p1.mention_or_name());
     pings.push(p2.mention_or_name());
 
-    state
+    match state
         .client
         .create_message(state.channel_config.commentary_discussion)
         .embeds(&embeds)?
         .content(&pings.join(" "))?
         .allowed_mentions(Some(&AllowedMentionsBuilder::new().users().build()))
         .exec()
-        .await?;
+        .await
+    {
+        Ok(rm) => match rm.model().await {
+            Ok(m) => {
+                info.set_commentary_assignment_message_id(m.id);
+            }
+            Err(e) => {
+                println!("Error after creating commentary assignment message: {e}");
+            }
+        },
+        Err(e) => {
+            println!(
+                "Error creating commentary discussion message for bri {}: {e}",
+                info.id
+            );
+        }
+    }
+
+    if let Err(e) = clear_tentative_commentary_assignment_message(&mut info, &state.client, &state.channel_config).await {
+        println!("Error clearing tentative commentary assignment: {e}");
+    }
+    info.update(conn)?;
 
     Ok(())
 }

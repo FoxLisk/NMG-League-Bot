@@ -1,0 +1,2 @@
+ALTER TABLE bracket_race_infos ADD COLUMN tentative_commentary_assignment_message_id TEXT NULL;
+ALTER TABLE bracket_race_infos ADD COLUMN commentary_assignment_message_id TEXT NULL;

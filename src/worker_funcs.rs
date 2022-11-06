@@ -9,14 +9,16 @@ use crate::models::bracket_races::{
 use crate::models::player::Player;
 use crate::racetime_types::{Entrant, RacetimeRace};
 use crate::schema::{bracket_race_infos, bracket_races};
-use crate::ChannelConfig;
+use crate::{ChannelConfig, NMGLeagueBotError};
 use chrono::{DateTime, Duration, FixedOffset, ParseError, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use std::collections::HashMap;
 use thiserror::Error;
 use twilight_http::Client;
+use twilight_http::response::DeserializeBodyError;
 use twilight_model::channel::embed::{Embed, EmbedField};
+use twilight_model::channel::Message;
 use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_validate::message::MessageValidationError;
@@ -143,6 +145,9 @@ pub enum RaceFinishError {
 
     #[error("Race wasn't finished?")]
     NotFinished,
+
+    #[error("Error deserializing discord response: {0}")]
+    DeserializeBodyError(#[from] DeserializeBodyError)
 }
 
 // this really really sucks. lots of this stuff should be references, but that's just
@@ -170,69 +175,147 @@ pub async fn trigger_race_finish(
     mut options: RaceFinishOptions,
     conn: &mut SqliteConnection,
     client: Option<&Client>,
+    channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
     options.bracket_race.add_results(Some(&options.player_1_result), Some(&options.player_2_result), options.force_update)?;
     options.bracket_race.update(conn)?;
 
     if let Some(c) = client {
-        let bracket = options.bracket_race.bracket(conn)?;
-        let outcome = options.bracket_race.outcome()?.ok_or(RaceFinishError::NotFinished)?;
-        let winner = match outcome {
-            Outcome::Tie => {
-                format!(
-                    "It's a tie?! **{}** ({}) vs **{}** ({})",
-                    options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
-                )
-            }
-            Outcome::P1Win => {
-                format!(
-                    "**{}** ({}) defeats **{}** ({})",
-                    options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
-                )
-            }
-            Outcome::P2Win => {
-                format!(
-                    "**{}** ({}) defeats **{}** ({})",
-                    options.player_2.name, options.player_2_result, options.player_1.name, options.player_1_result
-                )
-            }
-        };
-        let mut fields = vec![EmbedField {
-            inline: false,
-            name: "Division".to_string(),
-            value: bracket.name,
-        }];
-        if let Some(url) = &options.info.racetime_gg_url {
-            fields.push(EmbedField {
-                inline: false,
-                name: "RaceTime room".to_string(),
-                value: url.clone(),
-            })
+        if let Err(e) = post_match_results(c, &options, conn).await {
+            println!("Error posting match results for race {}: {e}", options.bracket_race.id);
         }
-
-        let embed = Embed {
-            author: None,
-            color: None,
-            description: Some(winner),
-            fields,
-            footer: None,
-            image: None,
-            kind: "rich".to_string(),
-            provider: None,
-            thumbnail: None,
-            timestamp: None,
-            title: None,
-            url: None,
-            video: None,
-        };
-        c
-            .create_message(options.channel_id)
-            .embeds(&vec![embed])?
-            .exec()
-            .await?;
+        if let Err(e) = clear_commportunities_message(&mut options.info, c, channel_config).await {
+            println!("Error clearing commportunities message for race {}: {e}", options.bracket_race.id);
+        }
+        // TODO: maybe clear other messages? under some circumstances?
     }
 
     Ok(())
+}
+
+async fn post_match_results(c: &Client, options: &RaceFinishOptions, conn: &mut SqliteConnection) -> Result<Message, RaceFinishError> {
+
+    let bracket = options.bracket_race.bracket(conn)?;
+    let outcome = options.bracket_race.outcome()?.ok_or(RaceFinishError::NotFinished)?;
+    let winner = match outcome {
+        Outcome::Tie => {
+            format!(
+                "It's a tie?! **{}** ({}) vs **{}** ({})",
+                options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
+            )
+        }
+        Outcome::P1Win => {
+            format!(
+                "**{}** ({}) defeats **{}** ({})",
+                options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
+            )
+        }
+        Outcome::P2Win => {
+            format!(
+                "**{}** ({}) defeats **{}** ({})",
+                options.player_2.name, options.player_2_result, options.player_1.name, options.player_1_result
+            )
+        }
+    };
+    let mut fields = vec![EmbedField {
+        inline: false,
+        name: "Division".to_string(),
+        value: bracket.name,
+    }];
+    if let Some(url) = &options.info.racetime_gg_url {
+        fields.push(EmbedField {
+            inline: false,
+            name: "RaceTime room".to_string(),
+            value: url.clone(),
+        })
+    }
+
+    let embed = Embed {
+        author: None,
+        color: None,
+        description: Some(winner),
+        fields,
+        footer: None,
+        image: None,
+        kind: "rich".to_string(),
+        provider: None,
+        thumbnail: None,
+        timestamp: None,
+        title: None,
+        url: None,
+        video: None,
+    };
+    let m = c
+        .create_message(options.channel_id)
+        .embeds(&vec![embed])?
+        .exec()
+        .await?;
+    m.model().await.map_err(From::from)
+}
+
+
+macro_rules! clear_bracket_race_info_message {
+    ($info:expr, $client:expr, $channel_id:expr, $mid_fn:ident, $clear_fn:ident) => {
+        if let Some(mid) = $info.$mid_fn() {
+            match $client
+                .delete_message($channel_id, mid)
+                .exec()
+                .await
+            {
+                Ok(_) => {
+                    $info.$clear_fn();
+                    Ok(true)
+                }
+                Err(e) => match e.kind() {
+                    twilight_http::error::ErrorType::Response { status, .. } => {
+                        if status.get() == 404 {
+                            $info.$clear_fn();
+                            Ok(true)
+                        } else {
+                            Err(From::from(e))
+                        }
+                    }
+                    other => Err(From::from(e)),
+                },
+            }
+        } else {
+            Ok(false)
+        }
+    };
+}
+
+/// deletes the message (if any) and if the delete is successful, nulls the model field
+/// does not persist `info`
+/// Returns true if dirty
+pub async fn clear_tentative_commentary_assignment_message(
+    info: &mut BracketRaceInfo,
+    client: &Client,
+    channel_config: &ChannelConfig,
+) -> Result<bool, NMGLeagueBotError> {
+    clear_bracket_race_info_message!(
+        info,
+        client,
+        channel_config.commentary_discussion,
+        get_tentative_commentary_assignment_message_id,
+        clear_tentative_commentary_assignment_message_id
+    )
+}
+
+/// deletes the message (if any) and if the delete is successful, nulls the model field
+/// does not persist `info`
+/// Returns true if dirty
+pub async fn clear_commportunities_message(
+    info: &mut BracketRaceInfo,
+    client: &Client,
+    channel_config: &ChannelConfig,
+) -> Result<bool, NMGLeagueBotError> {
+    clear_bracket_race_info_message!(
+        info,
+        client,
+        channel_config.commportunities,
+        get_commportunities_message_id,
+        clear_commportunities_message_id
+    )
 }
 
 #[cfg(test)]

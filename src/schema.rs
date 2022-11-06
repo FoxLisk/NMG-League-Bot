@@ -9,6 +9,8 @@ diesel::table! {
         commportunities_message_id -> Nullable<Text>,
         restream_request_message_id -> Nullable<Text>,
         racetime_gg_url -> Nullable<Text>,
+        tentative_commentary_assignment_message_id -> Nullable<Text>,
+        commentary_assignment_message_id -> Nullable<Text>,
     }
 }
 

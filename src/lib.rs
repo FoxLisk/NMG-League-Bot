@@ -8,6 +8,7 @@ use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
 use crate::constants::{COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR, MATCH_RESULTS_CHANNEL_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR};
 use crate::utils::env_var;
+use thiserror::Error;
 
 pub mod constants;
 pub mod db;
@@ -49,4 +50,10 @@ impl ChannelConfig {
             match_results,
         }
     }
+}
+
+#[derive(Error, Debug)]
+pub enum NMGLeagueBotError {
+    #[error("Twilight HTTP Error: {0}")]
+    TwilightHttpError(#[from] twilight_http::Error)
 }

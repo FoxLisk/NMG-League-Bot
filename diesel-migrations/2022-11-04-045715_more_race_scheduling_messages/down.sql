@@ -1,0 +1,2 @@
+ALTER TABLE bracket_race_infos DROP COLUMN tentative_commentary_assignment_message_id;
+ALTER TABLE bracket_race_infos DROP COLUMN commentary_assignment_message_id;
