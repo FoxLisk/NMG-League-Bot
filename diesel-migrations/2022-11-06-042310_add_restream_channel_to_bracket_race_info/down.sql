@@ -1,0 +1,1 @@
+ALTER TABLE bracket_race_infos DROP COLUMN restream_channel;

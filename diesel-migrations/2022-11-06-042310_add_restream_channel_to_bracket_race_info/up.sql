@@ -1,0 +1,1 @@
+ALTER TABLE bracket_race_infos ADD COLUMN restream_channel TEXT NULL;

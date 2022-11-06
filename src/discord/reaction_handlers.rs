@@ -391,13 +391,16 @@ async fn handle_restream_request_reaction(
             return Ok(());
         }
     };
+    let url = format!("https://twitch.tv/{chan}");
+    info.restream_channel = Some(url.clone());
     if let Some(gse_id) = info.get_scheduled_event_id() {
+        // TODO: if the event somehow *doesn't* exist, we should probably create it, yeah?
         if let Some(gid) = reaction.guild_id {
             if let Err(e) = update_scheduled_event(
                 gid,
                 gse_id,
                 None,
-                Some(format!("https://twitch.tv/{chan}")),
+                Some(url),
                 state,
             )
             .await
@@ -496,7 +499,8 @@ fn emoji_to_restream_channel(rt: &ReactionType) -> Option<&'static str> {
             .as_ref()
             .map(|s| if s == "greenham" { Some("FGfm") } else { None })
             .flatten(),
-        ReactionType::Unicode { name } => match name.as_str() {
+        ReactionType::Unicode { name } =>
+            match name.as_str() {
             "1️⃣" => Some("zeldaspeedruns"),
             "2️⃣" => Some("zeldaspeedruns2"),
             "3️⃣" => Some("zeldaspeedruns_3"),

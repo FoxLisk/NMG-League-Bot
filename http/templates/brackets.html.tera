@@ -14,7 +14,7 @@
             <div class="p-1 bg-sky-300 border border-1">
                 Round {{ round.round_num }}
                 <div class="p-1">
-                    <table  class="border border-slate-500">
+                    <table class="border border-slate-500">
                         <thead>
                         </thead>
                         <tbody>
@@ -30,11 +30,16 @@
                                  ">
                                     {{ race.player_2.name_and_status }}
                                 </td>
-                                {% if race.scheduled %}
                                     <td class="border-x border-slate-500 p-1">
-                                        {{ race.scheduled }}
+                                        {% if race.scheduled %}
+                                            {{ race.scheduled }}
+                                        {% endif %}
                                     </td>
-                                {% endif %}
+                                    <td class="border-x border-slate-500 p-1">
+                                        {% if race.scheduled %}
+                                            {{ macros::link(href=race.channel, text=race.channel) }}
+                                        {% endif %}
+                                    </td>
                             </tr>
                         {% endfor %}
                         </tbody>

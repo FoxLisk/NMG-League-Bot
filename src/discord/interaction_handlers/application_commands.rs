@@ -6,7 +6,7 @@ use crate::discord::interactions_utils::{
     update_resp_to_plain_content,
 };
 use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD,CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD,REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
-use crate::discord::{ErrorResponse,   notify_racer, };
+use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
@@ -286,6 +286,7 @@ async fn _handle_schedule_race_cmd(
 
     match discord::schedule_race(the_race, dt, state).await {
         Ok(s) => Ok(Some(plain_interaction_response(s))),
+        Err(ScheduleRaceError::RaceFinished) => Ok(Some(plain_interaction_response("Your race for this round is already finished."))),
         Err(e) => Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e))
     }
 }

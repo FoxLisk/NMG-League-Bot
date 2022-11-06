@@ -25,6 +25,7 @@ pub struct BracketRaceInfo {
     pub racetime_gg_url: Option<String>,
     pub tentative_commentary_assignment_message_id: Option<String>,
     pub commentary_assignment_message_id: Option<String>,
+    pub restream_channel: Option<String>,
 }
 
 impl BracketRaceInfo {
@@ -213,6 +214,7 @@ pub struct NewBracketRaceInfo {
     racetime_gg_url: Option<String>,
     tentative_commentary_assignment_message_id: Option<String>,
     commentary_assignment_message_id: Option<String>,
+    restream_channel: Option<String>,
 }
 
 impl NewBracketRaceInfo {
@@ -226,6 +228,7 @@ impl NewBracketRaceInfo {
             racetime_gg_url: None,
             tentative_commentary_assignment_message_id: None,
             commentary_assignment_message_id: None,
+            restream_channel: None,
         }
     }
 

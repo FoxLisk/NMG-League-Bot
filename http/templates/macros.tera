@@ -1,3 +1,7 @@
+{% macro link(href, text) %}
+    <a href="{{ href }}" class="underline text-emerald-600 visited:text-amethyst-600">{{ text }}</a>
+{% endmacro link %}
+
 {% macro header(name) %}
 <th class="border-x border-slate-500">
     {{ name }}

@@ -543,6 +543,7 @@ struct DisplayRace {
     player_1: DisplayPlayer,
     player_2: DisplayPlayer,
     scheduled: Option<String>,
+    channel: Option<String>,
 }
 
 impl DisplayRace {
@@ -574,10 +575,10 @@ impl DisplayRace {
                 loser: false,
             },
         };
-        let scheduled = match outcome {
-            Some(_) => None,
+        let (scheduled, channel) = match outcome {
+            Some(_) => (None, None),
             None => {
-                if let Some(utc_dt) = race_info.scheduled() {
+                let scheduled = if let Some(utc_dt) = race_info.scheduled() {
                     Some(
                         utc_dt
                             .with_timezone(&chrono_tz::US::Eastern)
@@ -586,7 +587,8 @@ impl DisplayRace {
                     )
                 } else {
                     None
-                }
+                };
+                (scheduled, race_info.restream_channel.clone())
             }
         };
         Self {
@@ -594,6 +596,7 @@ impl DisplayRace {
             player_1,
             player_2,
             scheduled,
+            channel
         }
     }
 }
