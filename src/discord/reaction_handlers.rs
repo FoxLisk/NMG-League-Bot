@@ -305,7 +305,7 @@ async fn handle_commentary_signup(
     let mut cxn = state.diesel_cxn().await?;
     if info.new_commentator_signup(reaction.user_id, cxn.deref_mut())? {
         let commentators = info.commentator_signups(cxn.deref_mut())?;
-        if commentators.len() >= 2 {
+        if commentators.len() >= 1 {
             // flatten just throws away any that fail to parse, which seems... sketchy?
             // but fine, and easy
             let ids = commentators
