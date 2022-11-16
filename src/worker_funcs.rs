@@ -112,7 +112,7 @@ pub fn interesting_race<'a>(
                 }
             };
             if scheduled.signed_duration_since(started).num_minutes() > 180 {
-                println!("This race was started a very long time ago: {}", race.started_at);
+                println!("This race ({}) was started a very long time ago: {}", race.name,  race.started_at);
                 continue;
             }
 
