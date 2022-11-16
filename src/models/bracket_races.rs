@@ -6,7 +6,7 @@ use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
-use chrono::{DateTime, TimeZone};
+use chrono::{DateTime, Duration, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Serialize;
@@ -55,7 +55,7 @@ impl PlayerResult {
     /// finish time if given, 3:00:00 if forfeit
     pub  fn time(&self) -> u32 {
         match self {
-            Self::Forfeit => 60 * 60 * 180,
+            Self::Forfeit => Duration::hours(3).num_seconds() as u32,
             Self::Finish(t) => t.clone()
         }
     }
