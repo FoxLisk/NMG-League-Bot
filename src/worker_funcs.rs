@@ -346,6 +346,26 @@ mod tests {
         assert!(dur.num_minutes() > 100);
     }
 
+    fn bracket_race_info(id: i32, bracket_race_id: i32, when: Option<Option<DateTime<Utc>>>) -> BracketRaceInfo {
+        let scheduled_for = match when {
+            Some(Some(dt)) => Some(dt.timestamp()),
+            Some(None) => Some(Utc::now().timestamp()),
+            None => None,
+        };
+        BracketRaceInfo {
+            id,
+            bracket_race_id,
+            scheduled_for,
+            scheduled_event_id: None,
+            commportunities_message_id: None,
+            restream_request_message_id: None,
+            racetime_gg_url: None,
+            tentative_commentary_assignment_message_id: None,
+            commentary_assignment_message_id: None,
+            restream_channel: None
+        }
+    }
+
     #[test]
     fn test_interesting_race() {
         let now = Utc::now();
@@ -394,15 +414,7 @@ mod tests {
             player_2_result: None,
             outcome: None,
         };
-        let bri = BracketRaceInfo {
-            id: 1,
-            bracket_race_id: 1,
-            scheduled_for: Some(now.timestamp()), // little white lie
-            scheduled_event_id: None,
-            commportunities_message_id: None,
-            restream_request_message_id: None,
-            racetime_gg_url: None,
-        };
+        let bri = bracket_race_info(1, 1, Some(None));
         let p1 = Player {
             id: 1,
             name: "player 1".to_string(),
@@ -478,14 +490,7 @@ mod tests {
             player_2_result: None,
             outcome: None,
         };
-        let bri = BracketRaceInfo {
-            id: 1,
-            bracket_race_id: 1,
-            scheduled_for: Some(now.timestamp()), // little white lie
-            scheduled_event_id: None,
-            commportunities_message_id: None,
-            restream_request_message_id: None,racetime_gg_url: None,
-        };
+        let bri = bracket_race_info(1, 1, Some(None));
         let p1 = Player {
             id: 1,
             name: "player 1".to_string(),
