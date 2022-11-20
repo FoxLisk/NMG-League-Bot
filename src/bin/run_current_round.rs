@@ -1,4 +1,5 @@
 use diesel::SqliteConnection;
+use rand::{Rng, thread_rng};
 use twilight_http::Client;
 use nmg_league_bot::ChannelConfig;
 use nmg_league_bot::constants::TOKEN_VAR;
@@ -36,6 +37,9 @@ async fn main() {
 async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, conn: &mut SqliteConnection) {
     let round = bracket.current_round(conn).unwrap().unwrap();
 
+    let onetwofive = hms_to_secs(1, 25, 0);
+    let mut rng = thread_rng();
+
     for player in bracket.players(conn).unwrap() {
         let mut race = get_current_round_race_for_player(&player, conn)
             .unwrap()
@@ -45,14 +49,14 @@ async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, c
         if race.state().unwrap() != BracketRaceState::Finished {
             let (p1r, p2r, other_guy) = if race.player_1_id == player.id {
                 (
-                    PlayerResult::Finish(hms_to_secs(1, 23, 45)),
-                    PlayerResult::Finish(hms_to_secs(1, 24, 45)),
+                    PlayerResult::Finish(onetwofive + rng.gen_range(0..90)),
+                    PlayerResult::Finish(onetwofive + rng.gen_range(0..90)),
                     Player::get_by_id(race.player_2_id, conn).unwrap().unwrap()
                 )
             } else {
                 (
-                    PlayerResult::Finish(hms_to_secs(1, 25, 18)),
-                    PlayerResult::Finish(hms_to_secs(1, 24, 55)),
+                    PlayerResult::Finish(onetwofive + rng.gen_range(0..90)),
+                    PlayerResult::Finish(onetwofive + rng.gen_range(0..90)),
                     Player::get_by_id(race.player_1_id, conn).unwrap().unwrap()
                 )
             };

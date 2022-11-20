@@ -251,6 +251,7 @@ impl Bracket {
         Ok(brs.pop())
     }
 
+
     pub fn standings(&self, conn: &mut SqliteConnection) -> Result<Vec<PlayerInfo>, BracketError> {
         if self.state()? != BracketState::Started {
             return Err(BracketError::InvalidState);
@@ -267,7 +268,8 @@ impl Bracket {
             races.extend(round_races);
         }
 
-        let mut info : HashMap<i32, PlayerInfo> = Default::default();
+
+        let mut info : HashMap<i32, PlayerInfoBuilder> = Default::default();
         for race in races {
             let p1r = race.player_1_result().ok_or(BracketError::InvalidState)?;
             let p2r = race.player_2_result().ok_or(BracketError::InvalidState)?;
@@ -283,37 +285,38 @@ impl Bracket {
                     (0, 2)
                 }
             };
-            let p1_i = info.entry(race.player_1_id).or_insert(PlayerInfo::new(race.player_1_id));
+            let p1_i = info.entry(race.player_1_id).or_insert(PlayerInfoBuilder::new(race.player_1_id));
             p1_i.times.push(p1r.time());
             p1_i.points += p1_adjust;
             p1_i.opponents.push(race.player_2_id);
 
 
-            let p2_i = info.entry(race.player_2_id).or_insert(PlayerInfo::new(race.player_2_id));
+            let p2_i = info.entry(race.player_2_id).or_insert(PlayerInfoBuilder::new(race.player_2_id));
             p2_i.times.push(p2r.time());
             p2_i.points += p2_adjust;
             p2_i.opponents.push(race.player_1_id);
         }
+        let points: HashMap<i32, i32> = info.values().map(|p| (p.id, p.points)).collect();
+
         Ok(
             info.into_values()
-
+                .map(|builder| builder.build(&points))
                 .sorted_by_key(
-                    |p| (-p.points, p.times.iter().sum::<u32>(), p.id)
+                    |p| (-p.points, -p.opponent_points, p.times.iter().sum::<u32>(), p.id)
                 )
                 .collect()
         )
     }
 }
 
-pub struct PlayerInfo {
-    pub id: i32,
-    /// this is really points*2, convert to float elsewhere
-    pub points: i32,
-    pub opponents: Vec<i32>,
-    pub times: Vec<u32>,
+struct PlayerInfoBuilder {
+    id: i32,
+    points: i32,
+    opponents: Vec<i32>,
+    times: Vec<u32>,
 }
 
-impl PlayerInfo {
+impl PlayerInfoBuilder {
     fn new(id: i32,) -> Self {
         Self {
             id,
@@ -322,6 +325,33 @@ impl PlayerInfo {
             times: vec![],
         }
     }
+
+    fn build(self, scores: &HashMap<i32, i32>) -> PlayerInfo {
+        let score = self.opponents.iter().map(|opponent_id|
+            if let Some(score) = scores.get(opponent_id) {
+                score.clone()
+            } else {
+                println!("PlayerInfoBuilder unable to find score for player {opponent_id}");
+                0
+            }
+        ).sum();
+        PlayerInfo {
+            id: self.id,
+            points: self.points,
+            opponent_points: score,
+            times: self.times,
+        }
+    }
+}
+
+pub struct PlayerInfo {
+    pub id: i32,
+    /// this is really points*2, convert to float elsewhere
+    pub points: i32,
+    /// see [points]
+    pub opponent_points: i32,
+    /// seconds
+    pub times: Vec<u32>,
 }
 
 fn all_races_complete(races: &[BracketRace]) -> bool {

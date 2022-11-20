@@ -706,6 +706,7 @@ async fn brackets(db: &State<Pool<DieselConnectionManager>>) -> Result<Template,
 struct StandingsPlayer {
     name: String,
     points: f32,
+    opponent_points: f32,
     average_time: String,
 }
 
@@ -756,22 +757,26 @@ fn get_standings_context(
             players.into_iter().map(|p| StandingsPlayer {
                 name: p.name,
                 points: 0.0,
+                opponent_points: 0.0,
                 average_time: "".to_string()
             }).collect()
         } else {
             let players_map: HashMap<i32, String> = players.into_iter()
                 .map(|p| (p.id, p.name))
                 .collect();
+            let players_to_points: HashMap<i32,i32> = standings.iter().map(|p| (p.id, p.points)).collect();
             standings
-                .into_iter()
+                .iter()
                 .map(|s| {
                     let total_time: u32 = s.times.iter().sum();
                     let avg_time = (total_time as f32) / (s.times.len() as f32);
+
 
                     // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     StandingsPlayer {
                         name: players_map.get(&s.id).cloned().unwrap_or("Unknown".to_string()),
                         points: (s.points as f32) / 2.0,
+                        opponent_points: (s.opponent_points as f32) / 2.0,
                         average_time: format_hms(avg_time as u64),
                     }
                 })

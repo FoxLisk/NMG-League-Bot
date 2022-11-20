@@ -21,6 +21,9 @@
                         Points
                     </td>
                     <td class="border-x border-slate-500 pl-1 pr-3">
+                        Opponent Points
+                    </td>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
                         Average time
                     </td>
                 </tr>
@@ -34,6 +37,9 @@
                     </td>
                     <td class="border-x border-slate-500 pl-1 pr-3">
                         {{ player.points }}
+                    </td>
+                    <td class="border-x border-slate-500 pl-1 pr-3">
+                        {{ player.opponent_points }}
                     </td>
                     <td class="border-x border-slate-500 pl-1 pr-3">
                         {{ player.average_time }}
