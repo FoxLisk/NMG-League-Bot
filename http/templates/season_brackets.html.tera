@@ -2,7 +2,6 @@
 
 {% import "macros" as macros %}
 
-{# #TODO + 1 LOOOOOOOOOOOL god dammit fix this someday #}
 {% block pagename %}NMG League {{season.format}} Brackets{% endblock %}
 {% block season_body %}
 
