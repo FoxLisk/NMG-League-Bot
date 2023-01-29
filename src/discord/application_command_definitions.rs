@@ -1,5 +1,5 @@
 use crate::constants::WEBSITE_URL;
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD, FINISH_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,
     CommandOptionValue, CommandType, NumberCommandOptionData,
@@ -68,6 +68,26 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+
+    let finish_season = CommandBuilder::new(
+        FINISH_SEASON_CMD.to_string(),
+        "Mark a season as finished".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: format!("Race ID. Get this from {}", WEBSITE_URL),
+            description_localizations: None,
+            max_value: Some(CommandOptionValue::Integer(1)),
+            min_value: None,
+            name: "season_id".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .build();
+
     let create_bracket = CommandBuilder::new(
         CREATE_BRACKET_CMD.to_string(),
         "Create a new bracket".to_string(),
@@ -123,6 +143,25 @@ pub fn application_command_definitions() -> Vec<Command> {
         required: true,
     }))
     .build();
+
+    let finish_bracket = CommandBuilder::new(
+        FINISH_BRACKET_CMD.to_string(),
+        "Finish bracket".to_string(),
+        CommandType::ChatInput,
+    )
+        .default_member_permissions(Permissions::MANAGE_GUILD)
+        .option(CommandOption::Integer(NumberCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Bracket ID".to_string(),
+            description_localizations: None,
+            max_value: None,
+            min_value: Some(CommandOptionValue::Integer(1)),
+            name: "bracket_id".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .build();
 
     let create_player = CommandBuilder::new(
         CREATE_PLAYER_CMD.to_string(),
@@ -435,7 +474,9 @@ pub fn application_command_definitions() -> Vec<Command> {
         create_race,
         cancel_race,
         create_season,
+        finish_season,
         create_bracket,
+        finish_bracket,
         create_player,
         add_player_to_bracket,
         schedule_race,

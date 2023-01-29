@@ -55,5 +55,11 @@ impl ChannelConfig {
 #[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
-    TwilightHttpError(#[from] twilight_http::Error)
+    TwilightHttpError(#[from] twilight_http::Error),
+
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] diesel::result::Error),
+
+    #[error("[De]serializaion error: {0}")]
+    SerdeError(#[from] serde_json::Error),
 }

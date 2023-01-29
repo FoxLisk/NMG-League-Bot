@@ -3,7 +3,7 @@ use crate::models::bracket_rounds::{BracketRound, NewBracketRound};
 use crate::models::player::Player;
 use crate::models::season::Season;
 use crate::schema::brackets;
-use crate::{save_fn, update_fn};
+use crate::{NMGLeagueBotError, save_fn, update_fn};
 use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
@@ -146,9 +146,24 @@ impl Bracket {
         Ok(self.state()? == BracketState::Unstarted)
     }
 
+    pub fn is_finished(&self) -> Result<bool, serde_json::Error> {
+        Ok(self.state()? == BracketState::Finished)
+    }
+
     fn set_state(&mut self, state: BracketState) -> Result<(), serde_json::Error> {
         self.state = serde_json::to_string(&state)?;
         Ok(())
+    }
+
+    /// sets this bracket's state to finished, if there are no unfinished rounds
+    pub fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<bool, NMGLeagueBotError> {
+        for r in self.rounds(cxn)? {
+            if ! r.all_races_finished(cxn)? {
+                return Ok(false);
+            }
+        }
+        self.set_state(BracketState::Finished)?;
+        Ok(true)
     }
 
     update_fn! {}

@@ -7,6 +7,7 @@ pub mod season;
 pub mod bracket_race_infos;
 
 // TODO: should this be a derive macro?
+/// creates a function named `save()` that takes a &SqliteConnection
 #[macro_export]
 macro_rules! save_fn {
     ($table:expr, $output:ty) => {

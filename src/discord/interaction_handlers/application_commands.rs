@@ -5,7 +5,7 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD,CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD,REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, FINISH_SEASON_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, FINISH_BRACKET_CMD};
 use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
@@ -118,9 +118,15 @@ pub async fn handle_application_interaction(
         CREATE_SEASON_CMD => {
             admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
+        FINISH_SEASON_CMD => {
+            admin_command_wrapper(handle_finish_season(ac, state).await.map(Option::from))
+        }
 
         CREATE_BRACKET_CMD => {
             admin_command_wrapper(handle_create_bracket(ac, state).await.map(Option::from))
+        }
+        FINISH_BRACKET_CMD => {
+            admin_command_wrapper(handle_finish_bracket(ac, state).await.map(Option::from))
         }
         REPORT_RACE_CMD => {
             admin_command_wrapper( handle_report_race(ac, state).await.map(Option::from))
@@ -794,6 +800,23 @@ fn update_interaction_message_to_plain_text<'a>(
         .content(Some(text))
 }
 
+async fn handle_finish_season(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let sid = get_opt!("season_id", &mut ac.options, Integer)?;
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let mut season = Season::get_by_id(sid as i32, cxn.deref_mut()).map_err_to_string()?;
+    let resp = if season.finish(cxn.deref_mut()).map_err_to_string()? {
+        season.update(cxn.deref_mut()).map_err_to_string()?;
+        "Finished."
+    } else {
+        "Unable to finish that season."
+    };
+
+    Ok(plain_interaction_response(resp))
+}
+
 async fn handle_create_season(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
@@ -816,13 +839,27 @@ async fn handle_create_bracket(
     let name = get_opt!("name", &mut ac.options, String)?;
     let season_id = get_opt!("season_id", &mut ac.options, Integer)?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    // TODO: look up season, save thing, whatever
     let szn = Season::get_by_id(season_id as i32, conn.deref_mut())?;
     let nb = NewBracket::new(&szn, name);
     nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response("Bracket created!"))
 }
 
+async fn handle_finish_bracket(
+    mut ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let bracket_id = get_opt!("bracket_id", &mut ac.options, Integer)?;
+    let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let mut bracket = Bracket::get_by_id(bracket_id as i32, conn.deref_mut()).map_err_to_string()?;
+    let resp = if bracket.finish(conn.deref_mut()).map_err_to_string()? {
+        bracket.update(conn.deref_mut()).map_err_to_string()?;
+        "Bracket finished."
+    } else {
+        "Unable to finish that bracket (round still in progress)."
+    };
+    Ok(plain_interaction_response(resp))
+}
 
 // wow dude great function name
 async fn get_race_finish_opts_from_command_opts(options: &mut Vec<CommandDataOption>, state: &Arc<DiscordState>, force: bool) -> Result<RaceFinishOptions, String> {

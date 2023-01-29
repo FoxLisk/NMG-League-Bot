@@ -4,10 +4,10 @@ use diesel::{RunQueryDsl, SqliteConnection};
 use serde::Serialize;
 
 use crate::utils::epoch_timestamp;
-use crate::save_fn;
+use crate::{NMGLeagueBotError, save_fn, update_fn};
 use crate::schema::seasons;
 
-#[derive(Queryable, Debug, Serialize)]
+#[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
 pub struct Season {
     pub id: i32,
     started: i64,
@@ -42,7 +42,22 @@ impl Season {
             .filter(sbrack::season_id.eq(self.id))
             .load(conn)
     }
+
+    /// this checks all of its brackets for validity
+    pub fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<bool, NMGLeagueBotError> {
+        for b in self.brackets(cxn)? {
+            if ! b.is_finished()? {
+                return Ok(false);
+            }
+        }
+
+        self.finished = Some(epoch_timestamp() as i64);
+        Ok(true)
+    }
+
+    update_fn!{}
 }
+
 
 #[derive(Insertable)]
 #[diesel(table_name=seasons)]
