@@ -18,7 +18,7 @@ pub(crate) enum UserNotAuthenticated {
     TokenExpired,
 }
 
-pub(crate) struct SessionManager<T> {
+pub struct SessionManager<T> {
     session: HashMap<SessionToken, (T, Instant)>,
 }
 

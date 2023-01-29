@@ -1,4 +1,4 @@
-use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR,  TOKEN_VAR};
+use nmg_league_bot::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR,  TOKEN_VAR};
 use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;

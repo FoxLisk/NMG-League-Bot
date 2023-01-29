@@ -1,0 +1,19 @@
+{% extends "base" %}
+
+{% import "macros" as macros %}
+
+{% block pagename %} History {% endblock %}
+{% block body %}
+Previous seasons:
+<ul>
+    <li>Season 1 predates this website. {{ macros::link(href="https://challonge.com/h7z70mm7", text="Here's the Dark World bracket") }}.
+        For the Light World we had {{ macros::link(href="https://challonge.com/20m8zgsx", text="three rounds in challonge") }} and
+        {{ macros::link(href="https://docs.google.com/spreadsheets/d/1N8GEBTF1lMGGBCNNyBE0B53pzb1Z-bl15TESpHhprao/edit#gid=0",
+                        text="one round in a google sheet") }}.
+    </li>
+    <li>Season 2 is {{ macros::link(href="/season/1", text="mostly available here") }}, and you can
+        {{ macros::link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit",
+                        text="see the Rain State info here") }}
+    </li>
+</ul>
+{% endblock %}

@@ -1,6 +1,5 @@
 use shutdown::Shutdown;
 
-mod constants;
 mod discord;
 mod schema;
 mod shutdown;

@@ -1,13 +1,9 @@
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::season::Season;
 use nmg_league_bot::schema::bracket_race_infos;
 use diesel::prelude::*;
-use swiss_pairings::Player;
 use twilight_http::Client;
 use twilight_model::channel::embed::Embed;
-use twilight_model::id::Id;
-use twilight_model::id::marker::MessageMarker;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 use nmg_league_bot::ChannelConfig;
 use nmg_league_bot::constants::TOKEN_VAR;

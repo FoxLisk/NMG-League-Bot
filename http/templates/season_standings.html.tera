@@ -1,12 +1,9 @@
-{% extends "base" %}
+{% extends "season_base" %}
 
 {% import "macros" as macros %}
 
-{% block pagename %}NMG League Season 2 Brackets{% endblock %}
-{% block body %}
-{% if season %}
-    {{ season.format }}
-{% endif %}
+{% block pagename %}NMG League Season {{ season.id + 1 }} Brackets{% endblock %}
+{% block season_body %}
 {% for bracket in brackets %}
     <div class="p1 border border-1">
         Bracket: {{ bracket.name }}

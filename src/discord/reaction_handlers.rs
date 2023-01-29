@@ -3,7 +3,6 @@ use itertools::Itertools;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
-use twilight_http::error::ErrorType;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::embed::{Embed, EmbedField};
