@@ -42,7 +42,7 @@ use crate::discord::discord_state::DiscordState;
 pub(crate) mod bot;
 mod webhooks;
 
-mod application_commands;
+mod application_command_definitions;
 mod components;
 pub(crate) mod discord_state;
 mod interaction_handlers;
@@ -70,9 +70,12 @@ mod constants {
     pub const ADMIN_ROLE_NAME: &'static str = "Admin";
 
     pub const CREATE_SEASON_CMD: &str = "create_season";
+    pub const FINISH_SEASON_CMD: &str = "finish_season";
     pub const CREATE_BRACKET_CMD: &str = "create_bracket";
+    pub const FINISH_BRACKET_CMD: &str = "finish_bracket";
 
     pub const ADD_PLAYER_TO_BRACKET_CMD: &str = "add_player_to_bracket";
+
     pub const CREATE_PLAYER_CMD: &str = "create_player";
     pub const SCHEDULE_RACE_CMD: &str = "schedule_race";
     pub const RESCHEDULE_RACE_CMD: &str = "reschedule_race";
