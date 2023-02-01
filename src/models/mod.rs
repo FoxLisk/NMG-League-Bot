@@ -5,6 +5,7 @@ pub mod player;
 pub mod player_bracket_entries;
 pub mod season;
 pub mod bracket_race_infos;
+pub mod qualifer_submission;
 
 // TODO: should this be a derive macro?
 /// creates a function named `save()` that takes a &SqliteConnection

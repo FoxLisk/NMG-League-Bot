@@ -19,8 +19,8 @@ pub struct Player {
     /// display name
     pub name: String,
     pub discord_id: String,
-    pub racetime_username: String,
-    pub twitch_user_login: String,
+    pub racetime_username: Option<String>,
+    pub twitch_user_login: Option<String>,
     pub restreams_ok: i32,
 }
 
@@ -38,10 +38,11 @@ impl Player {
         id: &str,
         conn: &mut SqliteConnection,
     ) -> Result<Option<Self>, diesel::result::Error> {
-        Ok(players::table
+        players::table
             .filter(players::discord_id.eq(id))
-            .load(conn)?
-            .pop())
+            .first(conn)
+            .optional()
+
     }
 
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Option<Self>, diesel::result::Error> {
@@ -71,8 +72,8 @@ impl<T> MentionOptional for Result<Option<Player>, T> {
 pub struct NewPlayer {
     pub name: String,
     pub discord_id: String,
-    pub racetime_username: String,
-    pub twitch_user_login: String,
+    pub racetime_username: Option<String>,
+    pub twitch_user_login: Option<String>,
     pub restreams_ok: i32,
 }
 
@@ -80,15 +81,15 @@ impl NewPlayer {
     pub fn new<S: Into<String>>(
         name: S,
         discord_id: S,
-        racetime_username: S,
-        twitch_user_login: S,
+        racetime_username: Option<S>,
+        twitch_user_login: Option<S>,
         restreams_ok: bool,
     ) -> Self {
         Self {
             name: name.into(),
             discord_id: discord_id.into(),
-            racetime_username: racetime_username.into(),
-            twitch_user_login: twitch_user_login.into(),
+            racetime_username: racetime_username.map(Into::into),
+            twitch_user_login: twitch_user_login.map(Into::into),
             restreams_ok: if restreams_ok { 1 } else { 0 },
         }
     }

@@ -60,6 +60,9 @@ pub enum NMGLeagueBotError {
     #[error("Database error: {0}")]
     DatabaseError(#[from] diesel::result::Error),
 
-    #[error("[De]serializaion error: {0}")]
+    #[error("[De]serialization error: {0}")]
     SerdeError(#[from] serde_json::Error),
+
+    #[error("Illegal state transition: {0:?}")]
+    StateError(String),
 }

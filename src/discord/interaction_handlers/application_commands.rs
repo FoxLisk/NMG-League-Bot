@@ -5,7 +5,7 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, FINISH_SEASON_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, FINISH_BRACKET_CMD};
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, SET_SEASON_STATE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, FINISH_BRACKET_CMD, SUBMIT_QUALIFIER_CMD};
 use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
@@ -17,13 +17,13 @@ use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, Brack
 use nmg_league_bot::models::brackets::{Bracket, NewBracket};
 use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
-use nmg_league_bot::models::season::{NewSeason, Season};
+use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
 use nmg_league_bot::utils::{env_default, race_to_nice_embeds, ResultCollapse, ResultErrToString};
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use bb8::RunError;
-use diesel::{Connection, ConnectionError, SqliteConnection};
+use diesel::{Connection, ConnectionError, QueryResult, SqliteConnection};
 use diesel::result::Error;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_http::request::channel::reaction::RequestReactionType;
@@ -44,6 +44,8 @@ use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
 use twilight_model::id::Id;
 use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_validate::message::MessageValidationError;
+use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
+use nmg_league_bot::NMGLeagueBotError;
 use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
@@ -69,10 +71,14 @@ pub async fn handle_application_interaction(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
 
+
     // general (non-admin) commands
     match ac.name.as_str() {
         SCHEDULE_RACE_CMD => {
             return handle_schedule_race(ac, interaction, state).await;
+        }
+        SUBMIT_QUALIFIER_CMD => {
+            return handle_submit_qualifier(ac, interaction, state).await;
         }
         _ => {}
     };
@@ -92,7 +98,7 @@ pub async fn handle_application_interaction(
     // admin commands
     match ac.name.as_str() {
         CREATE_PLAYER_CMD => {
-            admin_command_wrapper(create_player(ac, interaction, state).await.map(|i| Some(i)))
+            admin_command_wrapper(handle_create_player(ac, interaction, state).await.map(|i| Some(i)))
         }
         ADD_PLAYER_TO_BRACKET_CMD => admin_command_wrapper(
             handle_add_player_to_bracket(ac, interaction, state)
@@ -118,8 +124,8 @@ pub async fn handle_application_interaction(
         CREATE_SEASON_CMD => {
             admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
-        FINISH_SEASON_CMD => {
-            admin_command_wrapper(handle_finish_season(ac, state).await.map(Option::from))
+        SET_SEASON_STATE_CMD => {
+            admin_command_wrapper(handle_set_season_state(ac, state).await.map(Option::from))
         }
 
         CREATE_BRACKET_CMD => {
@@ -331,6 +337,7 @@ fn handle_schedule_race_autocomplete(
         }),
     })
 }
+
 async fn handle_schedule_race(
     ac: Box<CommandData>,
     interaction: Box<InteractionCreate>,
@@ -349,6 +356,103 @@ async fn handle_schedule_race(
         )),
     }
 }
+
+
+async fn handle_submit_qualifier(
+    mut ac: Box<CommandData>,
+    mut interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
+    let member = std::mem::take(&mut interaction.member).ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "No member found on schedule_race command!",
+    ))?;
+    let user = member.user.ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "No user found on member struct for a schedule_race command!",
+    ))?;
+    let time = match get_opt!("qualifier_time", &mut ac.options, String) {
+        Ok(t) => t,
+        Err(e) => { return Ok(Some(plain_interaction_response(e))); }
+    };
+    let secs = match parse_hms(&time) {
+        Some(t) => t,
+        None => {
+            return Ok(Some(plain_interaction_response("Invalid time. Please use h:mm:ss format.")));
+        }
+    };
+    let vod = match get_opt!("vod", &mut ac.options, String) {
+        Ok(v) => v,
+        Err(e) => { return Ok(Some(plain_interaction_response(e))); }
+    };
+
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+
+    let player_maybe = Player::get_by_discord_id(&user.id.to_string(), cxn.deref_mut()).map_err(|e| {
+            ErrorResponse::new(
+                BLAND_USER_FACING_ERROR,
+                format!("Error fetching player: {}", e),
+            )
+        })?;
+    let (player, created) = match player_maybe {
+        Some(p) => (p, false),
+        None => {
+            let np = NewPlayer::new(user.name, user.id.to_string(), None, None, true);
+            let saved = match np.save(cxn.deref_mut()) {
+                Ok(s) => {s}
+                Err(e) => {
+                    return Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e));
+                }
+            };
+            (saved, true)
+        }
+    };
+    let update_pls_suffix = if created {
+        " I would really appreciate it if you would run the `/update_user_info` command and provide your \
+         Twitch and RaceTime info!"
+    } else {
+        ""
+    };
+    let current_season = match active_season_with_quals_open(cxn.deref_mut()) {
+        Ok(Some(s)) => {s}
+        Ok(None) => {
+            return Ok(Some(plain_interaction_response(format!("Qualifiers are not currently open.{update_pls_suffix}"))));
+        }
+        Err(e) => {
+            return Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e));
+        }
+    };
+    let nqs = NewQualifierSubmission::new(
+        &player,
+        &current_season,
+        secs,
+        vod
+    );
+    nqs.save(cxn.deref_mut())
+        .map(|_|
+            Some(plain_interaction_response(format!("Thanks for your submission!{update_pls_suffix}")))
+        ).map_err(|e|
+            ErrorResponse::new(BLAND_USER_FACING_ERROR, e)
+    )
+}
+
+fn active_season_with_quals_open(cxn: &mut SqliteConnection) -> Result<Option<Season>, NMGLeagueBotError> {
+    match Season::get_active_season(cxn)? {
+        None => {Ok(None)}
+        Some(s) => {
+            if s.are_qualifiers_open()? {
+                Ok(Some(s))
+            } else {
+                Ok(None)
+            }
+        }
+    }
+}
+
 
 
 async fn _handle_reschedule_race_cmd(
@@ -387,7 +491,7 @@ async fn handle_reschedule_race(
     }
 }
 
-async fn create_player(
+async fn handle_create_player(
     mut ac: Box<CommandData>,
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
@@ -407,7 +511,7 @@ async fn create_player(
         }
     };
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let np = NewPlayer::new(name, discord_user.to_string(), rt_un, twitch_name, true);
+    let np = NewPlayer::new(name, discord_user.to_string(), Some(rt_un), Some(twitch_name), true);
 
     match np.save(cxn.deref_mut()) {
         Ok(_) => Ok(plain_interaction_response("Player added!")),
@@ -800,21 +904,17 @@ fn update_interaction_message_to_plain_text<'a>(
         .content(Some(text))
 }
 
-async fn handle_finish_season(
+async fn handle_set_season_state(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     let sid = get_opt!("season_id", &mut ac.options, Integer)?;
+    let new_state_raw = get_opt!("new_state", &mut ac.options, String)?;
+    let new_state: SeasonState = serde_json::from_str(&new_state_raw).map_err(|e| format!("Error parsing state: {e}"))?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let mut season = Season::get_by_id(sid as i32, cxn.deref_mut()).map_err_to_string()?;
-    let resp = if season.finish(cxn.deref_mut()).map_err_to_string()? {
-        season.update(cxn.deref_mut()).map_err_to_string()?;
-        "Finished."
-    } else {
-        "Unable to finish that season."
-    };
-
-    Ok(plain_interaction_response(resp))
+    season.set_state(new_state, cxn.deref_mut()).map_err_to_string()?;
+    Ok(plain_interaction_response("Update successful."))
 }
 
 async fn handle_create_season(
@@ -981,6 +1081,7 @@ async fn handle_generate_pairings(
     }
 }
 
+/// parses h:mm:ss (or hh:mm:ss) and returns total number of seconds
 fn parse_hms(s: &str) -> Option<u32> {
     let re = Regex::new(r#"(\d+):(\d{2}):(\d{2})"#).ok()?;
     let caps = re.captures(s)?;
