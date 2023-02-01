@@ -39,6 +39,10 @@ pub fn get_races_that_should_be_finishing_soon(
         .load(conn)
 }
 
+/// takes a list of all existing players & bracket races, and returns a map of
+/// <one of the player's racetime usernames : a bunch of info about the race>
+///
+/// this is sort of insane, right?
 pub fn races_by_player_rtgg<'a>(
     all_players: &'a [Player],
     bracket_races: &'a [(BracketRaceInfo, BracketRace)],
@@ -63,7 +67,16 @@ pub fn races_by_player_rtgg<'a>(
                 continue;
             }
         };
-        interesting_rtgg_ids.insert(p1.racetime_username.clone(), (bri, br, p1, p2));
+        match (&p1.racetime_username, &p2.racetime_username) {
+            (Some(rtu), Some(_)) => {
+                interesting_rtgg_ids.insert(rtu.clone(), (bri, br, p1, p2));
+            }
+            _ => {
+                // we need to know both players' rtgg usernames to find out that a race contains
+                // both of them
+            }
+        };
+
     }
     interesting_rtgg_ids
 }
@@ -103,7 +116,6 @@ pub fn interesting_race<'a>(
         // if *any* entrant is in one of the races we're looking for, let's check if they all are
         if let Some((bri, br, p1, p2)) = bracket_races.get(&id) {
             // but, okay, let's not pick up a weekly from 2 months ago, lmao
-
             let scheduled = match bri.scheduled() {
                 Some(dt) => dt,
                 None => {
@@ -115,9 +127,17 @@ pub fn interesting_race<'a>(
                 println!("This race ({}) was started a very long time ago: {}", race.name,  race.started_at);
                 continue;
             }
+            let p1rt = match &p1.racetime_username {
+                Some(s) => s,
+                None => {continue;}
+            };
+            let p2rt = match &p2.racetime_username {
+                Some(s) => s,
+                None => {continue;}
+            };
 
-            let e1o = entrant_ids.remove(&p1.racetime_username);
-            let e2o = entrant_ids.remove(&p2.racetime_username);
+            let e1o = entrant_ids.remove(p1rt);
+            let e2o = entrant_ids.remove(p2rt);
             if let (Some(e1), Some(e2)) = (e1o, e2o) {
                 return Some((bri, br, (p1, e1), (p2, e2)));
             }

@@ -68,9 +68,19 @@ diesel::table! {
         id -> Integer,
         name -> Text,
         discord_id -> Text,
-        racetime_username -> Text,
-        twitch_user_login -> Text,
+        racetime_username -> Nullable<Text>,
+        twitch_user_login -> Nullable<Text>,
         restreams_ok -> Integer,
+    }
+}
+
+diesel::table! {
+    qualifier_submissions (id) {
+        id -> Integer,
+        player_id -> Integer,
+        season_id -> Integer,
+        reported_time -> Integer,
+        vod_link -> Text,
     }
 }
 
@@ -107,6 +117,7 @@ diesel::table! {
         started -> BigInt,
         finished -> Nullable<BigInt>,
         format -> Text,
+        state -> Text,
     }
 }
 
@@ -119,6 +130,8 @@ diesel::joinable!(brackets -> seasons (season_id));
 diesel::joinable!(commentator_signups -> bracket_race_infos (bracket_race_info_id));
 diesel::joinable!(player_bracket_entry -> brackets (bracket_id));
 diesel::joinable!(player_bracket_entry -> players (player_id));
+diesel::joinable!(qualifier_submissions -> players (player_id));
+diesel::joinable!(qualifier_submissions -> seasons (season_id));
 diesel::joinable!(race_runs -> races (race_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
@@ -129,6 +142,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     commentator_signups,
     player_bracket_entry,
     players,
+    qualifier_submissions,
     race_runs,
     races,
     seasons,

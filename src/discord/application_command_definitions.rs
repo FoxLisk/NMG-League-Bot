@@ -1,11 +1,13 @@
 use nmg_league_bot::constants::WEBSITE_URL;
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD, FINISH_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
+use enum_iterator::all;
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD, SET_SEASON_STATE_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, SUBMIT_QUALIFIER_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,
     CommandOptionValue, CommandType, NumberCommandOptionData,
 };
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
+use nmg_league_bot::models::season::SeasonState;
 
 pub fn application_command_definitions() -> Vec<Command> {
     let create_race = CommandBuilder::new(
@@ -68,21 +70,38 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+    let possible_states = all::<SeasonState>().flat_map(|s| serde_json::to_string(&s))
+        .map(|s| CommandOptionChoice::String {
+            name: s.clone(),
+            name_localizations: None,
+            value: s,
+        }).collect();
 
-    let finish_season = CommandBuilder::new(
-        FINISH_SEASON_CMD.to_string(),
-        "Mark a season as finished".to_string(),
+    let set_season_state = CommandBuilder::new(
+        SET_SEASON_STATE_CMD.to_string(),
+        "Set a season's state".to_string(),
         CommandType::ChatInput,
     )
         .default_member_permissions(Permissions::MANAGE_GUILD)
         .option(CommandOption::Integer(NumberCommandOptionData {
             autocomplete: false,
             choices: vec![],
-            description: format!("Race ID. Get this from {}", WEBSITE_URL),
+            description: "The Season's id".to_string(),
             description_localizations: None,
-            max_value: Some(CommandOptionValue::Integer(1)),
-            min_value: None,
+            max_value: None,
+            min_value: Some(CommandOptionValue::Integer(1)),
             name: "season_id".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: possible_states,
+            description: "Set a season's state".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "new_state".to_string(),
             name_localizations: None,
             required: true,
         }))
@@ -406,6 +425,35 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+    let submit_qualifier = CommandBuilder::new(
+        SUBMIT_QUALIFIER_CMD.to_string(),
+    "Submit a time for qualification",
+            CommandType::ChatInput
+    )
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Time in h:mm:ss format (e.g. 1:25:40)".to_string(),
+            description_localizations: None,
+            max_length: Some(8),
+            min_length: Some(7),
+            name: "qualifier_time".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData{
+            autocomplete: false,
+            choices: vec![],
+            description: "Link to a VoD of the run".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "vod".to_string(),
+            name_localizations: None,
+            required: true,
+        }))
+        .build();
+
 
     let reschedule_race = CommandBuilder::new(
         RESCHEDULE_RACE_CMD.to_string(),
@@ -474,7 +522,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         create_race,
         cancel_race,
         create_season,
-        finish_season,
+        set_season_state,
         create_bracket,
         finish_bracket,
         create_player,
@@ -483,6 +531,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         report_race,
         generate_pairings,
         reschedule_race,
-        update_finished_race
+        update_finished_race,
+        submit_qualifier
     ]
 }

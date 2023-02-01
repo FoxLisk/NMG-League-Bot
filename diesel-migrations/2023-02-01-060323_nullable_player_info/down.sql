@@ -1,0 +1,4 @@
+-- this down.sql deliberately left blank
+-- this migration is taking a bunch of non-nullable columns and making them nullable
+-- the reverse operation is basically safe, although i guess you're left with nullable columns
+-- unexpectedly. i don't think i care though
