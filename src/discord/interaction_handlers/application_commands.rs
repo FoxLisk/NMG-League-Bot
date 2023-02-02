@@ -5,7 +5,7 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, SET_SEASON_STATE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, FINISH_BRACKET_CMD, SUBMIT_QUALIFIER_CMD};
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, SET_SEASON_STATE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, FINISH_BRACKET_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_USER_INFO_CMD};
 use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
@@ -37,6 +37,8 @@ use twilight_model::http::interaction::{
 };
 use twilight_model::id::marker::{ChannelMarker,  MessageMarker};
 use twilight_model::id::Id;
+use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
+use twilight_model::user::User;
 use twilight_validate::message::MessageValidationError;
 use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::NMGLeagueBotError;
@@ -73,6 +75,9 @@ pub async fn handle_application_interaction(
         }
         SUBMIT_QUALIFIER_CMD => {
             return handle_submit_qualifier(ac, interaction, state).await;
+        }
+        UPDATE_USER_INFO_CMD => {
+            return handle_update_user_info(ac, interaction, state).await;
         }
         _ => {}
     };
@@ -352,20 +357,61 @@ async fn handle_schedule_race(
 }
 
 
+async fn handle_update_user_info(
+    mut ac: Box<CommandData>,
+    mut interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
+    let nickname = get_opt!("nickname", &mut ac.options, String).ok();
+    let twitch = get_opt!("twitch", &mut ac.options, String).ok();
+    let racetime = get_opt!("racetime", &mut ac.options, String).ok();
+    let user = get_user_from_interaction(&mut interaction).ok_or(
+        ErrorResponse::new(BLAND_USER_FACING_ERROR, "Unable to find user on handle_update_user_info command")
+    )?;
+
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+
+    let (mut player, created) = Player::get_or_create_from_discord_user(user, cxn.deref_mut()).map_err(|e|
+    ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+    let mut save = false;
+    if let Some(n) = nickname {
+        player.name = n;
+        save = true;
+    }
+    if let Some(t) = twitch {
+        // verify
+        player.twitch_user_login = Some(t);
+        save = true;
+    }
+    if let Some(r) = racetime {
+        // verify
+        player.racetime_username = Some(r);
+        save = true;
+    }
+    player.update(cxn.deref_mut()).map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+
+    Ok(Some(plain_interaction_response("Info updated! Thank you!")))
+}
+
+/// destroys interaction.member
+fn get_user_from_interaction(interaction: &mut Box<InteractionCreate>) -> Option<User> {
+    std::mem::take(&mut interaction.member)?.user
+}
+
 async fn handle_submit_qualifier(
     mut ac: Box<CommandData>,
     mut interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
-    let member = std::mem::take(&mut interaction.member).ok_or(ErrorResponse::new(
-        BLAND_USER_FACING_ERROR,
-        "No member found on schedule_race command!",
-    ))?;
-    let user = member.user.ok_or(ErrorResponse::new(
-        BLAND_USER_FACING_ERROR,
-        "No user found on member struct for a schedule_race command!",
-    ))?;
+    let user = get_user_from_interaction(&mut interaction).ok_or(
+        ErrorResponse::new(BLAND_USER_FACING_ERROR, "Unable to find user on handle_submit_qualifier command")
+    )?;
+
     let time = match get_opt!("qualifier_time", &mut ac.options, String) {
         Ok(t) => t,
         Err(e) => { return Ok(Some(plain_interaction_response(e))); }
@@ -386,30 +432,19 @@ async fn handle_submit_qualifier(
         .await
         .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
 
-    let player_maybe = Player::get_by_discord_id(&user.id.to_string(), cxn.deref_mut()).map_err(|e| {
-            ErrorResponse::new(
-                BLAND_USER_FACING_ERROR,
-                format!("Error fetching player: {}", e),
-            )
-        })?;
-    let (player, created) = match player_maybe {
-        Some(p) => (p, false),
-        None => {
-            let np = NewPlayer::new(user.name, user.id.to_string(), None, None, true);
-            let saved = match np.save(cxn.deref_mut()) {
-                Ok(s) => {s}
-                Err(e) => {
-                    return Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e));
-                }
-            };
-            (saved, true)
+    let (player, created) = match Player::get_or_create_from_discord_user(user, cxn.deref_mut()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e));
         }
     };
+
     let update_pls_suffix = if created {
-        " I would really appreciate it if you would run the `/update_user_info` command and provide your \
-         Twitch and RaceTime info!"
+        // it's dumb that there's no way to statically concatenate constants such as UPDATE_USER_INFO_CMD into strings
+        format!(" I would really appreciate it if you would run the `/{UPDATE_USER_INFO_CMD}` command and provide your \
+         Twitch and RaceTime info!")
     } else {
-        ""
+        "".to_string()
     };
     let current_season = match active_season_with_quals_open(cxn.deref_mut()) {
         Ok(Some(s)) => {s}

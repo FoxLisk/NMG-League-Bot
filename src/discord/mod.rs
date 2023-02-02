@@ -77,6 +77,7 @@ mod constants {
     pub const CREATE_PLAYER_CMD: &str = "create_player";
     pub const SCHEDULE_RACE_CMD: &str = "schedule_race";
     pub const SUBMIT_QUALIFIER_CMD: &str = "submit_qualifier";
+    pub const UPDATE_USER_INFO_CMD: &str = "update_user_info";
     pub const RESCHEDULE_RACE_CMD: &str = "reschedule_race";
     pub const REPORT_RACE_CMD: &str = "report_race";
     pub const UPDATE_FINISHED_RACE_CMD: &str = "update_finished_race";
