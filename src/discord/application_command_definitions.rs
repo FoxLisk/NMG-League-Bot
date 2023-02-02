@@ -1,6 +1,6 @@
 use enum_iterator::all;
 use crate::constants::WEBSITE_URL;
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD, SET_SEASON_STATE_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, SUBMIT_QUALIFIER_CMD};
+use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD, SET_SEASON_STATE_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_USER_INFO_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,
     CommandOptionValue, CommandType, NumberCommandOptionData,
@@ -455,6 +455,45 @@ pub fn application_command_definitions() -> Vec<Command> {
         .build();
 
 
+    let update_user_info = CommandBuilder::new(
+        UPDATE_USER_INFO_CMD.to_string(),
+        "Update your info (twitch, racetime, etc)",
+        CommandType::ChatInput
+    )
+        .option(CommandOption::String(ChoiceCommandOptionData{
+            autocomplete: false,
+            choices: vec![],
+            description: "Set a new nickname for display".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "nickname".to_string(),
+            name_localizations: None,
+            required: false,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData{
+            autocomplete: false,
+            choices: vec![],
+            description: "Your twitch username as it appears in your stream's URL".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "twitch".to_string(),
+            name_localizations: None,
+            required: false,
+        }))
+        .option(CommandOption::String(ChoiceCommandOptionData {
+            autocomplete: false,
+            choices: vec![],
+            description: "Your RaceTime.gg username, with discriminator (e.g. FoxLisk#8582)".to_string(),
+            description_localizations: None,
+            max_length: None,
+            min_length: None,
+            name: "racetime".to_string(),
+            name_localizations: None,
+            required: false,
+        })).build();
+
     let reschedule_race = CommandBuilder::new(
         RESCHEDULE_RACE_CMD.to_string(),
         "Reschedule someone else's race".to_string(),
@@ -532,6 +571,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         generate_pairings,
         reschedule_race,
         update_finished_race,
-        submit_qualifier
+        submit_qualifier,
+        update_user_info
     ]
 }
