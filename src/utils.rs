@@ -1,10 +1,10 @@
+use crate::models::bracket_race_infos::BracketRaceInfo;
 use chrono::{Duration, NaiveDateTime};
+use diesel::SqliteConnection;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::str::FromStr;
-use diesel::SqliteConnection;
 use twilight_model::channel::embed::EmbedField;
-use crate:: models::bracket_race_infos::BracketRaceInfo;
 
 pub fn format_hms(secs: u64) -> String {
     let mins = secs / 60;
@@ -51,7 +51,8 @@ pub fn env_var(key: &str) -> String {
 }
 
 pub fn timestamp_to_naivedatetime<T: Into<i64>>(ts: T) -> NaiveDateTime {
-    NaiveDateTime::from_timestamp(ts.into(), 0)
+    // TODO unwrap
+    NaiveDateTime::from_timestamp_opt(ts.into(), 0).unwrap()
 }
 
 pub fn time_delta_lifted(
@@ -127,7 +128,10 @@ pub fn epoch_timestamp() -> u32 {
     t_u32
 }
 
-pub fn race_to_nice_embeds(info: &BracketRaceInfo, conn: &mut SqliteConnection) -> Result<Vec<EmbedField>, diesel::result::Error> {
+pub fn race_to_nice_embeds(
+    info: &BracketRaceInfo,
+    conn: &mut SqliteConnection,
+) -> Result<Vec<EmbedField>, diesel::result::Error> {
     // TODO: less queries!
     let race = info.race(conn)?;
     let bracket = race.bracket(conn)?;

@@ -16,7 +16,6 @@ use crate::web::auth::{Admin, OauthClient};
 use crate::web::session_manager::SessionManager as _SessionManager;
 use bb8::{Pool, PooledConnection};
 use diesel::prelude::*;
-use diesel::result::Error;
 use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::BracketRace;
@@ -384,7 +383,7 @@ struct BracketsContext {
 fn get_brackets_context(
     szn: Season,
     conn: &mut SqliteConnection,
-) -> Result<BracketsContext, Error> {
+) -> Result<BracketsContext, diesel::result::Error> {
     let mut ctx_brackets = vec![];
     let brackets = szn.brackets(conn)?;
     for bracket in brackets {
@@ -452,7 +451,7 @@ async fn season_brackets(
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
         Ok(s) => Ok(s),
-        Err(Error::NotFound) => Err(Status::NotFound),
+        Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
 
         Err(_) => Err(Status::InternalServerError),
     }?;
@@ -555,7 +554,7 @@ async fn season_standings(
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
         Ok(s) => Ok(s),
-        Err(Error::NotFound) => Err(Status::NotFound),
+        Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
     }?;
 

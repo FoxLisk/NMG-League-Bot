@@ -31,7 +31,6 @@ pub enum BracketRaceStateError {
     DatabaseError(#[from] diesel::result::Error),
 }
 
-
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
     Forfeit,
@@ -53,10 +52,10 @@ impl Display for PlayerResult {
 
 impl PlayerResult {
     /// finish time if given, 3:00:00 if forfeit
-    pub  fn time(&self) -> u32 {
+    pub fn time(&self) -> u32 {
         match self {
             Self::Forfeit => Duration::hours(3).num_seconds() as u32,
-            Self::Finish(t) => t.clone()
+            Self::Finish(t) => t.clone(),
         }
     }
 }
@@ -67,7 +66,6 @@ pub enum Outcome {
     P1Win,
     P2Win,
 }
-
 
 #[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone)]
 pub struct BracketRace {
@@ -142,11 +140,7 @@ impl BracketRace {
     /// has users names instead of mentions, because mentions don't work in embeds
     pub fn title(&self, conn: &mut SqliteConnection) -> Result<String, diesel::result::Error> {
         let (p1, p2) = self.players(conn)?;
-        Ok(format!(
-            "{} vs {}",
-            p1.name,
-            p2.name
-        ))
+        Ok(format!("{} vs {}", p1.name, p2.name))
     }
 
     /// returns (old_info, new_info) (before and after the update from this method
@@ -180,7 +174,7 @@ impl BracketRace {
         &mut self,
         p1: Option<&PlayerResult>,
         p2: Option<&PlayerResult>,
-        force: bool
+        force: bool,
     ) -> Result<(), BracketRaceStateError> {
         if !force && self.state()? == BracketRaceState::Finished {
             return Err(BracketRaceStateError::InvalidState);
@@ -202,7 +196,6 @@ impl BracketRace {
             .as_ref()
             .and_then(|s| serde_json::from_str(s).ok())
     }
-
 
     pub fn player_2_result(&self) -> Option<PlayerResult> {
         self.player_2_result

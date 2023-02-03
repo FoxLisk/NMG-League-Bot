@@ -1,8 +1,10 @@
 use core::default::Default;
 use std::sync::Arc;
 
-use diesel::{ SqliteConnection};
+use diesel::SqliteConnection;
 use lazy_static::lazy_static;
+use nmg_league_bot::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
+use racetime_api::client::RacetimeClient;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_gateway::Cluster;
@@ -14,7 +16,7 @@ use twilight_model::application::interaction::message_component::MessageComponen
 use twilight_model::application::interaction::modal::{
     ModalInteractionData, ModalInteractionDataActionRow,
 };
-use twilight_model::application::interaction::{ InteractionData};
+use twilight_model::application::interaction::InteractionData;
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
@@ -26,33 +28,33 @@ use twilight_model::id::Id;
 use twilight_standby::Standby;
 use twilight_util::builder::InteractionResponseDataBuilder;
 
-use nmg_league_bot::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
-use nmg_league_bot::db::get_diesel_pool;
-use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions_utils::{
-    button_component, plain_interaction_response,
-    update_resp_to_plain_content,
-};
-use crate::discord::{ErrorResponse};
+use crate::discord::application_command_definitions::application_command_definitions;
+use crate::discord::components::action_row;
 use crate::discord::constants::{
-     CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
+    CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
-use nmg_league_bot::models::race_run::RaceRun;
-use nmg_league_bot::utils::env_var;
-use crate::{Shutdown, Webhooks};
-use crate::discord::application_command_definitions::application_command_definitions;
-use crate::discord::components::action_row;
+use crate::discord::discord_state::DiscordState;
 use crate::discord::interaction_handlers::application_commands::handle_application_interaction;
+use crate::discord::interactions_utils::{
+    button_component, plain_interaction_response, update_resp_to_plain_content,
+};
 use crate::discord::reaction_handlers::{handle_reaction_add, handle_reaction_remove};
-
+use crate::discord::ErrorResponse;
+use crate::{Shutdown, Webhooks};
+use nmg_league_bot::db::get_diesel_pool;
+use nmg_league_bot::models::race_run::RaceRun;
+use nmg_league_bot::twitch_client::TwitchClientBundle;
+use nmg_league_bot::utils::env_var;
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
+    racetime_client: RacetimeClient,
+    twitch_client_bundle: TwitchClientBundle,
     shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Arc<DiscordState> {
-    let token =  env_var(TOKEN_VAR);
+    let token = env_var(TOKEN_VAR);
     let aid_str = env_var(APPLICATION_ID_VAR);
     let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
 
@@ -67,6 +69,8 @@ pub(crate) async fn launch(
         diesel_pool,
         webhooks,
         standby.clone(),
+        racetime_client,
+        twitch_client_bundle,
     ));
 
     tokio::spawn(run_bot(token, state.clone(), shutdown));
@@ -127,14 +131,12 @@ fn interaction_to_message_id<S: Into<String>>(
         .ok_or(ErrorResponse::new(user_facing_err, "Missing message id?"))
 }
 
-
 fn run_started_components() -> Vec<Component> {
     action_row(vec![
         button_component("Finish run", CUSTOM_ID_FINISH_RUN, ButtonStyle::Success),
         button_component("Forfeit", CUSTOM_ID_FORFEIT_RUN, ButtonStyle::Danger),
     ])
 }
-
 
 fn run_started_interaction_response(
     race_run: &RaceRun,
@@ -590,7 +592,6 @@ async fn set_application_commands(
     gc: &Box<GuildCreate>,
     state: Arc<DiscordState>,
 ) -> Result<(), String> {
-
     let commands = application_command_definitions();
     let resp = state
         .interaction_client()

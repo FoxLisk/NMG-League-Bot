@@ -3,21 +3,26 @@ extern crate rand;
 extern crate serde_json;
 extern crate swiss_pairings;
 
-use std::str::FromStr;
-use twilight_model::id::Id;
-use twilight_model::id::marker::ChannelMarker;
-use crate::constants::{COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR, MATCH_RESULTS_CHANNEL_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR};
+use crate::constants::{
+    COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR,
+    MATCH_RESULTS_CHANNEL_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR,
+};
 use crate::utils::env_var;
+use racetime_api::err::RacetimeError;
+use std::str::FromStr;
 use thiserror::Error;
+use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::Id;
+use twitch_api::helix::ClientRequestError;
 
 pub mod constants;
 pub mod db;
 pub mod models;
+pub mod racetime_types;
 pub mod schema;
+pub mod twitch_client;
 pub mod utils;
 pub mod worker_funcs;
-pub mod racetime_types;
-
 
 pub struct ChannelConfig {
     pub commportunities: Id<ChannelMarker>,
@@ -30,18 +35,15 @@ pub struct ChannelConfig {
 impl ChannelConfig {
     /// explodes if any env vars are missing
     pub fn new_from_env() -> Self {
-        let commportunities =
-            Id::from_str(&env_var(COMMPORTUNITIES_CHANNEL_ID_VAR)).unwrap();
-        let sirius_inbox =
-            Id::from_str(&env_var(SIRIUS_INBOX_CHANNEL_ID_VAR)).unwrap();
+        let commportunities = Id::from_str(&env_var(COMMPORTUNITIES_CHANNEL_ID_VAR)).unwrap();
+        let sirius_inbox = Id::from_str(&env_var(SIRIUS_INBOX_CHANNEL_ID_VAR)).unwrap();
 
         let zsr = Id::from_str(&env_var(ZSR_CHANNEL_ID_VAR)).unwrap();
 
         let commentary_discussion =
             Id::from_str(&env_var(COMMENTARY_DISCUSSION_CHANNEL_ID_VAR)).unwrap();
 
-        let match_results =
-            Id::from_str(&env_var(MATCH_RESULTS_CHANNEL_ID_VAR)).unwrap();
+        let match_results = Id::from_str(&env_var(MATCH_RESULTS_CHANNEL_ID_VAR)).unwrap();
         Self {
             commportunities,
             sirius_inbox,
@@ -60,6 +62,15 @@ pub enum NMGLeagueBotError {
     #[error("Database error: {0}")]
     DatabaseError(#[from] diesel::result::Error),
 
-    #[error("[De]serializaion error: {0}")]
+    #[error("[De]serialization error: {0}")]
     SerdeError(#[from] serde_json::Error),
+
+    #[error("Illegal state transition: {0:?}")]
+    StateError(String),
+
+    #[error("RaceTime error: {0}")]
+    RaceTimeError(#[from] RacetimeError),
+
+    #[error("Twitch API error: {0}")]
+    TwitchError(#[from] ClientRequestError<reqwest::Error>),
 }

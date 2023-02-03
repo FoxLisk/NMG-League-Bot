@@ -1,18 +1,18 @@
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
-use nmg_league_bot::models::race::{Race, RaceState};
-use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use crate::schema::races;
 use crate::shutdown::Shutdown;
-use nmg_league_bot::utils::{ format_hms};
+use crate::workers;
 use diesel::prelude::*;
+use nmg_league_bot::constants::CRON_TICKS_VAR;
+use nmg_league_bot::models::race::{Race, RaceState};
+use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
+use nmg_league_bot::utils::format_hms;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-use nmg_league_bot::constants::CRON_TICKS_VAR;
-use crate::workers;
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {

@@ -31,8 +31,11 @@ use nmg_league_bot::models::player::{MentionOptional, Player};
 use nmg_league_bot::models::race::Race;
 use nmg_league_bot::models::race_run::RaceRun;
 use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
+
+use nmg_league_bot::worker_funcs::{
+    clear_commportunities_message, clear_tentative_commentary_assignment_message,
+};
 use thiserror::Error;
-use nmg_league_bot::worker_funcs::{clear_commportunities_message, clear_tentative_commentary_assignment_message};
 pub(crate) use webhooks::Webhooks;
 
 use crate::discord::discord_state::DiscordState;
@@ -68,7 +71,7 @@ mod constants {
     pub const ADMIN_ROLE_NAME: &'static str = "Admin";
 
     pub const CREATE_SEASON_CMD: &str = "create_season";
-    pub const FINISH_SEASON_CMD: &str = "finish_season";
+    pub const SET_SEASON_STATE_CMD: &str = "set_season_state";
     pub const CREATE_BRACKET_CMD: &str = "create_bracket";
     pub const FINISH_BRACKET_CMD: &str = "finish_bracket";
 
@@ -76,6 +79,10 @@ mod constants {
 
     pub const CREATE_PLAYER_CMD: &str = "create_player";
     pub const SCHEDULE_RACE_CMD: &str = "schedule_race";
+    pub const SUBMIT_QUALIFIER_CMD: &str = "submit_qualifier";
+    pub const UPDATE_USER_INFO_CMD: &str = "update_user_info";
+
+    pub const CHECK_USER_INFO_CMD: &str = "check_user_info";
     pub const RESCHEDULE_RACE_CMD: &str = "reschedule_race";
     pub const REPORT_RACE_CMD: &str = "report_race";
     pub const UPDATE_FINISHED_RACE_CMD: &str = "update_finished_race";
@@ -228,7 +235,6 @@ impl Display for ErrorResponse {
     }
 }
 
-
 #[derive(Error, Debug)]
 enum ScheduleRaceError {
     #[error("Connection error: {0}")]
@@ -294,11 +300,19 @@ async fn schedule_race<Tz: TimeZone>(
         // TODO: parallelize? this method on its own is gonna come close to hitting discord API
         // limits, so maybe don't bother lol
 
-        if let Err(e) = clear_commportunities_message(&mut new_info, &state.client, &state.channel_config).await {
+        if let Err(e) =
+            clear_commportunities_message(&mut new_info, &state.client, &state.channel_config).await
+        {
             println!("Error clearing old commportunities message upon rescheduling: {e}");
         }
 
-        if let Err(e) = clear_tentative_commentary_assignment_message(&mut new_info, &state.client, &state.channel_config).await {
+        if let Err(e) = clear_tentative_commentary_assignment_message(
+            &mut new_info,
+            &state.client,
+            &state.channel_config,
+        )
+        .await
+        {
             println!(
                 "Error clearing old tentative commentary assignment message upon rescheduling: {e}"
             );
@@ -416,10 +430,7 @@ async fn create_or_update_event(
             .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
             .external(
                 &format!("{bracket_name}: {} vs {}", p1.name, p2.name),
-                &format!(
-                    "https://multistre.am/{}/{}/layout4/",
-                    p1.twitch_user_login, p2.twitch_user_login
-                ),
+                &multistream_link(p1, p2),
                 &start,
                 &end,
             )
@@ -433,4 +444,16 @@ async fn create_or_update_event(
             e
         )
     })
+}
+
+fn multistream_link(p1: &Player, p2: &Player) -> String {
+    format!(
+        "https://multistre.am/{}/{}/layout4/",
+        p1.twitch_user_login
+            .clone()
+            .unwrap_or("<unknown>".to_string()),
+        p2.twitch_user_login
+            .clone()
+            .unwrap_or("<unknown>".to_string()),
+    )
 }
