@@ -1150,6 +1150,7 @@ async fn handle_set_season_state(
     season
         .set_state(new_state, cxn.deref_mut())
         .map_err_to_string()?;
+    season.update(cxn.deref_mut()).map_err_to_string()?;
     Ok(plain_interaction_response("Update successful."))
 }
 
