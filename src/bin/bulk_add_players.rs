@@ -1,8 +1,8 @@
+use nmg_league_bot::db::raw_diesel_cxn_from_env;
+use nmg_league_bot::models::player::NewPlayer;
 use std::error::Error;
 use std::fs::File;
 use std::io::BufReader;
-use nmg_league_bot::db::raw_diesel_cxn_from_env;
-use nmg_league_bot::models::player::NewPlayer;
 
 fn main() -> Result<(), Box<dyn Error>> {
     dotenv::dotenv().unwrap();
@@ -13,7 +13,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
     let f = File::open(filename)?;
     let br = BufReader::new(f);
-    let players: Vec<NewPlayer> =  serde_json::from_reader(br)?;
+    let players: Vec<NewPlayer> = serde_json::from_reader(br)?;
     let mut db = raw_diesel_cxn_from_env()?;
     for player in players {
         match player.save(&mut db) {

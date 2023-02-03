@@ -1,4 +1,6 @@
+use racetime_api::client::RacetimeClient;
 use shutdown::Shutdown;
+use twitch_api::twitch_oauth2::{ClientId, ClientSecret};
 
 mod discord;
 mod schema;
@@ -10,6 +12,7 @@ extern crate bb8;
 extern crate chrono;
 extern crate diesel;
 extern crate diesel_enum_derive;
+extern crate nmg_league_bot;
 extern crate oauth2;
 extern crate rand;
 extern crate regex;
@@ -17,26 +20,40 @@ extern crate rocket;
 extern crate rocket_dyn_templates;
 extern crate tokio;
 extern crate twilight_http;
+extern crate twilight_mention;
 extern crate twilight_model;
 extern crate twilight_standby;
 extern crate twilight_util;
 extern crate twilight_validate;
-extern crate twilight_mention;
-extern crate nmg_league_bot;
 
-use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use discord::Webhooks;
+use nmg_league_bot::constants::{TWITCH_CLIENT_ID_VAR, TWITCH_CLIENT_SECRET_VAR};
+use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::db::run_migrations;
+use nmg_league_bot::twitch_client::TwitchClientBundle;
+use nmg_league_bot::utils::env_var;
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
 
-    let webhooks = Webhooks::new().await.unwrap();
+    let webhooks = Webhooks::new().await.expect("Unable to construct Webhooks");
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
+    let racetime_client = RacetimeClient::new().expect("Unable to construct RacetimeClient");
 
-    let state = discord::bot::launch(webhooks.clone(), shutdown_send.subscribe()).await;
-
+    // let something = GetUsersRequest::logins(&vec!["asdf"]);
+    let client_id = ClientId::new(env_var(TWITCH_CLIENT_ID_VAR));
+    let client_secret = ClientSecret::new(env_var(TWITCH_CLIENT_SECRET_VAR));
+    let twitch_client = TwitchClientBundle::new(client_id, client_secret)
+        .await
+        .expect("Couldn't construct twitch client");
+    let state = discord::bot::launch(
+        webhooks.clone(),
+        racetime_client,
+        twitch_client,
+        shutdown_send.subscribe(),
+    )
+    .await;
     {
         let mut conn = raw_diesel_cxn_from_env().unwrap();
         let res = run_migrations(&mut conn).unwrap();
@@ -56,7 +73,7 @@ async fn main() {
 
     tokio::spawn(workers::racetime_scanner_worker::cron(
         shutdown_send.subscribe(),
-        state.clone()
+        state.clone(),
     ));
 
     drop(state);

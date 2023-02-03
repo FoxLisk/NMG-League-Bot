@@ -13,14 +13,12 @@ pub struct QualifierSubmission {
     player_id: i32,
     season_id: i32,
     reported_time: i32,
-    vod_link : String,
+    vod_link: String,
 }
 
 impl QualifierSubmission {
-
-    update_fn!{}
+    update_fn! {}
 }
-
 
 #[derive(Insertable)]
 #[diesel(table_name=qualifier_submissions)]

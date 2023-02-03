@@ -1,13 +1,14 @@
-use nmg_league_bot::constants::{
-    GUILD_ID_VAR,
-};
-use nmg_league_bot::db::DieselConnectionManager;
 use crate::discord::constants::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
-use std::env;
+use nmg_league_bot::constants::GUILD_ID_VAR;
+use nmg_league_bot::db::DieselConnectionManager;
+use nmg_league_bot::twitch_client::TwitchClientBundle;
+use nmg_league_bot::utils::env_var;
+use nmg_league_bot::ChannelConfig;
+use racetime_api::client::RacetimeClient;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_cache_inmemory::InMemoryCache;
@@ -22,7 +23,6 @@ use twilight_model::id::marker::{
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
-use nmg_league_bot::ChannelConfig;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
@@ -37,6 +37,8 @@ pub struct DiscordState {
     // this is a one-discord bot, maybe
     gid: Id<GuildMarker>,
     pub channel_config: ChannelConfig,
+    pub racetime_client: RacetimeClient,
+    pub twitch_client_bundle: TwitchClientBundle,
 }
 
 impl DiscordState {
@@ -47,10 +49,13 @@ impl DiscordState {
         diesel_pool: Pool<DieselConnectionManager>,
         webhooks: Webhooks,
         standby: Arc<Standby>,
+        racetime_client: RacetimeClient,
+        twitch_client_bundle: TwitchClientBundle,
     ) -> Self {
-        let gid_s = env::var(GUILD_ID_VAR).unwrap();
+        let gid_s = env_var(GUILD_ID_VAR);
         let gid = Id::<GuildMarker>::new(gid_s.parse::<u64>().unwrap());
         let channel_config = ChannelConfig::new_from_env();
+
         Self {
             cache,
             client,
@@ -61,6 +66,8 @@ impl DiscordState {
             private_channels: Default::default(),
             gid,
             channel_config,
+            racetime_client,
+            twitch_client_bundle,
         }
     }
 

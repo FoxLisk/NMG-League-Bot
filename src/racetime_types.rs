@@ -1,7 +1,7 @@
+use crate::models::bracket_races::PlayerResult;
 use chrono::{DateTime, FixedOffset};
 use serde::Deserialize;
 use thiserror::Error;
-use crate::models::bracket_races::PlayerResult;
 
 #[derive(Error, Debug)]
 pub enum PlayerResultError {
@@ -19,12 +19,12 @@ pub struct RaceStatus {
     // in_progress
     // finished
     // cancelled
-    pub   value: String,
+    pub value: String,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct User {
-    pub  full_name: String,
+    pub full_name: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -97,7 +97,7 @@ pub struct Races {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike, DateTime, Timelike};
+    use chrono::{DateTime, Datelike, Timelike};
 
     #[test]
     fn test_parse_rtgg_date() {
@@ -109,6 +109,5 @@ mod tests {
         assert_eq!(10, dt.month());
         assert_eq!(23, dt.day());
         assert_eq!(18, dt.hour());
-
     }
 }

@@ -1,13 +1,13 @@
-use std::num::ParseIntError;
-use std::str::FromStr;
-use crate::{save_fn, update_fn};
 use crate::schema::players;
+use crate::{save_fn, update_fn};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
-use twilight_mention::Mention;
-use twilight_model::id::Id;
-use twilight_model::id::marker::UserMarker;
 use serde::Deserialize;
+use std::num::ParseIntError;
+use std::str::FromStr;
+use twilight_mention::Mention;
+use twilight_model::id::marker::UserMarker;
+use twilight_model::id::Id;
 use twilight_model::user::User;
 
 pub trait MentionOptional {
@@ -43,7 +43,6 @@ impl Player {
             .filter(players::discord_id.eq(id))
             .first(conn)
             .optional()
-
     }
 
     /// returns (Player, was_just_created)
@@ -60,24 +59,30 @@ impl Player {
         }
     }
 
-    pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Option<Self>, diesel::result::Error> {
+    pub fn get_by_id(
+        id: i32,
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<Self>, diesel::result::Error> {
         players::table.find(id).first(conn).optional()
     }
 
     pub fn mention_or_name(&self) -> String {
-        self.discord_id().ok().map(|i| i.mention().to_string()).unwrap_or(self.name.clone())
+        self.discord_id()
+            .ok()
+            .map(|i| i.mention().to_string())
+            .unwrap_or(self.name.clone())
     }
-    update_fn!{}
+    update_fn! {}
 }
 
 impl<T> MentionOptional for Result<Option<Player>, T> {
     fn mention_maybe(&self) -> Option<String> {
         match self {
-            Ok(o) => {
-                o.as_ref().and_then(|i| i.discord_id().ok())
-                    .map(|i| i.mention().to_string())
-            }
-            Err(_e) => {None}
+            Ok(o) => o
+                .as_ref()
+                .and_then(|i| i.discord_id().ok())
+                .map(|i| i.mention().to_string()),
+            Err(_e) => None,
         }
     }
 }

@@ -1,13 +1,13 @@
+use diesel::prelude::*;
+use nmg_league_bot::constants::TOKEN_VAR;
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::schema::bracket_race_infos;
-use diesel::prelude::*;
+use nmg_league_bot::utils::{env_var, race_to_nice_embeds};
+use nmg_league_bot::ChannelConfig;
 use twilight_http::Client;
 use twilight_model::channel::embed::Embed;
 use twilight_util::builder::embed::EmbedFooterBuilder;
-use nmg_league_bot::ChannelConfig;
-use nmg_league_bot::constants::TOKEN_VAR;
-use nmg_league_bot::utils::{env_var, race_to_nice_embeds};
 
 #[tokio::main]
 async fn main() {
@@ -21,10 +21,14 @@ async fn main() {
     for info in infos {
         println!("info: {:?}", info);
         let msg_id = match info.get_commportunities_message_id() {
-            None => {continue;}
-            Some(m) => {m}
+            None => {
+                continue;
+            }
+            Some(m) => m,
         };
-        let fields = race_to_nice_embeds(&info, &mut db).map_err(|e| e.to_string()).unwrap();
+        let fields = race_to_nice_embeds(&info, &mut db)
+            .map_err(|e| e.to_string())
+            .unwrap();
         let embeds = vec![Embed {
             author: None,
             color: Some(0x00b0f0),
@@ -42,7 +46,8 @@ async fn main() {
         }];
         let msg = client
             .update_message(channel_config.commportunities, msg_id)
-            .embeds(Some(&embeds)).unwrap()
+            .embeds(Some(&embeds))
+            .unwrap()
             .exec()
             .await
             .unwrap();
