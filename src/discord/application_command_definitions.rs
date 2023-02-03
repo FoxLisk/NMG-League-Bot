@@ -1,4 +1,4 @@
-use crate::constants::WEBSITE_URL;
+use nmg_league_bot::constants::WEBSITE_URL;
 use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD, FINISH_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD};
 use twilight_model::application::command::{
     BaseCommandOptionData, ChoiceCommandOptionData, Command, CommandOption, CommandOptionChoice,

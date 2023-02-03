@@ -41,7 +41,7 @@ async fn run_bracket(bracket: Bracket, client: &Client, chans: &ChannelConfig, c
     let mut rng = thread_rng();
 
     for player in bracket.players(conn).unwrap() {
-        let mut race = get_current_round_race_for_player(&player, conn)
+        let race = get_current_round_race_for_player(&player, conn)
             .unwrap()
             .unwrap();
         println!("Race: {:?}", race);

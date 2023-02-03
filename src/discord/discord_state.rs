@@ -1,4 +1,4 @@
-use crate::constants::{
+use nmg_league_bot::constants::{
     GUILD_ID_VAR,
 };
 use nmg_league_bot::db::DieselConnectionManager;

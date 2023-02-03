@@ -1,4 +1,4 @@
-use crate::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
+use nmg_league_bot::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
 use crate::discord::components::action_row;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
@@ -12,37 +12,28 @@ use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError, get_current_round_race_for_player, PlayerResult};
 use nmg_league_bot::models::brackets::{Bracket, NewBracket};
-use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
+use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::season::{NewSeason, Season};
-use nmg_league_bot::utils::{env_default, race_to_nice_embeds, ResultCollapse, ResultErrToString};
+use nmg_league_bot::utils::{env_default, ResultCollapse, ResultErrToString};
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use bb8::RunError;
-use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel::result::Error;
 use twilight_http::request::channel::message::UpdateMessage;
-use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_http::Client;
-use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::interaction::application_command::{CommandData, CommandDataOption};
 use twilight_model::application::interaction::{Interaction, InteractionType};
-use twilight_model::channel::embed::Embed;
-use twilight_model::channel::Message;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
+use twilight_model::id::marker::{ChannelMarker,  MessageMarker};
 use twilight_model::id::Id;
-use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_validate::message::MessageValidationError;
 use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
 
@@ -839,7 +830,7 @@ async fn handle_create_bracket(
     let name = get_opt!("name", &mut ac.options, String)?;
     let season_id = get_opt!("season_id", &mut ac.options, Integer)?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let szn = Season::get_by_id(season_id as i32, conn.deref_mut())?;
+    let szn = Season::get_by_id(season_id as i32, conn.deref_mut()).map_err_to_string()?;
     let nb = NewBracket::new(&szn, name);
     nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response("Bracket created!"))

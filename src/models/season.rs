@@ -16,13 +16,13 @@ pub struct Season {
 }
 
 impl Season {
-    pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
+    /// gets Season with this id (returns error if no season exists)
+    pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         use crate::schema::seasons::dsl::*;
         use diesel::prelude::*;
         seasons
             .filter(id.eq(id_))
             .first(conn)
-            .map_err(|e| e.to_string())
     }
 
     pub fn get_active_season(

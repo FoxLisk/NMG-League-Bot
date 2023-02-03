@@ -1,0 +1,26 @@
+{% extends "base" %}
+
+{% block body %}
+<div class="bg-sky-600 h-7 mb-2 border-t">
+    <div class="flex">
+        <div class="flex w-32">
+        </div>
+        <div class="flex flex-auto" title="Season #{{season.id}}">
+            {{ season.format }}
+        </div>
+        <div class="flex flex-auto">
+            <a href="/season/{{season.id}}/brackets">Brackets</a>
+        </div>
+        <div class="flex flex-auto">
+            <a href="/season/{{season.id}}/standings">Standings</a>
+        </div>
+        <div class="flex md:w-1/5">
+        </div>
+    </div>
+    {# header #}
+</div>
+<div class="p-2 text-2xl md:text-xl lg:text-base">
+    {% block season_body %}
+    {% endblock %}
+</div>
+{% endblock body %}

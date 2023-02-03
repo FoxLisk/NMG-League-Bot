@@ -169,7 +169,6 @@ async fn handle_finished_race(
 }
 
 async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
-    println!("Sweep...");
     let active_races: Vec<Race> = match state.diesel_cxn().await.map(|mut cxn| {
         races::table
             .filter(races::dsl::state.eq(RaceState::CREATED))

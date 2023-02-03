@@ -1,4 +1,3 @@
-use std::error::Error;
 use chrono::{Duration, NaiveDateTime};
 use std::ffi::OsStr;
 use std::fmt::Display;

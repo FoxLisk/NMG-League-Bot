@@ -1,345 +1,105 @@
 use itertools::Itertools;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use oauth2::basic::{BasicClient, BasicErrorResponseType, BasicTokenType};
-use oauth2::reqwest::async_http_client;
-use oauth2::url::Url;
-use oauth2::{
-    AuthUrl, AuthorizationCode, Client, ClientId, ClientSecret, CsrfToken, EmptyExtraTokenFields,
-    RedirectUrl, RequestTokenError, RevocationErrorResponseType, Scope, StandardErrorResponse,
-    StandardRevocableToken, StandardTokenIntrospectionResponse, StandardTokenResponse,
-    TokenResponse as OauthTokenResponse, TokenUrl,
-};
-use rocket::fs::NamedFile;
-use rocket::http::{Cookie, CookieJar, Status};
-use rocket::request::{FromRequest, Outcome};
-use rocket::response::Redirect;
+use rocket::http::Status;
 use rocket::{get, Request, State};
-use rocket_dyn_templates::Template;
-use tokio::sync::Mutex as AsyncMutex;
-use tokio::time::{Duration, Instant};
 
-use crate::constants::{
-    AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
-};
-use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
+use rocket_dyn_templates::{context, Template};
+use tokio::sync::Mutex as AsyncMutex;
+use tokio::time::Duration;
+
 use crate::discord::discord_state::DiscordState;
 use crate::schema;
 use crate::shutdown::Shutdown;
+use crate::web::auth::{Admin, OauthClient};
 use crate::web::session_manager::SessionManager as _SessionManager;
-use crate::web::session_manager::SessionToken;
-use bb8::Pool;
+use bb8::{Pool, PooledConnection};
 use diesel::prelude::*;
+use diesel::result::Error;
+use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::bracket_rounds::BracketRound;
-use nmg_league_bot::models::brackets::{Bracket, BracketError, PlayerInfo};
+use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use nmg_league_bot::models::season::Season;
-use nmg_league_bot::utils::{env_var, format_hms};
+use nmg_league_bot::utils::format_hms;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
+use rocket::request::{FromRequest, Outcome};
+use rocket::response::Redirect;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 
+mod auth;
 mod session_manager;
+mod statics;
 
 type SessionManager = _SessionManager<Id<UserMarker>>;
 
 const SESSION_COOKIE_NAME: &str = "nmg_league_session";
+const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 #[macro_export]
 macro_rules! uri {
-    ($($t:tt)*) => (rocket::uri!("/", crate::web:: $($t)*))
+      ($($t:tt)*) => (rocket::uri!("/", crate::web:: $($t)*))
 }
 
-type TokenResponse = StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>;
+struct ConnectionWrapper<'a>(PooledConnection<'a, DieselConnectionManager>);
 
-type _OauthClient = Client<
-    StandardErrorResponse<BasicErrorResponseType>,
-    TokenResponse,
-    BasicTokenType,
-    StandardTokenIntrospectionResponse<EmptyExtraTokenFields, BasicTokenType>,
-    StandardRevocableToken,
-    StandardErrorResponse<RevocationErrorResponseType>,
->;
+impl<'a> Deref for ConnectionWrapper<'a> {
+    type Target = SqliteConnection;
 
-struct OauthClient {
-    client: _OauthClient,
-    states: Arc<Mutex<HashMap<String, Instant>>>,
-}
-
-impl OauthClient {
-    const STATE_TIMEOUT_SECS: u64 = 60 * 5;
-    fn _is_expired(created: Instant) -> bool {
-        let delta = Instant::now() - created;
-        delta.as_secs() > Self::STATE_TIMEOUT_SECS
-    }
-
-    fn new() -> Self {
-        Self {
-            client: BasicClient::new(
-                ClientId::new(env_var(CLIENT_ID_VAR)),
-                Some(ClientSecret::new(env_var(CLIENT_SECRET_VAR))),
-                AuthUrl::new(DISCORD_AUTHORIZE_URL.to_string()).unwrap(),
-                Some(TokenUrl::new(DISCORD_TOKEN_URL.to_string()).unwrap()),
-            )
-            .set_redirect_uri(RedirectUrl::new(env_var(AUTHORIZE_URL_VAR)).unwrap()),
-            states: Arc::new(Mutex::new(HashMap::new())),
-        }
-    }
-
-    fn auth_url(&self) -> Url {
-        let (auth_url, csrf_token) = self
-            .client
-            .authorize_url(CsrfToken::new_random)
-            // Set the desired scopes.
-            .add_scope(Scope::new("identify".to_string()))
-            .url();
-        let thing = self.states.lock();
-        match thing {
-            Ok(mut states) => {
-                states.insert(csrf_token.secret().clone(), Instant::now());
-            }
-            Err(e) => {
-                println!("States mutex poisoned: {}", e);
-            }
-        }
-        auth_url
-    }
-
-    async fn exchange_code(&self, code: String, state: String) -> Option<TokenResponse> {
-        match self.states.lock() {
-            Ok(mut states) => {
-                if let Some(created) = states.remove(&state) {
-                    if Self::_is_expired(created) {
-                        println!("Token expired");
-                        return None;
-                    }
-                } else {
-                    println!("Unexpected state: {}", state);
-                    return None;
-                }
-            }
-            Err(e) => {
-                println!("States were poisoned: failing open. Error: {}", e);
-            }
-        }
-
-        match self
-            .client
-            .exchange_code(AuthorizationCode::new(code))
-            // Set the PKCE code verifier.
-            .request_async(async_http_client)
-            .await
-        {
-            Ok(r) => Some(r),
-            Err(e) => {
-                match e {
-                    RequestTokenError::ServerResponse(e) => {
-                        println!("Server response error: {}", e);
-                    }
-                    _ => {
-                        println!("Other exchange error: {}", e);
-                    }
-                }
-                None
-            }
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-const STATIC_SUFFIXES: [&str; 8] = [
-    &"js", &"css", &"mp3", &"html", &"jpg", &"ttf", &"otf", &"gif",
-];
-
-struct Admin {}
+impl<'a> DerefMut for ConnectionWrapper<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 #[rocket::async_trait]
-impl<'r> FromRequest<'r> for Admin {
+impl<'r> FromRequest<'r> for ConnectionWrapper<'r> {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        if cfg!(feature = "no_auth_website") {
-            return Outcome::Success(Admin {});
-        }
-
-        let cookie = match request.cookies().get(SESSION_COOKIE_NAME) {
-            Some(c) => c.value(),
-            None => {
-                println!("No session cookie");
-                return Outcome::Forward(());
-            }
-        };
-        let sm_lock = match request
-            .guard::<&State<Arc<AsyncMutex<SessionManager>>>>()
-            .await
-        {
-            Outcome::Success(s) => s,
+        let pool = match request.guard::<&State<Pool<DieselConnectionManager>>>()
+            .await {
+            Outcome::Success(pool) => pool,
             _ => {
-                return Outcome::Forward(());
+                return Outcome::Failure((Status::InternalServerError, ()));
             }
         };
-        let uid = {
-            let mut sm = sm_lock.lock().await;
-            let st = SessionToken::new(cookie.to_string());
-            match sm.get_user(&st) {
-                Ok(u) => u,
-                Err(e) => {
-                    println!("User not found for session token {}: {:?}", st, e);
-                    return Outcome::Forward(());
-                }
+        match pool.get().await {
+            Ok(a) => {
+                Outcome::Success(ConnectionWrapper(a))
             }
-        };
-
-        let role_checker = match request.guard::<&State<Arc<DiscordState>>>().await {
-            Outcome::Success(s) => s,
-            _ => {
-                return Outcome::Forward(());
+            Err(_) => {
+                Outcome::Failure((Status::InternalServerError, ()))
             }
-        };
-        match role_checker.has_nmg_league_admin_role(uid).await {
-            Ok(true) => Outcome::Success(Admin {}),
-            _ => Outcome::Forward(()),
         }
     }
 }
 
-// Copied from botlisk - not sure the best way to handle reusing this
-struct StaticAsset {}
 
-#[rocket::async_trait]
-impl<'r> FromRequest<'r> for StaticAsset {
-    type Error = ();
+#[derive(Serialize, Debug)]
+struct BaseContext {
+    current_season: Option<Season>,
+}
 
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let path = request.uri().path();
-        let filename = match path.segments().last() {
-            Some(f) => f,
-            None => return Outcome::Failure((rocket::http::Status::NotFound, ())),
-        };
-        let suffix = match filename.rsplit('.').next() {
-            None => {
-                return Outcome::Failure((rocket::http::Status::NotFound, ()));
-            }
-            Some(s) => s,
-        };
-        if STATIC_SUFFIXES.contains(&suffix) {
-            Outcome::Success(StaticAsset {})
-        } else {
-            Outcome::Failure((rocket::http::Status::NotFound, ()))
-        }
+impl BaseContext {
+    fn new(conn: &mut SqliteConnection) -> Self {
+        let current_season = Season::get_active_season(conn).ok().flatten();
+        Self { current_season }
     }
 }
-
-#[get("/<file..>")]
-async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<NamedFile> {
-    let p = Path::new("http/static/").join(file);
-    if !p.exists() {
-        println!("{:?} does not exist", p);
-        return None;
-    }
-    NamedFile::open(p).await.ok()
-}
-
-#[get("/", rank = 1)]
-async fn index_logged_in(_a: Admin) -> Redirect {
-    Redirect::to(uri!(async_view))
-}
-
-#[get("/<_..>", rank = 2)]
-async fn index_logged_out() -> Redirect {
-    Redirect::to(uri!(brackets))
-}
-
-#[get("/login")]
-async fn login_page(client: &State<OauthClient>) -> Template {
-    let url = client.auth_url();
-    let mut ctx: HashMap<String, String> = Default::default();
-    ctx.insert("url".to_string(), url.to_string());
-    Template::render("login", ctx)
-}
-
-#[get("/discord_login?<code>&<state>&<error_description>")]
-async fn discord_login(
-    code: Option<String>,
-    state: String,
-    #[allow(unused_variables)] error_description: Option<String>,
-    client: &State<OauthClient>,
-    session_manager: &State<Arc<AsyncMutex<SessionManager>>>,
-    role_checker: &State<Arc<DiscordState>>,
-    cookies: &CookieJar<'_>,
-) -> Result<Template, Redirect> {
-    println!("code: {:?}", code);
-    let redirect = Redirect::to(uri!(login_page));
-    let got_code = code.ok_or(Redirect::to(uri!(login_page)))?;
-    let res: TokenResponse = match client.exchange_code(got_code, state).await {
-        Some(tr) => tr,
-        None => {
-            println!("Failed to exchange code");
-            return Err(redirect);
-        }
-    };
-    let user_token = match res.token_type() {
-        BasicTokenType::Bearer => {
-            format!("Bearer {}", res.access_token().secret())
-        }
-        _ => {
-            println!("Unexpected token type {:?}", res.token_type());
-            return Err(redirect);
-        }
-    };
-
-    let client = twilight_http::client::Client::new(user_token);
-
-    let user_info = match client.current_user().exec().await {
-        Ok(resp) => match resp.model().await {
-            Ok(cu) => cu,
-            Err(e) => {
-                println!("Error deserializing CurrentUser: {}", e);
-                return Err(redirect);
-            }
-        },
-        Err(e) => {
-            println!("Error getting user info: {}", e);
-            return Err(redirect);
-        }
-    };
-    let is_admin = role_checker
-        .has_nmg_league_admin_role(user_info.id.clone())
-        .await
-        .map_err(|e| {
-            println!("Error checking for admin status: {}", e);
-            Redirect::to(uri!(login_page))
-        })?;
-
-    if is_admin {
-        let st = {
-            let mut sm = session_manager.lock().await;
-            sm.log_in_user(
-                user_info.id,
-                Instant::now() + res.expires_in().unwrap_or(Duration::from_secs(60 * 60)),
-            )
-        };
-
-        cookies.add(Cookie::new(SESSION_COOKIE_NAME, st.to_string()));
-        println!("User {} has logged in as an admin", user_info.name);
-        Ok(Template::render(
-            "login_redirect",
-            HashMap::<String, String>::new(),
-        ))
-    } else {
-        println!("Non-admin user");
-        Err(redirect)
-    }
-}
-
-const DATETIME_FORMAT: &str = "%Y-%m-%d %H:%M:%S";
 
 // N.B. this should either not be called DiscordState, or we should manage a separate
 // connection pool for the website
@@ -596,7 +356,7 @@ impl DisplayRace {
             player_1,
             player_2,
             scheduled,
-            channel
+            channel,
         }
     }
 }
@@ -616,27 +376,17 @@ struct DisplayBracket {
 
 #[derive(Serialize)]
 struct BracketsContext {
-    season: Option<Season>,
+    season: Season,
     brackets: Vec<DisplayBracket>,
+    base_context: BaseContext,
 }
 
 fn get_brackets_context(
+    szn: Season,
     conn: &mut SqliteConnection,
-) -> Result<BracketsContext, diesel::result::Error> {
-    let mut ctx = BracketsContext {
-        season: None,
-        brackets: vec![],
-    };
-
-    let szn = match Season::get_active_season(conn)? {
-        Some(szn) => szn,
-        None => {
-            return Ok(ctx);
-        }
-    };
-
+) -> Result<BracketsContext, Error> {
+    let mut ctx_brackets = vec![];
     let brackets = szn.brackets(conn)?;
-
     for bracket in brackets {
         let races = bracket.bracket_races(conn)?;
         let rounds_by_id: HashMap<i32, BracketRound> =
@@ -685,21 +435,30 @@ fn get_brackets_context(
             .collect();
 
         let disp_b = DisplayBracket { bracket, rounds };
-        ctx.brackets.push(disp_b);
+        ctx_brackets.push(disp_b);
     }
 
-    ctx.season = Some(szn);
-
-    Ok(ctx)
+    Ok(BracketsContext {
+        season: szn,
+        brackets: ctx_brackets,
+        base_context: BaseContext::new(conn)
+    })
 }
 
-#[get("/brackets")]
-async fn brackets(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
-    let mut conn = db.get().await.map_err(|_| Status::InternalServerError)?;
+#[get("/season/<id>/brackets")]
+async fn season_brackets(
+    id: i32,
+    mut db: ConnectionWrapper<'_>,
+) -> Result<Template, Status> {
+    let szn = match Season::get_by_id(id, &mut db) {
+        Ok(s) => Ok(s),
+        Err(Error::NotFound) => Err(Status::NotFound),
 
-    let ctx = get_brackets_context(&mut conn).map_err(|_| Status::InternalServerError)?;
+        Err(_) => Err(Status::InternalServerError),
+    }?;
+    let ctx = get_brackets_context(szn, &mut db).map_err(|_| Status::InternalServerError)?;
 
-    Ok(Template::render("brackets", ctx))
+    Ok(Template::render("season_brackets", ctx))
 }
 
 #[derive(Serialize)]
@@ -718,27 +477,19 @@ struct StandingsBracket {
 
 #[derive(Serialize)]
 struct StandingsContext {
-    season: Option<Season>,
+    season: Season,
     brackets: Vec<StandingsBracket>,
+    base_context: BaseContext,
 }
 
 fn get_standings_context(
+    szn: Season,
     conn: &mut SqliteConnection,
 ) -> Result<StandingsContext, diesel::result::Error> {
-    let mut ctx = StandingsContext {
-        season: None,
-        brackets: vec![],
-    };
-
-    let szn = match Season::get_active_season(conn)? {
-        Some(szn) => szn,
-        None => {
-            return Ok(ctx);
-        }
-    };
+    let mut ctx_brackets = vec![];
 
     for bracket in szn.brackets(conn)? {
-        let mut players= bracket.players(conn)?;
+        let mut players = bracket.players(conn)?;
         let standings = match bracket.standings(conn) {
             Ok(s) => s,
             Err(BracketError::DBError(e)) => {
@@ -754,27 +505,30 @@ fn get_standings_context(
         };
         let sps: Vec<StandingsPlayer> = if standings.is_empty() {
             players.sort_by_key(|p| p.id);
-            players.into_iter().map(|p| StandingsPlayer {
-                name: p.name,
-                points: 0.0,
-                opponent_points: 0.0,
-                average_time: "".to_string()
-            }).collect()
+            players
+                .into_iter()
+                .map(|p| StandingsPlayer {
+                    name: p.name,
+                    points: 0.0,
+                    opponent_points: 0.0,
+                    average_time: "".to_string(),
+                })
+                .collect()
         } else {
-            let players_map: HashMap<i32, String> = players.into_iter()
-                .map(|p| (p.id, p.name))
-                .collect();
-            let players_to_points: HashMap<i32,i32> = standings.iter().map(|p| (p.id, p.points)).collect();
+            let players_map: HashMap<i32, String> =
+                players.into_iter().map(|p| (p.id, p.name)).collect();
             standings
                 .iter()
                 .map(|s| {
                     let total_time: u32 = s.times.iter().sum();
                     let avg_time = (total_time as f32) / (s.times.len() as f32);
 
-
                     // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     StandingsPlayer {
-                        name: players_map.get(&s.id).cloned().unwrap_or("Unknown".to_string()),
+                        name: players_map
+                            .get(&s.id)
+                            .cloned()
+                            .unwrap_or("Unknown".to_string()),
                         points: (s.points as f32) / 2.0,
                         opponent_points: (s.opponent_points as f32) / 2.0,
                         average_time: format_hms(avg_time as u64),
@@ -782,24 +536,56 @@ fn get_standings_context(
                 })
                 .collect()
         };
-        ctx.brackets.push(StandingsBracket {
+        ctx_brackets.push(StandingsBracket {
             name: bracket.name,
             players: sps,
         });
     }
-
-    ctx.season = Some(szn);
-    Ok(ctx)
+    Ok(StandingsContext {
+        season: szn,
+        brackets: ctx_brackets,
+        base_context: BaseContext::new(conn)
+    })
 }
 
-#[get("/standings")]
-async fn standings(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
-    let mut cxn = db.get().await.map_err(|_| Status::InternalServerError)?;
-    let ctx = get_standings_context(cxn.deref_mut()).map_err(|_| Status::InternalServerError)?;
-    Ok(Template::render(
-        "standings",
-        ctx,
-    ))
+#[get("/season/<id>/standings")]
+async fn season_standings(
+    id: i32,
+    mut db: ConnectionWrapper<'_>,
+) -> Result<Template, Status> {
+    let szn = match Season::get_by_id(id, &mut db) {
+        Ok(s) => Ok(s),
+        Err(Error::NotFound) => Err(Status::NotFound),
+        Err(_) => Err(Status::InternalServerError),
+    }?;
+
+    let ctx =
+        get_standings_context(szn, &mut db).map_err(|_| Status::InternalServerError)?;
+    Ok(Template::render("season_standings", ctx))
+}
+
+#[get("/season/<id>")]
+async fn season_redirect(id: i32) -> Redirect {
+    Redirect::to(uri!(season_brackets(id=id)))
+}
+
+#[get("/seasons")]
+async fn season_history(mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
+    let ctx = context!{
+        base_context: BaseContext::new(&mut db),
+    };
+    Ok(Template::render("season_history", ctx))
+}
+
+#[get("/")]
+async fn home(mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
+    #[derive(Serialize, Debug)]
+    struct HomeCtx {
+        base_context: BaseContext
+    }
+    let ctx = HomeCtx { base_context: BaseContext::new(&mut db)};
+    println!("home context: {ctx:?}");
+    Ok(Template::render("home", ctx))
 }
 
 fn option_default(
@@ -833,19 +619,18 @@ pub(crate) async fn launch_website(
     let db = get_diesel_pool().await;
 
     let rocket = rocket::build()
-        .mount("/static", rocket::routes![statics])
+        .mount("/static", rocket::routes![statics::statics])
         .mount(
             "/",
             rocket::routes![
-                login_page,
-                discord_login,
-                index_logged_in,
+                auth::login_page,
+                auth::discord_login,
                 async_view,
-                brackets,
-                standings,
-                // it's important to keep this at the end, it functions like a 404 catcher
-                // TODO that's actually a bug
-                index_logged_out,
+                season_standings,
+                season_brackets,
+                season_redirect,
+                season_history,
+                home,
             ],
         )
         .attach(Template::custom(|e| {

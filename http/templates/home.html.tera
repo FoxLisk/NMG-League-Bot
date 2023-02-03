@@ -1,0 +1,13 @@
+{% extends "base" %}
+
+{% import "macros" as macros %}
+
+{% block pagename %} Home {% endblock %}
+{% block body %}
+<p>Hello!</p>
+{% if base_context.current_season %}
+    {% set url = "/season/<id>" | replace(from="<id>", to=base_context.current_season.id|as_str) %}
+    <p>You are likely looking for {{ macros::link(href=url, text="current brackets") }}.</p>
+{% endif %}
+<p>You might want to {{ macros::link(href="https://discord.gg/exrgFbna7d", text="join the discord") }}.</p>
+{% endblock %}

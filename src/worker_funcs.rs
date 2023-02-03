@@ -10,7 +10,7 @@ use crate::models::player::Player;
 use crate::racetime_types::{Entrant, RacetimeRace};
 use crate::schema::{bracket_race_infos, bracket_races};
 use crate::{ChannelConfig, NMGLeagueBotError};
-use chrono::{DateTime, Duration, FixedOffset, ParseError, Utc};
+use chrono::{ Duration, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use std::collections::HashMap;
