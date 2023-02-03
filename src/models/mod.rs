@@ -1,11 +1,11 @@
+pub mod bracket_race_infos;
 pub mod bracket_races;
 pub mod bracket_rounds;
 pub mod brackets;
 pub mod player;
 pub mod player_bracket_entries;
-pub mod season;
-pub mod bracket_race_infos;
 pub mod qualifer_submission;
+pub mod season;
 
 // TODO: should this be a derive macro?
 /// creates a function named `save()` that takes a &SqliteConnection
@@ -31,6 +31,7 @@ macro_rules! update_fn {
 pub mod race {
     use crate::models::race_run::{NewRaceRun, RaceRun, RaceRunState};
     use crate::schema::races;
+    use crate::utils::{epoch_timestamp, uuid_string};
     use diesel::prelude::{AsChangeset, Identifiable, Insertable, Queryable};
     use diesel::sql_types::Text;
     use diesel::{AsExpression, RunQueryDsl, SqliteConnection};
@@ -38,7 +39,6 @@ pub mod race {
     use serde::Serialize;
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
-    use crate::utils::{epoch_timestamp, uuid_string};
 
     #[derive(Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
@@ -190,16 +190,16 @@ pub mod race {
 }
 
 pub mod race_run {
+    use crate::schema::race_runs;
     use crate::utils::epoch_timestamp;
     use crate::utils::uuid_string;
-    use crate::schema::race_runs;
     use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
     use chrono::NaiveDateTime;
     use diesel::prelude::*;
     use diesel_enum_derive::DieselEnum;
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
-    use rand::{Rng, thread_rng};
+    use rand::{thread_rng, Rng};
     use serde::Serialize;
     use std::fmt::Formatter;
     use std::str::FromStr;
@@ -504,7 +504,8 @@ pub mod race_run {
 
         pub fn get_reported_at(&self) -> Option<NaiveDateTime> {
             self.reported_at
-                .map(|t| NaiveDateTime::from_timestamp(t, 0))
+                .map(|t| NaiveDateTime::from_timestamp_opt(t, 0))
+                .flatten()
         }
 
         pub fn start(&mut self) {

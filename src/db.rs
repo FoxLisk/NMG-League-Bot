@@ -1,13 +1,13 @@
-use std::error::Error;
+use crate::utils::env_var;
 use async_trait::async_trait;
 use bb8::{ManageConnection, Pool};
-use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel::migration::MigrationVersion;
+use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::{MigrationError, MigrationHarness};
-use tokio::sync::{Mutex, MutexGuard};
-use thiserror::Error;
 use lazy_static::lazy_static;
-use crate::utils::env_var;
+use std::error::Error;
+use thiserror::Error;
+use tokio::sync::{Mutex, MutexGuard};
 
 lazy_static! {
     static ref DB_LOCK: Mutex<Option<Pool<DieselConnectionManager>>> = Mutex::new(None);
@@ -39,13 +39,13 @@ pub enum RunMigrationsError {
     MigrationsError(#[from] MigrationError),
 
     #[error("Database error {0}")]
-    DatabaseError(#[from] Box<dyn Error + Send + Sync>)
+    DatabaseError(#[from] Box<dyn Error + Send + Sync>),
 }
 
-
-pub fn run_migrations(conn: &mut SqliteConnection) -> Result<Vec<MigrationVersion>, RunMigrationsError> {
-    let migrations =
-        diesel_migrations::FileBasedMigrations::from_path("diesel-migrations")?;
+pub fn run_migrations(
+    conn: &mut SqliteConnection,
+) -> Result<Vec<MigrationVersion>, RunMigrationsError> {
+    let migrations = diesel_migrations::FileBasedMigrations::from_path("diesel-migrations")?;
     conn.run_pending_migrations(migrations).map_err(From::from)
 }
 

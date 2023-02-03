@@ -21,10 +21,6 @@ use rocket_dyn_templates::Template;
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::{Duration, Instant};
 
-use crate::constants::{
-    AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
-};
-use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use crate::discord::discord_state::DiscordState;
 use crate::schema;
 use crate::shutdown::Shutdown;
@@ -32,10 +28,14 @@ use crate::web::session_manager::SessionManager as _SessionManager;
 use crate::web::session_manager::SessionToken;
 use bb8::Pool;
 use diesel::prelude::*;
+use nmg_league_bot::constants::{
+    AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
+};
+use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::bracket_rounds::BracketRound;
-use nmg_league_bot::models::brackets::{Bracket, BracketError, PlayerInfo};
+use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
@@ -596,7 +596,7 @@ impl DisplayRace {
             player_1,
             player_2,
             scheduled,
-            channel
+            channel,
         }
     }
 }
@@ -738,7 +738,7 @@ fn get_standings_context(
     };
 
     for bracket in szn.brackets(conn)? {
-        let mut players= bracket.players(conn)?;
+        let mut players = bracket.players(conn)?;
         let standings = match bracket.standings(conn) {
             Ok(s) => s,
             Err(BracketError::DBError(e)) => {
@@ -754,27 +754,30 @@ fn get_standings_context(
         };
         let sps: Vec<StandingsPlayer> = if standings.is_empty() {
             players.sort_by_key(|p| p.id);
-            players.into_iter().map(|p| StandingsPlayer {
-                name: p.name,
-                points: 0.0,
-                opponent_points: 0.0,
-                average_time: "".to_string()
-            }).collect()
+            players
+                .into_iter()
+                .map(|p| StandingsPlayer {
+                    name: p.name,
+                    points: 0.0,
+                    opponent_points: 0.0,
+                    average_time: "".to_string(),
+                })
+                .collect()
         } else {
-            let players_map: HashMap<i32, String> = players.into_iter()
-                .map(|p| (p.id, p.name))
-                .collect();
-            let players_to_points: HashMap<i32,i32> = standings.iter().map(|p| (p.id, p.points)).collect();
+            let players_map: HashMap<i32, String> =
+                players.into_iter().map(|p| (p.id, p.name)).collect();
             standings
                 .iter()
                 .map(|s| {
                     let total_time: u32 = s.times.iter().sum();
                     let avg_time = (total_time as f32) / (s.times.len() as f32);
 
-
                     // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     StandingsPlayer {
-                        name: players_map.get(&s.id).cloned().unwrap_or("Unknown".to_string()),
+                        name: players_map
+                            .get(&s.id)
+                            .cloned()
+                            .unwrap_or("Unknown".to_string()),
                         points: (s.points as f32) / 2.0,
                         opponent_points: (s.opponent_points as f32) / 2.0,
                         average_time: format_hms(avg_time as u64),
@@ -796,10 +799,7 @@ fn get_standings_context(
 async fn standings(db: &State<Pool<DieselConnectionManager>>) -> Result<Template, Status> {
     let mut cxn = db.get().await.map_err(|_| Status::InternalServerError)?;
     let ctx = get_standings_context(cxn.deref_mut()).map_err(|_| Status::InternalServerError)?;
-    Ok(Template::render(
-        "standings",
-        ctx,
-    ))
+    Ok(Template::render("standings", ctx))
 }
 
 fn option_default(

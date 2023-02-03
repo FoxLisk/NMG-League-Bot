@@ -1,4 +1,5 @@
-use crate::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR,  TOKEN_VAR};
+use nmg_league_bot::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, TOKEN_VAR};
+use nmg_league_bot::utils::env_var;
 use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
@@ -8,14 +9,12 @@ use twilight_model::channel::Webhook;
 use twilight_model::id::marker::WebhookMarker;
 use twilight_model::id::Id;
 use twilight_util::link::webhook::parse;
-use nmg_league_bot::utils::env_var;
 
 #[derive(Clone)]
 pub struct Webhooks {
     http_client: Arc<Client>,
     async_channel: WebhookInfo,
     admin_channel: WebhookInfo,
-
 }
 
 #[derive(Clone)]
@@ -84,7 +83,6 @@ impl Webhooks {
     }
 
     pub async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
-
         let resp: Response<EmptyBody> = ew.exec().await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             Err(format!("Error executing webhook: {:?}", resp.text().await))

@@ -1,56 +1,62 @@
-use crate::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
 use crate::discord::components::action_row;
+use crate::discord::constants::{
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
+    CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
+    SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
+};
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::constants::{ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_RACE_CMD, SET_SEASON_STATE_CMD, CREATE_SEASON_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, UPDATE_FINISHED_RACE_CMD, FINISH_BRACKET_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_USER_INFO_CMD};
-use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
+use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
+use nmg_league_bot::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError, get_current_round_race_for_player, PlayerResult};
+use diesel::result::Error;
+use diesel::SqliteConnection;
+use nmg_league_bot::models::bracket_races::{
+    get_current_round_race_for_player, BracketRace, BracketRaceState, BracketRaceStateError,
+    PlayerResult,
+};
 use nmg_league_bot::models::brackets::{Bracket, NewBracket};
-use nmg_league_bot::models::player::{MentionOptional, NewPlayer, Player};
+use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
+use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
-use nmg_league_bot::utils::{env_default, race_to_nice_embeds, ResultCollapse, ResultErrToString};
+use nmg_league_bot::utils::{env_default, ResultCollapse, ResultErrToString};
+use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishError, RaceFinishOptions};
+use nmg_league_bot::NMGLeagueBotError;
+use racetime_api::endpoint::Query;
+use racetime_api::endpoints::UserSearch;
+use racetime_api::types::UserSearchResult;
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use bb8::RunError;
-use diesel::{Connection, ConnectionError, QueryResult, SqliteConnection};
-use diesel::result::Error;
 use twilight_http::request::channel::message::UpdateMessage;
-use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_http::Client;
-use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::interaction::application_command::{CommandData, CommandDataOption};
+use twilight_model::application::interaction::application_command::{
+    CommandData, CommandDataOption,
+};
 use twilight_model::application::interaction::{Interaction, InteractionType};
-use twilight_model::channel::embed::Embed;
-use twilight_model::channel::Message;
+use twilight_model::channel::embed::{Embed, EmbedField};
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ChannelMarker, GuildMarker, MessageMarker};
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
 use twilight_model::id::Id;
-use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::user::User;
 use twilight_validate::message::MessageValidationError;
-use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
-use nmg_league_bot::NMGLeagueBotError;
-use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
+use twitch_api::helix::users::GetUsersRequest;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
-
 
 /// turns a "String" error response into a plain interaction response with that text
 ///
@@ -64,15 +70,12 @@ fn admin_command_wrapper(
     out
 }
 
-
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
 pub async fn handle_application_interaction(
     ac: Box<CommandData>,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-
-
     // general (non-admin) commands
     match ac.name.as_str() {
         SCHEDULE_RACE_CMD => {
@@ -84,6 +87,10 @@ pub async fn handle_application_interaction(
         UPDATE_USER_INFO_CMD => {
             return handle_update_user_info(ac, interaction, state).await;
         }
+        CHECK_USER_INFO_CMD => {
+            return handle_check_user_info(ac, interaction, state).await;
+        }
+
         _ => {}
     };
     match state.application_command_run_by_admin(&interaction).await {
@@ -98,12 +105,13 @@ pub async fn handle_application_interaction(
         }
     };
 
-
     // admin commands
     match ac.name.as_str() {
-        CREATE_PLAYER_CMD => {
-            admin_command_wrapper(handle_create_player(ac, interaction, state).await.map(|i| Some(i)))
-        }
+        CREATE_PLAYER_CMD => admin_command_wrapper(
+            handle_create_player(ac, interaction, state)
+                .await
+                .map(|i| Some(i)),
+        ),
         ADD_PLAYER_TO_BRACKET_CMD => admin_command_wrapper(
             handle_add_player_to_bracket(ac, interaction, state)
                 .await
@@ -114,14 +122,10 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_create_race(ac, state).await.map(Option::from))
         }
         GENERATE_PAIRINGS_CMD => {
-            admin_command_wrapper(
-                handle_generate_pairings(ac, state).await.map(Option::from)
-            )
+            admin_command_wrapper(handle_generate_pairings(ac, state).await.map(Option::from))
         }
         RESCHEDULE_RACE_CMD => {
-            admin_command_wrapper(
-                handle_reschedule_race(ac, interaction, state).await
-            )
+            admin_command_wrapper(handle_reschedule_race(ac, interaction, state).await)
         }
 
         CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
@@ -139,11 +143,11 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_finish_bracket(ac, state).await.map(Option::from))
         }
         REPORT_RACE_CMD => {
-            admin_command_wrapper( handle_report_race(ac, state).await.map(Option::from))
+            admin_command_wrapper(handle_report_race(ac, state).await.map(Option::from))
         }
 
         UPDATE_FINISHED_RACE_CMD => {
-            admin_command_wrapper( handle_rereport_race(ac, state).await.map(Option::from))
+            admin_command_wrapper(handle_rereport_race(ac, state).await.map(Option::from))
         }
 
         _ => {
@@ -198,46 +202,37 @@ fn datetime_from_options(
     };
 
     chrono_tz::US::Eastern
-        .ymd_opt(y, m, d)
-        .and_hms_opt(hour_adjusted as u32, minute as u32, 0)
+        .with_ymd_and_hms(y, m, d, hour_adjusted as u32, minute as u32, 0)
         .earliest()
         .ok_or("Invalid datetime")
 }
 
-fn get_datetime_from_scheduling_cmd(options: &mut Vec<CommandDataOption>)
--> Result<DateTime<chrono_tz::Tz>, &'static str>
-{
+fn get_datetime_from_scheduling_cmd(
+    options: &mut Vec<CommandDataOption>,
+) -> Result<DateTime<chrono_tz::Tz>, &'static str> {
     let day_string = match get_opt!("day", options, String) {
         Ok(d) => d,
         Err(_e) => {
-            return Err(
-                "Missing required day option",
-            );
+            return Err("Missing required day option");
         }
     };
     let hour = match get_opt!("hour", options, Integer) {
         Ok(h) => h,
         Err(_e) => {
-            return Err(
-                "Missing required hour option",
-            );
+            return Err("Missing required hour option");
         }
     };
     let minute = match get_opt!("minute", options, Integer) {
         Ok(m) => m,
         Err(_e) => {
-            return Err(
-                "Missing required minute option",
-            );
+            return Err("Missing required minute option");
         }
     };
     // TODO: this cannot possibly be the best way to do this, lmao
     let ampm_offset = match get_opt!("am_pm", options, String) {
         Ok(ap) => ap,
         Err(_e) => {
-            return Err(
-                "Missing required AM/PM option",
-            );
+            return Err("Missing required AM/PM option");
         }
     };
 
@@ -302,8 +297,10 @@ async fn _handle_schedule_race_cmd(
 
     match discord::schedule_race(the_race, dt, state).await {
         Ok(s) => Ok(Some(plain_interaction_response(s))),
-        Err(ScheduleRaceError::RaceFinished) => Ok(Some(plain_interaction_response("Your race for this round is already finished."))),
-        Err(e) => Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e))
+        Err(ScheduleRaceError::RaceFinished) => Ok(Some(plain_interaction_response(
+            "Your race for this round is already finished.",
+        ))),
+        Err(e) => Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e)),
     }
 }
 
@@ -314,7 +311,7 @@ fn handle_schedule_race_autocomplete(
 ) -> Result<InteractionResponse, String> {
     get_focused_opt!("day", &mut ac.options, String)?;
 
-    let today = Utc::today().with_timezone(&chrono_tz::US::Eastern);
+    let today = Utc::now().date().with_timezone(&chrono_tz::US::Eastern);
     let mut options = vec![];
     for i in 0..7 {
         let dur = Duration::days(i);
@@ -348,7 +345,9 @@ async fn handle_schedule_race(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction.kind {
-        InteractionType::ApplicationCommand => _handle_schedule_race_cmd(ac, interaction, state).await,
+        InteractionType::ApplicationCommand => {
+            _handle_schedule_race_cmd(ac, interaction, state).await
+        }
         InteractionType::ApplicationCommandAutocomplete => {
             handle_schedule_race_autocomplete(ac, interaction, state)
                 .map(|i| Some(i))
@@ -361,7 +360,6 @@ async fn handle_schedule_race(
     }
 }
 
-
 async fn handle_update_user_info(
     mut ac: Box<CommandData>,
     mut interaction: Box<InteractionCreate>,
@@ -371,35 +369,219 @@ async fn handle_update_user_info(
     let nickname = get_opt!("nickname", &mut ac.options, String).ok();
     let twitch = get_opt!("twitch", &mut ac.options, String).ok();
     let racetime = get_opt!("racetime", &mut ac.options, String).ok();
-    let user = get_user_from_interaction(&mut interaction).ok_or(
-        ErrorResponse::new(BLAND_USER_FACING_ERROR, "Unable to find user on handle_update_user_info command")
-    )?;
-
+    if nickname.is_none() && twitch.is_none() && racetime.is_none() {
+        return Ok(Some(plain_interaction_response(
+            "You did not provide any information to update.",
+        )));
+    }
+    let user = get_user_from_interaction(&mut interaction).ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "Unable to find user on handle_update_user_info command",
+    ))?;
     let mut cxn = state
         .diesel_cxn()
         .await
         .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
 
-    let (mut player, created) = Player::get_or_create_from_discord_user(user, cxn.deref_mut()).map_err(|e|
-    ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+    let (mut player, _created) = Player::get_or_create_from_discord_user(user, cxn.deref_mut())
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
     let mut save = false;
+    let mut user_messages = vec![];
+    let mut internal_errors = vec![];
     if let Some(n) = nickname {
         player.name = n;
         save = true;
     }
+    // this is somewhat incorrect: we are setting twitch username as long as it's a valid user,
+    // and then setting racetime only if the twitch matches; we aren't validating twitch<->discord
+    // concordance, nor are we re-validating racetime on subsequent twitch username updates
+    // *shrug*
     if let Some(t) = twitch {
-        // verify
-        player.twitch_user_login = Some(t);
-        save = true;
+        match validate_twitch_username(&t, state).await {
+            Ok(Some(normal)) => {
+                user_messages.push("Twitch name updated.");
+                player.twitch_user_login = Some(normal);
+                save = true;
+            }
+            Ok(None) => {
+                user_messages.push("Cannot find that Twitch user.");
+            }
+            Err(e) => {
+                user_messages.push(
+                    "There was an error validating your Twitch username. Please try again later.",
+                );
+                internal_errors.push(e.to_string());
+            }
+        }
     }
     if let Some(r) = racetime {
-        // verify
-        player.racetime_username = Some(r);
-        save = true;
+        match validate_racetime_username(r.clone(), player.twitch_user_login.as_ref(), state).await
+        {
+            Ok(Some(e)) => {
+                user_messages.push(e);
+            }
+            Ok(None) => {
+                user_messages.push("RaceTime name updated.");
+                player.racetime_username = Some(r);
+                save = true;
+            }
+            Err(e) => {
+                user_messages.push(
+                    "There was an error validating your RaceTime username. Please try again later.",
+                );
+                internal_errors.push(e.to_string());
+            }
+        }
     }
-    player.update(cxn.deref_mut()).map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+    if save {
+        player
+            .update(cxn.deref_mut())
+            .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+    }
+    let user_resp = user_messages.join(" ");
+    if internal_errors.is_empty() {
+        Ok(Some(format_player(
+            if user_resp.is_empty() {
+                None
+            } else {
+                Some(user_resp)
+            },
+            &player,
+        )))
+    } else {
+        Err(ErrorResponse::new(user_resp, internal_errors.join(" ")))
+    }
+}
 
-    Ok(Some(plain_interaction_response("Info updated! Thank you!")))
+async fn handle_check_user_info(
+    mut ac: Box<CommandData>,
+    mut interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
+    let user = get_user_from_interaction(&mut interaction).ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "Unable to find user on handle_check_user_info command",
+    ))?;
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+
+    let (mut player, created) = Player::get_or_create_from_discord_user(user, cxn.deref_mut())
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))?;
+    Ok(Some(format_player(
+        Some(format!(
+            "You can use the `/{UPDATE_USER_INFO_CMD}` command to change these properties."
+        )),
+        &player,
+    )))
+}
+
+fn format_player(content: Option<String>, player: &Player) -> InteractionResponse {
+    let mut fields = vec![EmbedField {
+        inline: false,
+        name: "Name".to_string(),
+        value: player.name.clone(),
+    }];
+    if let Some(t) = &player.twitch_user_login {
+        fields.push(EmbedField {
+            inline: false,
+            name: "Twitch username".to_string(),
+            value: t.clone(),
+        });
+    }
+    if let Some(r) = &player.racetime_username {
+        fields.push(EmbedField {
+            inline: false,
+            name: "RaceTime.gg username".to_string(),
+            value: r.clone(),
+        });
+    }
+
+    let embeds = vec![Embed {
+        author: None,
+        color: None,
+        description: None,
+        fields,
+        footer: None,
+        image: None,
+        kind: "".to_string(),
+        provider: None,
+        thumbnail: None,
+        timestamp: None,
+        title: Some("Player info".to_string()),
+        url: None,
+        video: None,
+    }];
+
+    InteractionResponse {
+        kind: InteractionResponseType::ChannelMessageWithSource,
+        data: Some(InteractionResponseData {
+            content,
+            embeds: Some(embeds),
+            ..Default::default()
+        }),
+    }
+}
+
+/// returns normalized login (i.e. what twitch gives back) if the lookup succeeds, None otherwise
+async fn validate_twitch_username(
+    username: &str,
+    state: &Arc<DiscordState>,
+) -> Result<Option<String>, NMGLeagueBotError> {
+    let logins = vec![username.into()];
+    let req = GetUsersRequest::logins(&logins);
+    let mut users = state.twitch_client_bundle.req_get(req).await?;
+    // just sort of assuming len == 1 here
+    if let Some(u) = users.data.pop() {
+        // intellij really thinks this is Iterator::take, but it's actually an aliri_braid method
+        let got: String = u.login.take();
+        if got.eq_ignore_ascii_case(username) {
+            Ok(Some(got))
+        } else {
+            Ok(None)
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+/// term is an rtgg term of art; it can be like `name` or `#scrim` or `name#scrim`
+/// Returns Ok(None) on success, Ok(reason) on logical error, or a behind the scenes error
+async fn validate_racetime_username(
+    term: String,
+    twitch_login: Option<&String>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<&'static str>, NMGLeagueBotError> {
+    let us = UserSearch::from_term(term.clone());
+    let UserSearchResult { results } = us.query(&state.racetime_client).await?;
+    // if we found any users, make sure we found an exact match (racetime does not offer
+    // exact search)
+    if let Some(found) = results
+        .into_iter()
+        .find(|u| u.full_name.eq_ignore_ascii_case(&term))
+    {
+        // if the user we found has a linked twitch channel, *and* they've provided a
+        // twitch channel to *us*, we can sanity check
+        if let (Some(found_chan), Some(player_login)) = (found.twitch_channel, twitch_login) {
+            if found_chan
+                .to_lowercase()
+                .ends_with(&format!("/{}", player_login.to_lowercase()))
+            {
+                Ok(None)
+            } else {
+                Ok(Some(
+                    "The RaceTime account with that name links to a different Twitch account.",
+                ))
+            }
+        } else {
+            // if their twitch account isn't linked, we just get to trust them
+            Ok(None)
+        }
+    } else {
+        Ok(Some("Cannot find specified RaceTime user."))
+    }
 }
 
 /// destroys interaction.member
@@ -413,23 +595,30 @@ async fn handle_submit_qualifier(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
-    let user = get_user_from_interaction(&mut interaction).ok_or(
-        ErrorResponse::new(BLAND_USER_FACING_ERROR, "Unable to find user on handle_submit_qualifier command")
-    )?;
+    let user = get_user_from_interaction(&mut interaction).ok_or(ErrorResponse::new(
+        BLAND_USER_FACING_ERROR,
+        "Unable to find user on handle_submit_qualifier command",
+    ))?;
 
     let time = match get_opt!("qualifier_time", &mut ac.options, String) {
         Ok(t) => t,
-        Err(e) => { return Ok(Some(plain_interaction_response(e))); }
+        Err(e) => {
+            return Ok(Some(plain_interaction_response(e)));
+        }
     };
     let secs = match parse_hms(&time) {
         Some(t) => t,
         None => {
-            return Ok(Some(plain_interaction_response("Invalid time. Please use h:mm:ss format.")));
+            return Ok(Some(plain_interaction_response(
+                "Invalid time. Please use h:mm:ss format.",
+            )));
         }
     };
     let vod = match get_opt!("vod", &mut ac.options, String) {
         Ok(v) => v,
-        Err(e) => { return Ok(Some(plain_interaction_response(e))); }
+        Err(e) => {
+            return Ok(Some(plain_interaction_response(e)));
+        }
     };
 
     let mut cxn = state
@@ -452,31 +641,31 @@ async fn handle_submit_qualifier(
         "".to_string()
     };
     let current_season = match active_season_with_quals_open(cxn.deref_mut()) {
-        Ok(Some(s)) => {s}
+        Ok(Some(s)) => s,
         Ok(None) => {
-            return Ok(Some(plain_interaction_response(format!("Qualifiers are not currently open.{update_pls_suffix}"))));
+            return Ok(Some(plain_interaction_response(format!(
+                "Qualifiers are not currently open.{update_pls_suffix}"
+            ))));
         }
         Err(e) => {
             return Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e));
         }
     };
-    let nqs = NewQualifierSubmission::new(
-        &player,
-        &current_season,
-        secs,
-        vod
-    );
+    let nqs = NewQualifierSubmission::new(&player, &current_season, secs, vod);
     nqs.save(cxn.deref_mut())
-        .map(|_|
-            Some(plain_interaction_response(format!("Thanks for your submission!{update_pls_suffix}")))
-        ).map_err(|e|
-            ErrorResponse::new(BLAND_USER_FACING_ERROR, e)
-    )
+        .map(|_| {
+            Some(plain_interaction_response(format!(
+                "Thanks for your submission!{update_pls_suffix}"
+            )))
+        })
+        .map_err(|e| ErrorResponse::new(BLAND_USER_FACING_ERROR, e))
 }
 
-fn active_season_with_quals_open(cxn: &mut SqliteConnection) -> Result<Option<Season>, NMGLeagueBotError> {
+fn active_season_with_quals_open(
+    cxn: &mut SqliteConnection,
+) -> Result<Option<Season>, NMGLeagueBotError> {
     match Season::get_active_season(cxn)? {
-        None => {Ok(None)}
+        None => Ok(None),
         Some(s) => {
             if s.are_qualifiers_open()? {
                 Ok(Some(s))
@@ -486,8 +675,6 @@ fn active_season_with_quals_open(cxn: &mut SqliteConnection) -> Result<Option<Se
         }
     }
 }
-
-
 
 async fn _handle_reschedule_race_cmd(
     mut ac: Box<CommandData>,
@@ -500,11 +687,14 @@ async fn _handle_reschedule_race_cmd(
         Ok(br) => br,
         Err(Error::NotFound) => {
             return Err(format!("Race #{race_id} not found."));
-        },
-        Err(e) => return Err(e.to_string())
+        }
+        Err(e) => return Err(e.to_string()),
     };
     let when = get_datetime_from_scheduling_cmd(&mut ac.options).map_err_to_string()?;
-    discord::schedule_race(race, when, state).await.map(|s| Some(plain_interaction_response(s))).map_err_to_string()
+    discord::schedule_race(race, when, state)
+        .await
+        .map(|s| Some(plain_interaction_response(s)))
+        .map_err_to_string()
 }
 
 async fn handle_reschedule_race(
@@ -513,15 +703,17 @@ async fn handle_reschedule_race(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
     match interaction.kind {
-        InteractionType::ApplicationCommand => _handle_reschedule_race_cmd(ac, interaction, state).await,
+        InteractionType::ApplicationCommand => {
+            _handle_reschedule_race_cmd(ac, interaction, state).await
+        }
         InteractionType::ApplicationCommandAutocomplete => {
             // N.B. this will have to change if/when i add race id autocompletion
-            handle_schedule_race_autocomplete(ac, interaction, state)
-                .map(|i| Some(i))
+            handle_schedule_race_autocomplete(ac, interaction, state).map(|i| Some(i))
         }
-        _ => Err(
-            format!("Unexpected InteractionType for {}", RESCHEDULE_RACE_CMD),
-        ),
+        _ => Err(format!(
+            "Unexpected InteractionType for {}",
+            RESCHEDULE_RACE_CMD
+        )),
     }
 }
 
@@ -545,7 +737,13 @@ async fn handle_create_player(
         }
     };
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let np = NewPlayer::new(name, discord_user.to_string(), Some(rt_un), Some(twitch_name), true);
+    let np = NewPlayer::new(
+        name,
+        discord_user.to_string(),
+        Some(rt_un),
+        Some(twitch_name),
+        true,
+    );
 
     match np.save(cxn.deref_mut()) {
         Ok(_) => Ok(plain_interaction_response("Player added!")),
@@ -944,10 +1142,13 @@ async fn handle_set_season_state(
 ) -> Result<InteractionResponse, String> {
     let sid = get_opt!("season_id", &mut ac.options, Integer)?;
     let new_state_raw = get_opt!("new_state", &mut ac.options, String)?;
-    let new_state: SeasonState = serde_json::from_str(&new_state_raw).map_err(|e| format!("Error parsing state: {e}"))?;
+    let new_state: SeasonState =
+        serde_json::from_str(&new_state_raw).map_err(|e| format!("Error parsing state: {e}"))?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let mut season = Season::get_by_id(sid as i32, cxn.deref_mut()).map_err_to_string()?;
-    season.set_state(new_state, cxn.deref_mut()).map_err_to_string()?;
+    season
+        .set_state(new_state, cxn.deref_mut())
+        .map_err_to_string()?;
     Ok(plain_interaction_response("Update successful."))
 }
 
@@ -985,7 +1186,8 @@ async fn handle_finish_bracket(
 ) -> Result<InteractionResponse, String> {
     let bracket_id = get_opt!("bracket_id", &mut ac.options, Integer)?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let mut bracket = Bracket::get_by_id(bracket_id as i32, conn.deref_mut()).map_err_to_string()?;
+    let mut bracket =
+        Bracket::get_by_id(bracket_id as i32, conn.deref_mut()).map_err_to_string()?;
     let resp = if bracket.finish(conn.deref_mut()).map_err_to_string()? {
         bracket.update(conn.deref_mut()).map_err_to_string()?;
         "Bracket finished."
@@ -996,7 +1198,11 @@ async fn handle_finish_bracket(
 }
 
 // wow dude great function name
-async fn get_race_finish_opts_from_command_opts(options: &mut Vec<CommandDataOption>, state: &Arc<DiscordState>, force: bool) -> Result<RaceFinishOptions, String> {
+async fn get_race_finish_opts_from_command_opts(
+    options: &mut Vec<CommandDataOption>,
+    state: &Arc<DiscordState>,
+    force: bool,
+) -> Result<RaceFinishOptions, String> {
     let race_id = get_opt!("race_id", options, Integer)?;
     let p1_res = get_opt!("p1_result", options, String)?;
     let p2_res = get_opt!("p2_result", options, String)?;
@@ -1004,17 +1210,13 @@ async fn get_race_finish_opts_from_command_opts(options: &mut Vec<CommandDataOpt
     let r1 = if p1_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
-        PlayerResult::Finish(
-            parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?
-        )
+        PlayerResult::Finish(parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?)
     };
 
-    let r2 =  if p2_res == "forfeit" {
+    let r2 = if p2_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
-        PlayerResult::Finish(
-            parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?
-        )
+        PlayerResult::Finish(parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?)
     };
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
@@ -1039,11 +1241,9 @@ async fn get_race_finish_opts_from_command_opts(options: &mut Vec<CommandDataOpt
         player_2: p2,
         player_2_result: r2,
         channel_id: state.channel_config.match_results,
-        force_update: force
+        force_update: force,
     })
 }
-
-
 
 async fn handle_report_race(
     mut ac: Box<CommandData>,
@@ -1066,7 +1266,6 @@ async fn handle_report_race(
         })
 }
 
-
 async fn handle_rereport_race(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
@@ -1079,15 +1278,21 @@ async fn handle_rereport_race(
         ));
     }
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client), &state.channel_config)
-        .await
-        .map(|_|plain_interaction_response(format!(
+    trigger_race_finish(
+        opts,
+        cxn.deref_mut(),
+        Some(&state.client),
+        &state.channel_config,
+    )
+    .await
+    .map(|_| {
+        plain_interaction_response(format!(
             "Race has been updated. You should see a post in {}",
             state.channel_config.match_results.mention()
-        )))
-        .map_err_to_string()
+        ))
+    })
+    .map_err_to_string()
 }
-
 
 async fn handle_generate_pairings(
     mut ac: Box<CommandData>,
@@ -1095,23 +1300,22 @@ async fn handle_generate_pairings(
 ) -> Result<InteractionResponse, String> {
     let bracket_id = get_opt!("bracket_id", &mut ac.options, Integer)?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    let mut b = match  Bracket::get_by_id(bracket_id as i32, cxn.deref_mut()) {
+    let mut b = match Bracket::get_by_id(bracket_id as i32, cxn.deref_mut()) {
         Ok(b) => b,
-        Err(Error::NotFound) => {return Err(format!("Bracket {bracket_id} not found."));}
+        Err(Error::NotFound) => {
+            return Err(format!("Bracket {bracket_id} not found."));
+        }
         Err(e) => {
             return Err(e.to_string());
         }
     };
 
     match b.generate_pairings(cxn.deref_mut()) {
-        Ok(()) => Ok(
-            plain_interaction_response(
-                format!(
-                    "Pairings generated! See them at {}/brackets", WEBSITE_URL
-                )
-            )
-        ),
-        Err(e) => Err(format!("Error generating pairings: {e:?}"))
+        Ok(()) => Ok(plain_interaction_response(format!(
+            "Pairings generated! See them at {}/brackets",
+            WEBSITE_URL
+        ))),
+        Err(e) => Err(format!("Error generating pairings: {e:?}")),
     }
 }
 
@@ -1130,11 +1334,7 @@ fn parse_hms(s: &str) -> Option<u32> {
         return None;
     }
 
-    Some(
-        h * 60 * 60 +
-        m * 60 +
-            s
-    )
+    Some(h * 60 * 60 + m * 60 + s)
 }
 
 #[cfg(test)]

@@ -10,17 +10,17 @@ use crate::models::player::Player;
 use crate::racetime_types::{Entrant, RacetimeRace};
 use crate::schema::{bracket_race_infos, bracket_races};
 use crate::{ChannelConfig, NMGLeagueBotError};
-use chrono::{DateTime, Duration, FixedOffset, ParseError, Utc};
+use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use std::collections::HashMap;
 use thiserror::Error;
-use twilight_http::Client;
 use twilight_http::response::DeserializeBodyError;
+use twilight_http::Client;
 use twilight_model::channel::embed::{Embed, EmbedField};
 use twilight_model::channel::Message;
-use twilight_model::id::Id;
 use twilight_model::id::marker::ChannelMarker;
+use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
 /// races that are not in finished state and that are scheduled to have started recently
@@ -76,7 +76,6 @@ pub fn races_by_player_rtgg<'a>(
                 // both of them
             }
         };
-
     }
     interesting_rtgg_ids
 }
@@ -99,9 +98,12 @@ pub fn interesting_race<'a>(
         return None;
     }
     let started = match race.started_at() {
-        Ok(dt) => {dt}
+        Ok(dt) => dt,
         Err(e) => {
-            println!("Error parsing racetime started_at ({}): {e}", race.started_at);
+            println!(
+                "Error parsing racetime started_at ({}): {e}",
+                race.started_at
+            );
             return None;
         }
     };
@@ -124,16 +126,23 @@ pub fn interesting_race<'a>(
                 }
             };
             if scheduled.signed_duration_since(started).num_minutes() > 180 {
-                println!("This race ({}) was started a very long time ago: {}", race.name,  race.started_at);
+                println!(
+                    "This race ({}) was started a very long time ago: {}",
+                    race.name, race.started_at
+                );
                 continue;
             }
             let p1rt = match &p1.racetime_username {
                 Some(s) => s,
-                None => {continue;}
+                None => {
+                    continue;
+                }
             };
             let p2rt = match &p2.racetime_username {
                 Some(s) => s,
-                None => {continue;}
+                None => {
+                    continue;
+                }
             };
 
             let e1o = entrant_ids.remove(p1rt);
@@ -167,7 +176,7 @@ pub enum RaceFinishError {
     NotFinished,
 
     #[error("Error deserializing discord response: {0}")]
-    DeserializeBodyError(#[from] DeserializeBodyError)
+    DeserializeBodyError(#[from] DeserializeBodyError),
 }
 
 // this really really sucks. lots of this stuff should be references, but that's just
@@ -197,15 +206,25 @@ pub async fn trigger_race_finish(
     client: Option<&Client>,
     channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
-    options.bracket_race.add_results(Some(&options.player_1_result), Some(&options.player_2_result), options.force_update)?;
+    options.bracket_race.add_results(
+        Some(&options.player_1_result),
+        Some(&options.player_2_result),
+        options.force_update,
+    )?;
     options.bracket_race.update(conn)?;
 
     if let Some(c) = client {
         if let Err(e) = post_match_results(c, &options, conn).await {
-            println!("Error posting match results for race {}: {e}", options.bracket_race.id);
+            println!(
+                "Error posting match results for race {}: {e}",
+                options.bracket_race.id
+            );
         }
         if let Err(e) = clear_commportunities_message(&mut options.info, c, channel_config).await {
-            println!("Error clearing commportunities message for race {}: {e}", options.bracket_race.id);
+            println!(
+                "Error clearing commportunities message for race {}: {e}",
+                options.bracket_race.id
+            );
         }
         // TODO: maybe clear other messages? under some circumstances?
     }
@@ -213,27 +232,42 @@ pub async fn trigger_race_finish(
     Ok(())
 }
 
-async fn post_match_results(c: &Client, options: &RaceFinishOptions, conn: &mut SqliteConnection) -> Result<Message, RaceFinishError> {
-
+async fn post_match_results(
+    c: &Client,
+    options: &RaceFinishOptions,
+    conn: &mut SqliteConnection,
+) -> Result<Message, RaceFinishError> {
     let bracket = options.bracket_race.bracket(conn)?;
-    let outcome = options.bracket_race.outcome()?.ok_or(RaceFinishError::NotFinished)?;
+    let outcome = options
+        .bracket_race
+        .outcome()?
+        .ok_or(RaceFinishError::NotFinished)?;
     let winner = match outcome {
         Outcome::Tie => {
             format!(
                 "It's a tie?! **{}** ({}) vs **{}** ({})",
-                options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
+                options.player_1.name,
+                options.player_1_result,
+                options.player_2.name,
+                options.player_2_result
             )
         }
         Outcome::P1Win => {
             format!(
                 "**{}** ({}) defeats **{}** ({})",
-                options.player_1.name, options.player_1_result, options.player_2.name, options.player_2_result
+                options.player_1.name,
+                options.player_1_result,
+                options.player_2.name,
+                options.player_2_result
             )
         }
         Outcome::P2Win => {
             format!(
                 "**{}** ({}) defeats **{}** ({})",
-                options.player_2.name, options.player_2_result, options.player_1.name, options.player_1_result
+                options.player_2.name,
+                options.player_2_result,
+                options.player_1.name,
+                options.player_1_result
             )
         }
     };
@@ -273,15 +307,10 @@ async fn post_match_results(c: &Client, options: &RaceFinishOptions, conn: &mut 
     m.model().await.map_err(From::from)
 }
 
-
 macro_rules! clear_bracket_race_info_message {
     ($info:expr, $client:expr, $channel_id:expr, $mid_fn:ident, $clear_fn:ident) => {
         if let Some(mid) = $info.$mid_fn() {
-            match $client
-                .delete_message($channel_id, mid)
-                .exec()
-                .await
-            {
+            match $client.delete_message($channel_id, mid).exec().await {
                 Ok(_) => {
                     $info.$clear_fn();
                     Ok(true)
@@ -347,9 +376,9 @@ mod tests {
         Entrant, EntrantStatus, Goal, RaceStatus, Races, RacetimeRace, User,
     };
     use crate::worker_funcs::interesting_race;
+    use chrono::{DateTime, TimeZone, Utc};
     use std::collections::HashMap;
     use std::fs::read_to_string;
-    use chrono::{DateTime, TimeZone, Utc};
 
     #[test]
     fn test_rfc3339() {
@@ -359,14 +388,20 @@ mod tests {
     #[test]
     fn test_date_math() {
         let scheduled = Utc.timestamp(1667349918, 0);
-        let race_started_very_old = DateTime::parse_from_rfc3339("2022-10-23T19:07:20.025Z").unwrap();
+        let race_started_very_old =
+            DateTime::parse_from_rfc3339("2022-10-23T19:07:20.025Z").unwrap();
         let dur = scheduled.signed_duration_since(race_started_very_old);
         assert!(dur.num_minutes() > 100);
-        let race_started = DateTime::parse_from_rfc3339("2022-11-02T00:58:02.790200800+00:00").unwrap();
+        let race_started =
+            DateTime::parse_from_rfc3339("2022-11-02T00:58:02.790200800+00:00").unwrap();
         assert!(dur.num_minutes() > 100);
     }
 
-    fn bracket_race_info(id: i32, bracket_race_id: i32, when: Option<Option<DateTime<Utc>>>) -> BracketRaceInfo {
+    fn bracket_race_info(
+        id: i32,
+        bracket_race_id: i32,
+        when: Option<Option<DateTime<Utc>>>,
+    ) -> BracketRaceInfo {
         let scheduled_for = match when {
             Some(Some(dt)) => Some(dt.timestamp()),
             Some(None) => Some(Utc::now().timestamp()),
@@ -382,7 +417,7 @@ mod tests {
             racetime_gg_url: None,
             tentative_commentary_assignment_message_id: None,
             commentary_assignment_message_id: None,
-            restream_channel: None
+            restream_channel: None,
         }
     }
 
@@ -439,26 +474,26 @@ mod tests {
             id: 1,
             name: "player 1".to_string(),
             discord_id: "1234".to_string(),
-            racetime_username: "p1#1234".to_string(),
-            twitch_user_login: "p1_ttv".to_string(),
+            racetime_username: Some("p1#1234".to_string()),
+            twitch_user_login: Some("p1_ttv".to_string()),
             restreams_ok: 1,
         };
         let p2 = Player {
             id: 2,
             name: "player 2".to_string(),
             discord_id: "3456".to_string(),
-            racetime_username: "p2#1234".to_string(),
-            twitch_user_login: "p2_ttv".to_string(),
+            racetime_username: Some("p2#1234".to_string()),
+            twitch_user_login: Some("p2_ttv".to_string()),
             restreams_ok: 1,
         };
         let mut races = HashMap::new();
-        races.insert(p1.racetime_username.clone(), (&bri, &br, &p1, &p2));
-        races.insert(p2.racetime_username.clone(), (&bri, &br, &p1, &p2));
+        races.insert(p1.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p2));
+        races.insert(p2.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p2));
         let whatever = interesting_race(&mut race, &races);
         assert!(whatever.is_some(), "{:?}", whatever);
         let (_, _, (p1, e1), (p2, e2)) = whatever.unwrap();
-        assert_eq!(p1.racetime_username, e1.user.full_name);
-        assert_eq!(p2.racetime_username, e2.user.full_name);
+        assert_eq!(p1.racetime_username, Some(e1.user.full_name));
+        assert_eq!(p2.racetime_username, Some(e2.user.full_name));
     }
 
     #[test]
@@ -515,21 +550,21 @@ mod tests {
             id: 1,
             name: "player 1".to_string(),
             discord_id: "1234".to_string(),
-            racetime_username: "p1#1234".to_string(),
+            racetime_username: Option::from("p1#1234".to_string()),
             restreams_ok: 1,
-            twitch_user_login: "p1_ttv".to_string(),
+            twitch_user_login: Option::from("p1_ttv".to_string()),
         };
         let p3 = Player {
             id: 3,
             name: "player 3".to_string(),
             discord_id: "3456".to_string(),
-            racetime_username: "p3#1234".to_string(),
-            twitch_user_login: "p3_ttv".to_string(),
+            racetime_username: Option::from("p3#1234".to_string()),
+            twitch_user_login: Option::from("p3_ttv".to_string()),
             restreams_ok: 1,
         };
         let mut races = HashMap::new();
-        races.insert(p1.racetime_username.clone(), (&bri, &br, &p1, &p3));
-        races.insert(p3.racetime_username.clone(), (&bri, &br, &p1, &p3));
+        races.insert(p1.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p3));
+        races.insert(p3.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p3));
         let whatever = interesting_race(&mut race, &races);
         assert!(whatever.is_none());
     }

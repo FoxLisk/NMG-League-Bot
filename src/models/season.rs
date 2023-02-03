@@ -3,9 +3,9 @@ use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
 use serde::Serialize;
 
-use crate::utils::epoch_timestamp;
-use crate::{NMGLeagueBotError, save_fn, update_fn};
 use crate::schema::seasons;
+use crate::utils::epoch_timestamp;
+use crate::{save_fn, update_fn, NMGLeagueBotError};
 use enum_iterator::Sequence;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
@@ -55,7 +55,11 @@ impl Season {
 
     /// this is a heavy duty function, not a normal setter. it will make sure state
     /// transitions are legal, check associated bracket states, etc
-    pub fn set_state(&mut self, state: SeasonState,  cxn: &mut SqliteConnection) -> Result<(), NMGLeagueBotError> {
+    pub fn set_state(
+        &mut self,
+        state: SeasonState,
+        cxn: &mut SqliteConnection,
+    ) -> Result<(), NMGLeagueBotError> {
         let current_state = self.get_state()?;
         if current_state == state {
             return Ok(());
@@ -63,14 +67,19 @@ impl Season {
         macro_rules! expect_state {
             ($state:ident) => {
                 if current_state != SeasonState::$state {
-                    return Err(NMGLeagueBotError::StateError(format!("Expected state {}", serde_json::to_string(&SeasonState:: $state)?)));
+                    return Err(NMGLeagueBotError::StateError(format!(
+                        "Expected state {}",
+                        serde_json::to_string(&SeasonState::$state)?
+                    )));
                 }
-            }
+            };
         }
 
-        match state  {
+        match state {
             SeasonState::Created => {
-                return Err(NMGLeagueBotError::StateError("Seasons can't return to created".to_string()));
+                return Err(NMGLeagueBotError::StateError(
+                    "Seasons can't return to created".to_string(),
+                ));
             }
             SeasonState::QualifiersOpen => {
                 expect_state!(Created);
@@ -104,17 +113,19 @@ impl Season {
     /// returns
     fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<(), NMGLeagueBotError> {
         for b in self.brackets(cxn)? {
-            if ! b.is_finished()? {
-                return Err(NMGLeagueBotError::StateError(format!("Cannot finish: bracket {} isn't finished yet.", b.name)));
+            if !b.is_finished()? {
+                return Err(NMGLeagueBotError::StateError(format!(
+                    "Cannot finish: bracket {} isn't finished yet.",
+                    b.name
+                )));
             }
         }
         self.finished = Some(epoch_timestamp() as i64);
         Ok(())
     }
 
-    update_fn!{}
+    update_fn! {}
 }
-
 
 #[derive(Insertable)]
 #[diesel(table_name=seasons)]
@@ -130,7 +141,7 @@ impl NewSeason {
             format: format.into(),
             started: epoch_timestamp() as i64,
             // TODO: unwrap
-            state: serde_json::to_string(&SeasonState::Created).unwrap()
+            state: serde_json::to_string(&SeasonState::Created).unwrap(),
         }
     }
     save_fn!(seasons::table, Season);

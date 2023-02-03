@@ -40,6 +40,9 @@ thiserror = "1.0"
 iso8601-duration = "0.1.0"
 enum-iterator = "1.2.0"
 
+reqwest = "0.11.13"
+twitch_api = { version = "0.7.0-rc.4", features = ["client", "reqwest", "helix"]}
+
 twilight-model = "0.13.5"
 twilight-validate = "0.13.1"
 twilight-mention = "0.13.0"

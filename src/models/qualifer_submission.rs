@@ -1,14 +1,11 @@
-use crate::models::brackets::Bracket;
 use diesel::prelude::*;
-use diesel::{RunQueryDsl, SqliteConnection};
+use diesel::RunQueryDsl;
 use serde::Serialize;
 
-use crate::utils::epoch_timestamp;
-use crate::{NMGLeagueBotError, save_fn, update_fn};
-use crate::schema::qualifier_submissions;
-use enum_iterator::Sequence;
 use crate::models::player::Player;
 use crate::models::season::Season;
+use crate::schema::qualifier_submissions;
+use crate::{save_fn, update_fn};
 
 #[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
 pub struct QualifierSubmission {
@@ -16,14 +13,12 @@ pub struct QualifierSubmission {
     player_id: i32,
     season_id: i32,
     reported_time: i32,
-    vod_link : String,
+    vod_link: String,
 }
 
 impl QualifierSubmission {
-
-    update_fn!{}
+    update_fn! {}
 }
-
 
 #[derive(Insertable)]
 #[diesel(table_name=qualifier_submissions)]

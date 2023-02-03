@@ -3,7 +3,6 @@ use itertools::Itertools;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
-use twilight_http::error::ErrorType;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::embed::{Embed, EmbedField};
@@ -15,9 +14,11 @@ use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
 use crate::discord::discord_state::DiscordState;
+use crate::discord::{
+    clear_commportunities_message, clear_tentative_commentary_assignment_message,
+};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::utils::race_to_nice_embeds;
-use crate::discord::{clear_commportunities_message, clear_tentative_commentary_assignment_message};
 
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {
     println!("Handling reaction removed: {:?}", reaction);
@@ -204,7 +205,9 @@ async fn handle_commentary_confirmation(
             println!("Error creating restream request post: {:?}", e);
         }
     }
-    if let Err(e) = clear_commportunities_message(&mut info, &state.client, &state.channel_config).await {
+    if let Err(e) =
+        clear_commportunities_message(&mut info, &state.client, &state.channel_config).await
+    {
         println!("Error clearing commportunities state: {e}");
     }
 
@@ -396,15 +399,7 @@ async fn handle_restream_request_reaction(
     if let Some(gse_id) = info.get_scheduled_event_id() {
         // TODO: if the event somehow *doesn't* exist, we should probably create it, yeah?
         if let Some(gid) = reaction.guild_id {
-            if let Err(e) = update_scheduled_event(
-                gid,
-                gse_id,
-                None,
-                Some(url),
-                state,
-            )
-            .await
-            {
+            if let Err(e) = update_scheduled_event(gid, gse_id, None, Some(url), state).await {
                 println!("Error updating scheduled event: {:?}", e);
             }
         }
@@ -485,7 +480,13 @@ async fn handle_restream_request_reaction(
         }
     }
 
-    if let Err(e) = clear_tentative_commentary_assignment_message(&mut info, &state.client, &state.channel_config).await {
+    if let Err(e) = clear_tentative_commentary_assignment_message(
+        &mut info,
+        &state.client,
+        &state.channel_config,
+    )
+    .await
+    {
         println!("Error clearing tentative commentary assignment: {e}");
     }
     info.update(conn)?;
@@ -499,8 +500,7 @@ fn emoji_to_restream_channel(rt: &ReactionType) -> Option<&'static str> {
             .as_ref()
             .map(|s| if s == "greenham" { Some("FGfm") } else { None })
             .flatten(),
-        ReactionType::Unicode { name } =>
-            match name.as_str() {
+        ReactionType::Unicode { name } => match name.as_str() {
             "1️⃣" => Some("zeldaspeedruns"),
             "2️⃣" => Some("zeldaspeedruns2"),
             "3️⃣" => Some("zeldaspeedruns_3"),

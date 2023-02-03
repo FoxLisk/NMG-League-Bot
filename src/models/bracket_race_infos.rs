@@ -7,6 +7,7 @@ use crate::{save_fn, update_fn};
 use chrono::{DateTime, TimeZone, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
+use itertools::Itertools;
 use serde::Serialize;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
@@ -79,7 +80,9 @@ impl BracketRaceInfo {
     }
 
     pub fn scheduled(&self) -> Option<DateTime<Utc>> {
-        self.scheduled_for.map(|t| Utc.timestamp(t, 0))
+        self.scheduled_for
+            .map(|t| Utc.timestamp_opt(t, 0).earliest())
+            .flatten()
     }
 
     /// returns the prior scheduled time, if any (as timestamp)
@@ -131,11 +134,16 @@ impl BracketRaceInfo {
         std::mem::replace(&mut self.restream_request_message_id, Some(id.to_string()))
     }
 
-
     /// Returns the old tentative commentary assignment post ID, if any
     /// (it's a string b/c sqlite)
-    pub fn set_tentative_commentary_assignment_message_id(&mut self, id: Id<MessageMarker>) -> Option<String> {
-        std::mem::replace(&mut self.tentative_commentary_assignment_message_id, Some(id.to_string()))
+    pub fn set_tentative_commentary_assignment_message_id(
+        &mut self,
+        id: Id<MessageMarker>,
+    ) -> Option<String> {
+        std::mem::replace(
+            &mut self.tentative_commentary_assignment_message_id,
+            Some(id.to_string()),
+        )
     }
 
     pub fn get_tentative_commentary_assignment_message_id(&self) -> Option<Id<MessageMarker>> {
@@ -146,11 +154,16 @@ impl BracketRaceInfo {
         self.tentative_commentary_assignment_message_id = None;
     }
 
-
     /// Returns the old tentative commentary assignment post ID, if any
     /// (it's a string b/c sqlite)
-    pub fn set_commentary_assignment_message_id(&mut self, id: Id<MessageMarker>) -> Option<String> {
-        std::mem::replace(&mut self.commentary_assignment_message_id, Some(id.to_string()))
+    pub fn set_commentary_assignment_message_id(
+        &mut self,
+        id: Id<MessageMarker>,
+    ) -> Option<String> {
+        std::mem::replace(
+            &mut self.commentary_assignment_message_id,
+            Some(id.to_string()),
+        )
     }
 
     /// * true if the save succeed,
