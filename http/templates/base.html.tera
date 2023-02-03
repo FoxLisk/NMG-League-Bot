@@ -5,6 +5,7 @@
 	<head>
 	    <title>{% block pagename %}{% endblock %} | NMG League</title>
 		<link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
+		<link rel="icon" href="/favicon.ico" sizes="any">
 	    {% block scripts %}
 	    {% endblock %}
 	</head>

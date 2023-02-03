@@ -624,6 +624,7 @@ pub(crate) async fn launch_website(
             rocket::routes![
                 auth::login_page,
                 auth::discord_login,
+                statics::favicon,
                 async_view,
                 season_standings,
                 season_brackets,

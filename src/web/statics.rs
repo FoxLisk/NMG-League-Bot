@@ -43,3 +43,8 @@ pub(in super) async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<Nam
     NamedFile::open(p).await.ok()
 }
 
+#[get("/favicon.ico")]
+pub (in super) async fn favicon() -> Option<NamedFile> {
+    let p = Path::new("http/static/favicon.ico");
+    NamedFile::open(p).await.ok()
+}
