@@ -14,6 +14,9 @@
         <div class="flex flex-auto">
             <a href="/season/{{season.id}}/standings">Standings</a>
         </div>
+        <div class="flex flex-auto">
+            <a href="/season/{{season.id}}/qualifiers">Qualifiers</a>
+        </div>
         <div class="flex md:w-1/5">
         </div>
     </div>
