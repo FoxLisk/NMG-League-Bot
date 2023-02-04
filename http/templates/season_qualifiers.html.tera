@@ -1,0 +1,40 @@
+{% extends "season_base" %}
+
+{% import "macros" as macros %}
+{% block scripts %}
+    <script defer type="text/javascript" src="/static/js/season_qualifiers.js"></script>
+{% endblock %}
+{% block pagename %}NMG League {{season.format}} Qualifiers{% endblock %}
+
+{% block templates %}
+<template id="qualifier_submission">
+    <tr class="border-t border-sky-300">
+        <td class="place px-2"></td>
+        <td class="player px-4"></td>
+        <td class="time px-4"></td>
+        <td class="vod pl-4">{{ macros::link(href="", text="link") }}</td>
+    </tr>
+</template>
+{% endblock %}
+
+{% block season_body %}
+<div id="qualifiers" data-season-id="{{ season.id }}">
+    <div class="mb-4">
+        <p>Qualifiers</p>
+        <p id="error"></p>
+        <button type="button" id="toggle-obsolete" class="hidden rounded-full px-1.5 bg-slate-400">Show obsolete</button>
+    </div>
+    <table class="hidden table-auto border-t border-black" id="qualifiers_table">
+        <thead>
+            <tr>
+                <td class="px-2"></td>
+                <td class="px-4">Player</td>
+                <td class="px-4">Time</td>
+                <td class="pl-4">VoD</td>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+</div>
+{% endblock %}

@@ -10,7 +10,7 @@ use crate::discord::interactions_utils::{
     button_component, interaction_to_custom_id, plain_interaction_response,
     update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
+use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
@@ -21,7 +21,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::result::Error;
 use diesel::SqliteConnection;
 use nmg_league_bot::models::bracket_races::{
-    get_current_round_race_for_player, BracketRace, BracketRaceState, BracketRaceStateError,
+    BracketRace, BracketRaceState, BracketRaceStateError, get_current_round_race_for_player,
     PlayerResult,
 };
 use nmg_league_bot::models::brackets::{Bracket, NewBracket};
@@ -30,8 +30,8 @@ use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
 use nmg_league_bot::utils::{env_default, ResultCollapse, ResultErrToString};
-use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishError, RaceFinishOptions};
-use nmg_league_bot::NMGLeagueBotError;
+use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
+use nmg_league_bot::{NMGLeagueBotError, utils};
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
@@ -51,7 +51,7 @@ use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ChannelMarker,  MessageMarker};
+use twilight_model::id::marker::{ChannelMarker, MessageMarker};
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_validate::message::MessageValidationError;
@@ -607,7 +607,7 @@ async fn handle_submit_qualifier(
             return Ok(Some(plain_interaction_response(e)));
         }
     };
-    let secs = match parse_hms(&time) {
+    let secs = match utils::parse_hms(&time) {
         Some(t) => t,
         None => {
             return Ok(Some(plain_interaction_response(
@@ -1212,13 +1212,13 @@ async fn get_race_finish_opts_from_command_opts(
     let r1 = if p1_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
-        PlayerResult::Finish(parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?)
+        PlayerResult::Finish(utils::parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?)
     };
 
     let r2 = if p2_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
-        PlayerResult::Finish(parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?)
+        PlayerResult::Finish(utils::parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?)
     };
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
@@ -1319,24 +1319,6 @@ async fn handle_generate_pairings(
         ))),
         Err(e) => Err(format!("Error generating pairings: {e:?}")),
     }
-}
-
-/// parses h:mm:ss (or hh:mm:ss) and returns total number of seconds
-fn parse_hms(s: &str) -> Option<u32> {
-    let re = Regex::new(r#"(\d+):(\d{2}):(\d{2})"#).ok()?;
-    let caps = re.captures(s)?;
-    let mut it = caps.iter().skip(1).flatten();
-    let h = it.next()?.as_str().parse::<u32>().ok()?;
-    let m = it.next()?.as_str().parse::<u32>().ok()?;
-    let s = it.next()?.as_str().parse::<u32>().ok()?;
-    if m >= 60 {
-        return None;
-    }
-    if s >= 60 {
-        return None;
-    }
-
-    Some(h * 60 * 60 + m * 60 + s)
 }
 
 #[cfg(test)]

@@ -5,6 +5,7 @@ use std::ffi::OsStr;
 use std::fmt::Display;
 use std::str::FromStr;
 use twilight_model::channel::embed::EmbedField;
+use regex::Regex;
 
 pub fn format_hms(secs: u64) -> String {
     let mins = secs / 60;
@@ -24,6 +25,26 @@ pub fn format_hms(secs: u64) -> String {
         )
     }
 }
+
+
+/// parses h:mm:ss (or hh:mm:ss) and returns total number of seconds
+pub fn parse_hms(s: &str) -> Option<u32> {
+    let re = Regex::new(r#"(\d+):(\d{2}):(\d{2})"#).ok()?;
+    let caps = re.captures(s)?;
+    let mut it = caps.iter().skip(1).flatten();
+    let h = it.next()?.as_str().parse::<u32>().ok()?;
+    let m = it.next()?.as_str().parse::<u32>().ok()?;
+    let s = it.next()?.as_str().parse::<u32>().ok()?;
+    if m >= 60 {
+        return None;
+    }
+    if s >= 60 {
+        return None;
+    }
+
+    Some(h * 60 * 60 + m * 60 + s)
+}
+
 
 pub fn format_duration_hms(d: Duration) -> String {
     format_hms(d.num_seconds() as u64)

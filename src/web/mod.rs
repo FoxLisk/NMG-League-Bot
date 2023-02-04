@@ -37,6 +37,7 @@ use twilight_model::id::Id;
 mod auth;
 mod session_manager;
 mod statics;
+mod api;
 
 type SessionManager = _SessionManager<Id<UserMarker>>;
 
@@ -563,6 +564,20 @@ async fn season_standings(
     Ok(Template::render("season_standings", ctx))
 }
 
+#[get("/season/<id>/qualifiers")]
+async fn season_qualifiers(
+    id: i32,
+    mut db: ConnectionWrapper<'_>
+) -> Result<Template, Status> {
+    let szn = match Season::get_by_id(id, &mut db) {
+        Ok(s) => Ok(s),
+        Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
+        Err(_) => Err(Status::InternalServerError),
+    }?;
+    let base_context = BaseContext::new(&mut db);
+    Ok(Template::render("season_qualifiers", context!(season: szn, base_context)))
+}
+
 #[get("/season/<id>")]
 async fn season_redirect(id: i32) -> Redirect {
     Redirect::to(uri!(season_brackets(id=id)))
@@ -628,9 +643,11 @@ pub(crate) async fn launch_website(
                 async_view,
                 season_standings,
                 season_brackets,
+                season_qualifiers,
                 season_redirect,
                 season_history,
                 home,
+
             ],
         )
         .attach(Template::custom(|e| {
@@ -640,6 +657,7 @@ pub(crate) async fn launch_website(
         .manage(session_manager)
         .manage(oauth_client)
         .manage(db);
+    let rocket = api::build_rocket(rocket);
 
     let ignited = rocket.ignite().await.unwrap();
     println!("Rocket config: {:?}", ignited.config());
