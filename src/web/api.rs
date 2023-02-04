@@ -1,12 +1,9 @@
 //! api lol. the idea is just stuff that returns json i guess
 
-use diesel::{QueryDsl, SqliteConnection};
+use diesel::{ SqliteConnection};
 use diesel::result::Error;
 use rocket::{Build, get, Rocket};
 use rocket::serde::json::Json;
-use nmg_league_bot::models::qualifer_submission::QualifierSubmission;
-use nmg_league_bot::models::season::Season;
-use nmg_league_bot::NMGLeagueBotError;
 use crate::web::ConnectionWrapper;
 
 #[derive(diesel::Queryable, serde::Serialize)]
@@ -23,7 +20,7 @@ enum ApiError {
 }
 
 impl From<diesel::result::Error> for ApiError {
-    fn from(value: Error) -> Self {
+    fn from(_value: Error) -> Self {
         Self::DatabaseError
     }
 }

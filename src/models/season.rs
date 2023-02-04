@@ -7,7 +7,6 @@ use crate::schema::seasons;
 use crate::utils::epoch_timestamp;
 use crate::{save_fn, update_fn, NMGLeagueBotError};
 use enum_iterator::Sequence;
-use crate::models::qualifer_submission::QualifierSubmission;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
 pub enum SeasonState {
