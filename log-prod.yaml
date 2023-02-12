@@ -20,7 +20,7 @@ appenders:
         base: 1
 
 root:
-  # this is because rocket uses shitty internal macros tht have an empty "target" for their log output, so you can't
+  # this is because rocket uses shitty internal macros that have an empty "target" for their log output, so you can't
   # set those levels directly, afaict.
   level: warn
   appenders:
