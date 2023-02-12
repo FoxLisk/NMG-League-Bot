@@ -60,6 +60,9 @@ rocket = { version = "0.5.0-rc.2", features = ["json"] }
 rocket_dyn_templates = { version = "0.1.0-rc.2", features = ["tera"] }
 diesel_enum_derive = {git = "https://github.com/FoxLisk/diesel_enum_derive"}
 
+log4rs = { version = "1.2.0", features = ["gzip"] }
+log = "0.4.17"
+
 [dependencies.swiss-pairings]
 #path = "../swiss-pairings"
 git = "https://github.com/FoxLisk/swiss-pairings.git"

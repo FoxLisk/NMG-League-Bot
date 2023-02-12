@@ -20,6 +20,7 @@ use racetime_api::err::RacetimeError;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use log::{debug, info, warn};
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
 
@@ -68,7 +69,7 @@ async fn scan(
 
     for race in finished_races.races {
         if let Err(e) = maybe_do_race_stuff(race, &interesting_rtgg_ids, state).await {
-            println!("Error handling a race: {}", e);
+            warn!("Error handling a race: {}", e);
         }
     }
     Ok(())
@@ -105,7 +106,7 @@ async fn maybe_do_race_stuff(
         )
         .await
         {
-            println!("Error triggering race finish: {}", e);
+            warn!("Error triggering race finish: {}", e);
         }
     }
     Ok(())
@@ -113,7 +114,7 @@ async fn maybe_do_race_stuff(
 
 pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     let tick_duration = get_tick_duration(RACETIME_TICK_SECS);
-    println!(
+    info!(
         "Starting racetime scanner worker: running every {} seconds",
         tick_duration.as_secs()
     );
@@ -122,13 +123,13 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     loop {
         tokio::select! {
             _ = intv.tick() => {
-                println!("Racetime scan starting...");
+                debug!("Racetime scan starting...");
                 if let Err(e) = scan(&state, &client).await {
-                    println!("Error running racetime scan: {}", e);
+                    warn!("Error running racetime scan: {}", e);
                 }
             }
             _sd = sd.recv() => {
-                println!("racetime scanner worker shutting down");
+                info!("racetime scanner worker shutting down");
                 break;
             }
         }

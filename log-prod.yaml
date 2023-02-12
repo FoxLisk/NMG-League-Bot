@@ -1,0 +1,32 @@
+appenders:
+  stdout:
+    kind: console
+    encoder:
+      pattern: "{d(%+)(utc)} [{f}:{L}] {h({l})} {M}: {m}{n}"
+  file:
+    kind: rolling_file
+    path: "/var/log/nmg-league-bot.log"
+    encoder:
+      pattern: "{d(%+)(utc)} [{f}:{L}] {h({l})} {M}: {m}{n}"
+    policy:
+      kind: compound
+      trigger:
+        kind: size
+        limit: '1 mb'
+      roller:
+        kind: fixed_window
+        pattern: "/var/log/nmg-league-bot.{}.log.gz"
+        count: 10
+        base: 1
+
+root:
+  # this is because rocket uses shitty internal macros that have an empty "target" for their log output, so you can't
+  # set those levels directly, afaict.
+  level: warn
+  appenders:
+    - file
+loggers:
+  bot:
+    level: debug
+  nmg_league_bot:
+    level: debug

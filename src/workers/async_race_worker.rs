@@ -10,6 +10,7 @@ use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use nmg_league_bot::utils::format_hms;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use log::{info, warn};
 use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
@@ -70,17 +71,17 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
     let mut conn = match state.diesel_cxn().await {
         Ok(c) => c,
         Err(e) => {
-            println!("Error getting diesel connection: {:?}", e);
+            warn!("Error getting diesel connection: {e:?}");
             return;
         }
     };
     let (mut r1, mut r2) = match race.get_runs(&mut conn).await {
         Ok(r) => r,
         Err(e) => {
-            println!("Error fetching runs for race {}: {}", race.uuid, e);
+            warn!("Error fetching runs for race {}: {e}", race.uuid);
             race.abandon();
             if let Err(e) = race.save(&mut conn).await {
-                println!("Error abandoning race {}: {}", race.uuid, e);
+                warn!("Error abandoning race {}: {e}", race.uuid);
             }
             return;
         }
@@ -92,7 +93,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         if r1.state.is_created() {
             let name = r1.racer_id().map(|uid| uid.mention().to_string()).fold();
             if let Err(e) = notify_racer(&mut r1, &race, state).await {
-                println!("Error notifying {}: {}", name, e);
+                warn!("Error notifying {name}: {e}");
             } else {
                 msgs.push(format!("Successfully contacted {}", name));
             }
@@ -100,7 +101,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         if r2.state.is_created() {
             let name = r2.racer_id().map(|uid| uid.mention().to_string()).fold();
             if let Err(e) = notify_racer(&mut r2, &race, state).await {
-                println!("Error notifying {}: {}", name, e);
+                warn!("Error notifying {name}: {e}");
             } else {
                 msgs.push(format!("Successfully contacted {}", name));
             }
@@ -108,7 +109,7 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
         if !msgs.is_empty() {
             let msg = format!("Race update: {}", msgs.join(", "));
             if let Err(e) = webhooks.message_async(&msg).await {
-                println!("Error notifying admins about race update: Tried to tell them {}, encountered error {}", msg, e);
+                warn!("Error notifying admins about race update: Tried to tell them {msg}, encountered error {e}");
             }
         }
     }
@@ -144,13 +145,13 @@ async fn handle_finished_race(
     let ew = match webhooks.prepare_execute_async().content(&c) {
         Ok(ex) => ex,
         Err(mve) => {
-            println!("Message validation error sending {}: {}", c, mve);
+            warn!("Message validation error sending {c}: {mve}");
             match webhooks.prepare_execute_async().content(
                 "A race finished but I can't tell you which one for some reason. Check the logs",
             ) {
                 Ok(ex) => ex,
                 Err(mve) => {
-                    println!("Error reporting race {}: {}", race.uuid, mve);
+                    warn!("Error reporting race {}: {mve}", race.uuid);
                     return;
                 }
             }
@@ -159,11 +160,11 @@ async fn handle_finished_race(
     .flags(MessageFlags::SUPPRESS_EMBEDS);
 
     if let Err(e) = webhooks.execute_webhook(ew).await {
-        println!("Error executing webhook: {}", e);
+        warn!("Error executing webhook: {e}");
     }
     race.finish();
     if let Err(e) = race.save(conn).await {
-        println!("Error saving finished race: {}", e);
+        warn!("Error saving finished race: {e}");
         // TODO: report this, too, probably
     }
 }
@@ -174,19 +175,17 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
             .filter(races::dsl::state.eq(RaceState::CREATED))
             .load::<Race>(cxn.deref_mut())
     }) {
-        Ok(qr) => match qr {
-            Ok(rs) => rs,
-            Err(e) => {
-                println!("Error fetching active races: {}", e);
-                return;
-            }
-        },
+        Ok(Ok(rs)) => rs,
+        Ok(Err(e)) => {
+            warn!("Error fetching active races: {e}");
+            return;
+        }
         Err(e) => {
-            println!("Error fetching active races: {}", e);
+            warn!("Error fetching active races: {e}");
             return;
         }
     };
-    println!("Handling {} races", active_races.len());
+    info!("Handling {} races", active_races.len());
     for race in active_races {
         handle_race(race, state, &webhooks).await;
     }
@@ -194,7 +193,7 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {
     let tick_duration = workers::get_tick_duration(CRON_TICKS_VAR);
-    println!(
+    info!(
         "Starting async race worker: running every {} seconds",
         tick_duration.as_secs()
     );
@@ -205,7 +204,7 @@ pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: 
                 sweep(&state, &webhooks).await;
             }
             _sd = sd.recv() => {
-                println!("async race worker shutting down");
+                info!("async race worker shutting down");
                 break;
             }
         }

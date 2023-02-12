@@ -2,6 +2,7 @@
 use nmg_league_bot::constants::{ADMIN_WEBHOOK_VAR, ASYNC_WEBHOOK_VAR, TOKEN_VAR};
 use nmg_league_bot::utils::env_var;
 use std::sync::Arc;
+use log::warn;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
 use twilight_http::response::marker::EmptyBody;
@@ -36,7 +37,7 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
         Ok(r) => r,
         Err(e) => {
             let er = format!("Error fetching webhook {}: {}", id, e);
-            println!("{}", er);
+            warn!("{}", er);
             return Err(er);
         }
     };

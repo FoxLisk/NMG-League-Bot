@@ -8,6 +8,7 @@ use std::sync::Arc;
 use bb8::RunError;
 use chrono::{DateTime, Duration, TimeZone};
 use diesel::ConnectionError;
+use log::{info, warn};
 use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::Client;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
@@ -101,7 +102,7 @@ pub(crate) async fn notify_racer(
 ) -> Result<(), String> {
     let uid = race_run.racer_id()?;
     if Some(uid) == state.cache.current_user().map(|cu| cu.id) {
-        println!("Not sending messages to myself");
+        info!("Not sending messages to myself");
         race_run.contact_succeeded();
         let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
         race_run.save(&mut conn).await?;
@@ -292,7 +293,7 @@ async fn schedule_race<Tz: TimeZone>(
                 new_info.set_scheduled_event_id(evt.id);
             }
             Err(e) => {
-                println!("Error creating event: {}", e);
+                warn!("Error creating Discord event: {}", e);
             }
         };
 
@@ -303,7 +304,7 @@ async fn schedule_race<Tz: TimeZone>(
         if let Err(e) =
             clear_commportunities_message(&mut new_info, &state.client, &state.channel_config).await
         {
-            println!("Error clearing old commportunities message upon rescheduling: {e}");
+            warn!("Error clearing old commportunities message upon rescheduling: {e}");
         }
 
         if let Err(e) = clear_tentative_commentary_assignment_message(
@@ -313,7 +314,7 @@ async fn schedule_race<Tz: TimeZone>(
         )
         .await
         {
-            println!(
+            warn!(
                 "Error clearing old tentative commentary assignment message upon rescheduling: {e}"
             );
         }
@@ -328,12 +329,12 @@ async fn schedule_race<Tz: TimeZone>(
                 new_info.set_commportunities_message_id(m.id);
             }
             Err(e) => {
-                println!("Error creating commportunities post: {:?}", e);
+                warn!("Error creating commportunities post: {:?}", e);
             }
         };
 
         if let Err(e) = new_info.update(conn) {
-            println!("Error updating bracket race info: {:?}", e);
+            warn!("Error updating bracket race info: {:?}", e);
         }
     }
 
@@ -395,7 +396,7 @@ async fn create_commportunities_post(
         .exec()
         .await
     {
-        println!(
+        warn!(
             "Error adding initial reaction to commportunity post: {:?}",
             e
         );

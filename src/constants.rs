@@ -22,6 +22,9 @@ pub const RACETIME_TICK_SECS: &str = "RACETIME_TICK_SECS";
 
 pub const GUILD_ID_VAR: &str = "LEAGUE_GUILD_ID";
 
+
+pub const LOG4RS_CONF_FILE_VAR: &str = "LOG4RS_CONFIG_FILE";
+
 pub const DISCORD_AUTHORIZE_URL: &str = "https://discord.com/api/oauth2/authorize";
 pub const DISCORD_TOKEN_URL: &str = "https://discord.com/api/oauth2/token";
 #[allow(unused)]

@@ -13,6 +13,7 @@ use itertools::Itertools;
 use rand::thread_rng;
 use serde::Serialize;
 use std::collections::HashMap;
+use log::{debug, warn};
 use swiss_pairings::{PairingError, TourneyConfig};
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
@@ -102,7 +103,7 @@ fn generate_next_round_pairings(
         }
         pairing_rounds.push(this_round);
     }
-    println!("{:?}", pairing_rounds);
+    debug!("{:?}", pairing_rounds);
     let cfg = TourneyConfig {
         points_per_win: 2,
         points_per_loss: 0,
@@ -114,7 +115,7 @@ fn generate_next_round_pairings(
         &cfg,
         swiss_pairings::random_by_scoregroup,
     )?;
-    println!("{:?}", pairings);
+    debug!("{:?}", pairings);
 
     let mut players: HashMap<_, _> =
         HashMap::from_iter(bracket.players(conn)?.into_iter().map(|p| (p.id, p)));
@@ -348,7 +349,7 @@ impl PlayerInfoBuilder {
                 if let Some(score) = scores.get(opponent_id) {
                     score.clone()
                 } else {
-                    println!("PlayerInfoBuilder unable to find score for player {opponent_id}");
+                    warn!("PlayerInfoBuilder unable to find score for player {opponent_id}");
                     0
                 }
             })

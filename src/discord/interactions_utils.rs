@@ -1,3 +1,4 @@
+use log::warn;
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{Button, Component};
 use twilight_model::application::interaction::{Interaction, InteractionData};
@@ -55,7 +56,7 @@ pub fn interaction_to_custom_id(i: &Interaction) -> Option<&str> {
         InteractionData::MessageComponent(mc) => Some(&mc.custom_id),
         InteractionData::ModalSubmit(ms) => Some(&ms.custom_id),
         _ => {
-            println!("Unhandled InteractionData type: {:?}", i);
+            warn!("Unhandled InteractionData type: {:?}", i);
             None
         }
     }

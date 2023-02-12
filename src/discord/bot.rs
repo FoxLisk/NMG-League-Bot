@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use diesel::SqliteConnection;
 use lazy_static::lazy_static;
+use log::{debug, info, warn};
 use nmg_league_bot::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use racetime_api::client::RacetimeClient;
 use tokio_stream::StreamExt;
@@ -112,13 +113,13 @@ async fn run_bot(
                 tokio::spawn(handle_event(event, state.clone()));
             },
             _sd = shutdown.recv() => {
-                println!("Twilight bot shutting down...");
+                info!("Twilight bot shutting down...");
                 cluster_stop.down();
                 break;
             }
         }
     }
-    println!("Twilight bot done");
+    info!("Twilight bot done");
 }
 
 fn interaction_to_message_id<S: Into<String>>(
@@ -493,7 +494,7 @@ async fn handle_button_interaction(
         CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
         CUSTOM_ID_VOD_READY => Ok(Some(handle_vod_ready())),
         _ => {
-            println!("Unhandled button: {:?}", interaction_data);
+            info!("Unhandled button: {:?}", interaction_data);
             Ok(None)
         }
     }
@@ -513,7 +514,7 @@ async fn handle_modal_submission(
             handle_run_forfeit_modal(interaction_data, interaction, state).await
         }
         _ => {
-            println!("Unhandled modal: {:?}", interaction_data);
+            info!("Unhandled modal: {:?}", interaction_data);
             Ok(None)
         }
     }
@@ -536,7 +537,7 @@ async fn _handle_interaction(
                 handle_modal_submission(ms, interaction, &state).await
             }
             _ => {
-                println!("Unhandled interaction: {:?}", interaction);
+                warn!("Unhandled interaction: {:?}", interaction);
                 Ok(None)
             }
         }
@@ -566,7 +567,7 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
     }
 
     if let Some(u) = user_resp {
-        println!("handle_interaction trying to send response {:?}", u);
+        info!("handle_interaction trying to send response {:?}", u);
         if let Some(more_errors) = state
             .create_response_err_to_str(interaction_id, &token, &u)
             .await
@@ -580,10 +581,10 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
     }
 
     if !final_message.is_empty() {
-        println!("{}", final_message);
+        warn!("{}", final_message);
         if let Err(e) = state.webhooks.message_async(&final_message).await {
             // at some point you just have to give up
-            println!("Error reporting internal error: {}", e);
+            warn!("Error reporting internal error: {}", e);
         }
     }
 }
@@ -613,30 +614,30 @@ async fn handle_event(event: Event, state: Arc<DiscordState>) {
     match event {
         Event::GuildCreate(gc) => {
             if let Err(e) = set_application_commands(&gc, state).await {
-                println!(
+                warn!(
                     "Error setting application commands for guild {:?}: {}",
                     gc.id, e
                 );
             }
         }
         Event::GuildDelete(gd) => {
-            println!("Guild deleted?? event: {:?}", gd);
+            debug!("Guild deleted?? event: {:?}", gd);
         }
 
         Event::GuildUpdate(gu) => {
-            println!("Guild updated event: {:?}", gu);
+            debug!("Guild updated event: {:?}", gu);
         }
         Event::InteractionCreate(ic) => {
             handle_interaction(ic, state).await;
         }
         Event::Ready(r) => {
-            println!("Ready! {:?}", r);
+            info!("Ready! {:?}", r);
         }
         Event::RoleDelete(rd) => {
-            println!("Role deleted: {:?}", rd);
+            debug!("Role deleted: {:?}", rd);
         }
         Event::RoleUpdate(ru) => {
-            println!("Role updated: {:?}", ru);
+            debug!("Role updated: {:?}", ru);
         }
         Event::ReactionAdd(ra) => {
             handle_reaction_add(ra, &state).await;
