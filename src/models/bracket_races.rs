@@ -11,6 +11,7 @@ use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
+use log::warn;
 use swiss_pairings::MatchResult;
 use thiserror::Error;
 
@@ -292,7 +293,7 @@ pub fn get_current_round_race_for_player(
             continue;
         } else {
             if races.len() != 1 {
-                println!("Multiple races for same racer?");
+                warn!("Multiple races for same racer?");
             }
             return Ok(races.pop());
         }

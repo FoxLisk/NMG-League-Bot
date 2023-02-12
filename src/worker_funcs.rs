@@ -14,6 +14,7 @@ use chrono::{ Duration, Utc};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use std::collections::HashMap;
+use log::{info, warn};
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
@@ -100,7 +101,7 @@ pub fn interesting_race<'a>(
     let started = match race.started_at() {
         Ok(dt) => dt,
         Err(e) => {
-            println!(
+            warn!(
                 "Error parsing racetime started_at ({}): {e}",
                 race.started_at
             );
@@ -121,12 +122,12 @@ pub fn interesting_race<'a>(
             let scheduled = match bri.scheduled() {
                 Some(dt) => dt,
                 None => {
-                    println!("Checking if a racetime race is interesting but the bracket race wasn't scheduled? {:?}", bri);
+                    warn!("Checking if a racetime race is interesting but the bracket race wasn't scheduled? {:?}", bri);
                     continue;
                 }
             };
             if scheduled.signed_duration_since(started).num_minutes() > 180 {
-                println!(
+                info!(
                     "This race ({}) was started a very long time ago: {}",
                     race.name, race.started_at
                 );
@@ -215,13 +216,13 @@ pub async fn trigger_race_finish(
 
     if let Some(c) = client {
         if let Err(e) = post_match_results(c, &options, conn).await {
-            println!(
+            warn!(
                 "Error posting match results for race {}: {e}",
                 options.bracket_race.id
             );
         }
         if let Err(e) = clear_commportunities_message(&mut options.info, c, channel_config).await {
-            println!(
+            warn!(
                 "Error clearing commportunities message for race {}: {e}",
                 options.bracket_race.id
             );

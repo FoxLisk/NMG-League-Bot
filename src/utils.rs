@@ -4,6 +4,7 @@ use diesel::SqliteConnection;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::str::FromStr;
+use log::warn;
 use twilight_model::channel::embed::EmbedField;
 use regex::Regex;
 
@@ -141,7 +142,7 @@ pub fn epoch_timestamp() -> u32 {
     let timestamp = chrono::Utc::now().timestamp();
     let t_u32 = timestamp as u32;
     if t_u32 as i64 != timestamp {
-        println!(
+        warn!(
             "Error: timestamp too big?? got {} secs since epoch, which converted to {}",
             timestamp, t_u32
         );

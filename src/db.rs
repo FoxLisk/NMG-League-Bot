@@ -6,6 +6,7 @@ use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::{MigrationError, MigrationHarness};
 use lazy_static::lazy_static;
 use std::error::Error;
+use log::debug;
 use thiserror::Error;
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -82,11 +83,11 @@ pub async fn get_diesel_pool() -> Pool<DieselConnectionManager> {
 
     match &*something {
         Some(p) => {
-            println!("Returning existing diesel pool");
+            debug!("Returning existing diesel pool");
             p.clone()
         }
         None => {
-            println!("Generating a new diesel pool");
+            debug!("Generating a new diesel pool");
             let p = Pool::builder()
                 .build(DieselConnectionManager::new_from_env())
                 .await

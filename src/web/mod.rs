@@ -29,6 +29,7 @@ use nmg_league_bot::utils::format_hms;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::{Deref, DerefMut};
+use log::{info, warn};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use twilight_model::id::marker::UserMarker;
@@ -225,7 +226,7 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
                 .map(|u| u.name)
                 .unwrap_or("Unknown".to_string()),
             Err(e) => {
-                println!("Error parsing racer id {}", e);
+                warn!("Error parsing racer id {}", e);
                 "Unknown".to_string()
             }
         };
@@ -399,7 +400,7 @@ fn get_brackets_context(
             let round = match rounds_by_id.get(&race.round_id) {
                 Some(r) => r,
                 None => {
-                    println!("Missing round with id {}", race.round_id);
+                    info!("Missing round with id {}", race.round_id);
                     continue;
                 }
             };
@@ -499,7 +500,7 @@ fn get_standings_context(
                 vec![]
             }
             Err(e) => {
-                println!("Error getting standings for bracket {bracket:?}: {e:?}");
+                warn!("Error getting standings for bracket {bracket:?}: {e:?}");
                 continue;
             }
         };
@@ -598,7 +599,6 @@ async fn home(mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
         base_context: BaseContext
     }
     let ctx = HomeCtx { base_context: BaseContext::new(&mut db)};
-    println!("home context: {ctx:?}");
     Ok(Template::render("home", ctx))
 }
 
@@ -660,7 +660,7 @@ pub(crate) async fn launch_website(
     let rocket = api::build_rocket(rocket);
 
     let ignited = rocket.ignite().await.unwrap();
-    println!("Rocket config: {:?}", ignited.config());
+    info!("Rocket config: {:?}", ignited.config());
     let s = ignited.shutdown();
     let jh = tokio::spawn(ignited.launch());
 
@@ -668,12 +668,11 @@ pub(crate) async fn launch_website(
         // if you don't assign this .recv() value to anything, it get dropped immediately
         // i am pretty sure it gets dropped at the end of `recv()`?
         let _x = shutdown.recv().await;
-        println!("Sending rocket notify");
         s.notify();
         if let Err(_) = tokio::time::timeout(Duration::from_secs(5), jh).await {
-            println!("Rocket didn't shutdown in a timely manner, dropping anyway");
+            info!("Rocket didn't shutdown in a timely manner, dropping anyway");
         } else {
-            println!("Rocket shut down promptly");
+            info!("Rocket shut down promptly");
         }
     });
 }

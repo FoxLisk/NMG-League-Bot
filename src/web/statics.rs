@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use log::info;
 use rocket::fs::NamedFile;
 use rocket::request::{FromRequest, Outcome};
 const STATIC_SUFFIXES: [&str; 8] = [
@@ -37,7 +38,7 @@ impl<'r> FromRequest<'r> for StaticAsset {
 pub(in super) async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<NamedFile> {
     let p = Path::new("http/static/").join(file);
     if !p.exists() {
-        println!("{:?} does not exist", p);
+        info!("{:?} does not exist", p);
         return None;
     }
     NamedFile::open(p).await.ok()

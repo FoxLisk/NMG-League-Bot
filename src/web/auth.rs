@@ -23,6 +23,7 @@ use rocket::{Request, State};
 use rocket_dyn_templates::Template;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use log::{debug, info, warn};
 use tokio::time::Instant;
 
 type TokenResponse = StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>;
@@ -74,27 +75,30 @@ impl OauthClient {
                 states.insert(csrf_token.secret().clone(), Instant::now());
             }
             Err(e) => {
-                println!("States mutex poisoned: {}", e);
+                warn!("States mutex poisoned: {}", e);
             }
         }
         auth_url
     }
 
+    /// Takes a discord oauth "code" and "state" and tries to turn them into a token
+    /// Tries to verify the state but in case of mutex poisoning it's possible to validate a code
+    /// with an unexpected state
     async fn exchange_code(&self, code: String, state: String) -> Option<TokenResponse> {
         match self.states.lock() {
             Ok(mut states) => {
                 if let Some(created) = states.remove(&state) {
                     if Self::_is_expired(created) {
-                        println!("Token expired");
+                        debug!("Token expired");
                         return None;
                     }
                 } else {
-                    println!("Unexpected state: {}", state);
+                    debug!("Unexpected state: {}", state);
                     return None;
                 }
             }
             Err(e) => {
-                println!("States were poisoned: failing open. Error: {}", e);
+                warn!("States were poisoned: failing open. Error: {}", e);
             }
         }
 
@@ -109,10 +113,10 @@ impl OauthClient {
             Err(e) => {
                 match e {
                     RequestTokenError::ServerResponse(e) => {
-                        println!("Server response error: {}", e);
+                        warn!("Server response error: {e}");
                     }
                     _ => {
-                        println!("Other exchange error: {}", e);
+                        warn!("Other exchange error: {e}");
                     }
                 }
                 None
@@ -135,7 +139,7 @@ impl<'r> FromRequest<'r> for Admin {
         let cookie = match request.cookies().get(SESSION_COOKIE_NAME) {
             Some(c) => c.value(),
             None => {
-                println!("No session cookie");
+                debug!("No session cookie");
                 return Outcome::Forward(());
             }
         };
@@ -154,7 +158,7 @@ impl<'r> FromRequest<'r> for Admin {
             match sm.get_user(&st) {
                 Ok(u) => u,
                 Err(e) => {
-                    println!("User not found for session token {}: {:?}", st, e);
+                    info!("User not found for session token {}: {:?}", st, e);
                     return Outcome::Forward(());
                 }
             }
@@ -191,13 +195,12 @@ pub async fn discord_login(
     role_checker: &State<Arc<DiscordState>>,
     cookies: &CookieJar<'_>,
 ) -> Result<Template, Redirect> {
-    println!("code: {:?}", code);
     let redirect = Redirect::to(rocket::uri!("/", login_page));
     let got_code = code.ok_or(Redirect::to(rocket::uri!("/", login_page)))?;
     let res: TokenResponse = match client.exchange_code(got_code, state).await {
         Some(tr) => tr,
         None => {
-            println!("Failed to exchange code");
+            info!("Failed to exchange code");
             return Err(redirect);
         }
     };
@@ -206,7 +209,7 @@ pub async fn discord_login(
             format!("Bearer {}", res.access_token().secret())
         }
         _ => {
-            println!("Unexpected token type {:?}", res.token_type());
+            warn!("Unexpected token type {:?}", res.token_type());
             return Err(redirect);
         }
     };
@@ -217,12 +220,12 @@ pub async fn discord_login(
         Ok(resp) => match resp.model().await {
             Ok(cu) => cu,
             Err(e) => {
-                println!("Error deserializing CurrentUser: {}", e);
+                warn!("Error deserializing CurrentUser: {}", e);
                 return Err(redirect);
             }
         },
         Err(e) => {
-            println!("Error getting user info: {}", e);
+            warn!("Error getting user info: {}", e);
             return Err(redirect);
         }
     };
@@ -230,7 +233,7 @@ pub async fn discord_login(
         .has_nmg_league_admin_role(user_info.id.clone())
         .await
         .map_err(|e| {
-            println!("Error checking for admin status: {}", e);
+            warn!("Error checking for admin status: {}", e);
             Redirect::to(rocket::uri!("/", login_page))
         })?;
 
@@ -246,13 +249,13 @@ pub async fn discord_login(
             .max_age(Duration::days(30))
             .finish();
         cookies.add(cookie);
-        println!("User {} has logged in as an admin", user_info.name);
+        info!("User {} has logged in as an admin", user_info.name);
         Ok(Template::render(
             "login_redirect",
             HashMap::<String, String>::new(),
         ))
     } else {
-        println!("Non-admin user");
+        info!("Non-admin user");
         Err(redirect)
     }
 }

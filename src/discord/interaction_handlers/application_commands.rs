@@ -38,6 +38,7 @@ use racetime_api::types::UserSearchResult;
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use log::{info, warn};
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionChoice;
@@ -152,7 +153,7 @@ pub async fn handle_application_interaction(
         }
 
         _ => {
-            println!("Unhandled application command: {}", ac.name);
+            info!("Unhandled application command: {}", ac.name);
             Ok(None)
         }
     }
@@ -165,7 +166,6 @@ fn parse_day(s: &str) -> Option<(i32, u32, u32)> {
     let re = Regex::new(r#"(\d{4})/(\d{1,2})/(\d{1,2})"#).unwrap();
     let stripped = s.trim();
     let caps = re.captures(stripped)?;
-    println!("caps: {:?}", caps);
 
     let y = caps.get(1)?.as_str().parse().ok()?;
     let m = caps.get(2)?.as_str().parse().ok()?;
@@ -839,7 +839,7 @@ async fn handle_add_player_to_bracket_autocomplete(
     let options = match get_bracket_autocompletes(ac, state).await {
         Ok(o) => o,
         Err(e) => {
-            println!("Error fetching bracket autocompletes: {}", e);
+            warn!("Error fetching bracket autocompletes: {}", e);
             vec![]
         }
     };

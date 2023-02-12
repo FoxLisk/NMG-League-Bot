@@ -1,3 +1,5 @@
+use std::path::Path;
+use log::{debug, info};
 use racetime_api::client::RacetimeClient;
 use shutdown::Shutdown;
 use twitch_api::twitch_oauth2::{ClientId, ClientSecret};
@@ -12,6 +14,7 @@ extern crate bb8;
 extern crate chrono;
 extern crate diesel;
 extern crate diesel_enum_derive;
+extern crate log4rs;
 extern crate nmg_league_bot;
 extern crate oauth2;
 extern crate rand;
@@ -36,12 +39,13 @@ use nmg_league_bot::utils::env_var;
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
+    let log_config_path = env_var("LOG4RS_CONFIG_FILE");
+    log4rs::init_file(Path::new(&log_config_path), Default::default()).expect("Couldn't initialize logging");
 
     let webhooks = Webhooks::new().await.expect("Unable to construct Webhooks");
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
     let racetime_client = RacetimeClient::new().expect("Unable to construct RacetimeClient");
 
-    // let something = GetUsersRequest::logins(&vec!["asdf"]);
     let client_id = ClientId::new(env_var(TWITCH_CLIENT_ID_VAR));
     let client_secret = ClientSecret::new(env_var(TWITCH_CLIENT_SECRET_VAR));
     let twitch_client = TwitchClientBundle::new(client_id, client_secret)
@@ -57,7 +61,7 @@ async fn main() {
     {
         let mut conn = raw_diesel_cxn_from_env().unwrap();
         let res = run_migrations(&mut conn).unwrap();
-        println!("Migrations: {:?}", res);
+        debug!("Migrations: {:?}", res);
     }
 
     tokio::spawn(workers::async_race_worker::cron(
@@ -91,5 +95,5 @@ async fn main() {
 
     drop(shutdown_signal_send);
     shutdown_signal_recv.recv().await;
-    println!("Shutting down gracefully");
+    info!("Shutting down gracefully");
 }

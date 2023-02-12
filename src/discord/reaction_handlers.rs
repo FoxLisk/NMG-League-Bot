@@ -2,6 +2,7 @@ use diesel::ConnectionError;
 use itertools::Itertools;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use log::{debug, warn};
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
@@ -21,18 +22,18 @@ use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::utils::race_to_nice_embeds;
 
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {
-    println!("Handling reaction removed: {:?}", reaction);
+    debug!("Handling reaction removed: {:?}", reaction);
     if let Err(e) = _handle_reaction_remove(reaction, state).await {
-        println!("Error handling removed reaction: {:?}", e);
+        warn!("Error handling removed reaction: {:?}", e);
     }
 }
 
 pub async fn handle_reaction_add(reaction: Box<ReactionAdd>, state: &Arc<DiscordState>) {
-    println!("Handling new reaction: {:?}", reaction);
+    debug!("Handling new reaction: {:?}", reaction);
     match _handle_reaction_add(reaction, state).await {
         Ok(_) => {}
         Err(e) => {
-            println!("Error processing reaction add {:?}", e);
+            warn!("Error processing reaction add {:?}", e);
         }
     }
 }
@@ -64,9 +65,9 @@ async fn _handle_reaction_remove(
         BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, cxn.deref_mut())?
     {
         let res = info.remove_commentator(reaction.user_id, cxn.deref_mut())?;
-        println!("{} comms removed", res);
+        debug!("{} comms removed", res);
     } else {
-        println!("Uninteresting reaction removal");
+        debug!("Uninteresting reaction removal");
     }
     Ok(())
 }
@@ -83,7 +84,7 @@ async fn _handle_reaction_add(
 
     if let Some(cm) = state.cache.current_user() {
         if member.user.id == cm.id {
-            println!("This is a reaction I created tho");
+            debug!("Handling reaction from self - no-op");
             return Ok(());
         }
     }
@@ -100,7 +101,7 @@ async fn _handle_reaction_add(
     {
         handle_restream_request_reaction(i, reaction, state).await
     } else {
-        println!("Uninteresting reaction");
+        debug!("Uninteresting reaction {reaction:?}");
         Ok(())
     }
 }
@@ -121,7 +122,7 @@ async fn is_admin_confirmation_reaction(
             return false;
         }
         Err(e) => {
-            println!(
+            warn!(
                 "Error checking if the user for reaction {:?} is an admin: {}",
                 reaction, e
             );
@@ -174,7 +175,7 @@ async fn handle_commentary_confirmation(
         // gsus let me live
         if let Some(gid) = _reaction.guild_id {
             if let Err(e) = update_scheduled_event(gid, gse, Some(&comm_names), None, state).await {
-                println!("Error updating scheduled event: {:?}", e);
+                warn!("Error updating scheduled event: {:?}", e);
             }
         }
     }
@@ -194,7 +195,7 @@ async fn handle_commentary_confirmation(
             info.set_tentative_commentary_assignment_message_id(m.id);
         }
         Err(e) => {
-            println!("Error creating commentary discussion post: {:?}", e);
+            warn!("Error creating commentary discussion post: {:?}", e);
         }
     }
     match create_restream_request_post(fields.clone(), state).await {
@@ -202,13 +203,13 @@ async fn handle_commentary_confirmation(
             info.set_restream_request_message_id(m.id);
         }
         Err(e) => {
-            println!("Error creating restream request post: {:?}", e);
+            warn!("Error creating restream request post: {:?}", e);
         }
     }
     if let Err(e) =
         clear_commportunities_message(&mut info, &state.client, &state.channel_config).await
     {
-        println!("Error clearing commportunities state: {e}");
+        warn!("Error clearing commportunities state: {e}");
     }
 
     info.update(conn)?;
@@ -400,7 +401,7 @@ async fn handle_restream_request_reaction(
         // TODO: if the event somehow *doesn't* exist, we should probably create it, yeah?
         if let Some(gid) = reaction.guild_id {
             if let Err(e) = update_scheduled_event(gid, gse_id, None, Some(url), state).await {
-                println!("Error updating scheduled event: {:?}", e);
+                warn!("Error updating scheduled event: {:?}", e);
             }
         }
     }
@@ -469,11 +470,11 @@ async fn handle_restream_request_reaction(
                 info.set_commentary_assignment_message_id(m.id);
             }
             Err(e) => {
-                println!("Error after creating commentary assignment message: {e}");
+                warn!("Error after creating commentary assignment message: {e}");
             }
         },
         Err(e) => {
-            println!(
+            warn!(
                 "Error creating commentary discussion message for bri {}: {e}",
                 info.id
             );
@@ -487,7 +488,7 @@ async fn handle_restream_request_reaction(
     )
     .await
     {
-        println!("Error clearing tentative commentary assignment: {e}");
+        warn!("Error clearing tentative commentary assignment: {e}");
     }
     info.update(conn)?;
 
