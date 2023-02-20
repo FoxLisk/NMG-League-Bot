@@ -20,5 +20,4 @@
     {% else %}
         Player not found.
     {% endif %}
-
 {% endblock %}

@@ -10,7 +10,7 @@
 <template id="qualifier_submission">
     <tr class="border-t border-sky-300">
         <td class="place px-2"></td>
-        <td class="player px-4"></td>
+        <td class="player px-4">{{ macros::link(href="", text="") }}</td>
         <td class="time px-4"></td>
         <td class="vod pl-4">{{ macros::link(href="", text="link") }}</td>
     </tr>

@@ -47,7 +47,9 @@ function build_row(template, qual_row, seen) {
         seen.place += 1;
         seen.players[name] = true;
     }
-    cols[1].textContent = name;
+    let player_name_col = cols[1].querySelector('a');
+    player_name_col.href = "/player/" + name;
+    player_name_col.textContent = name;
     cols[2].textContent = qual_row.time;
     let vod_anchor = cols[3].querySelector('a');
     vod_anchor.href = qual_row.vod;
