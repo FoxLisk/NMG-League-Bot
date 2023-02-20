@@ -26,6 +26,9 @@
                     <a href="/seasons">history</a>
                 </div>
                 <div class="flex md:w-1/5">
+                    {% if base_context.admin %}
+                        <a href="/asyncs">asyncs</a>
+                    {% endif %}
                 </div>
             </div>
             {# header #}

@@ -90,22 +90,23 @@ impl<'r> FromRequest<'r> for ConnectionWrapper<'r> {
 }
 
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Default)]
 struct BaseContext {
     current_season: Option<Season>,
+    admin: bool,
 }
 
 impl BaseContext {
-    fn new(conn: &mut SqliteConnection) -> Self {
+    fn new(conn: &mut SqliteConnection, admin: &Option<Admin>) -> Self {
         let current_season = Season::get_active_season(conn).ok().flatten();
-        Self { current_season }
+        Self { current_season, admin: admin.is_some() }
     }
 }
 
 // N.B. this should either not be called DiscordState, or we should manage a separate
 // connection pool for the website
 #[get("/asyncs")]
-async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Template {
+async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> Template {
     let mut cxn = match discord_state.diesel_cxn().await {
         Ok(c) => c,
         Err(e) => {
@@ -122,6 +123,7 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
 
     #[derive(Serialize, Default)]
     struct Context {
+        base_context: BaseContext,
         error: Option<String>,
         finished: Vec<ViewRace>,
         created: Vec<ViewRace>,
@@ -282,6 +284,7 @@ async fn async_view(_a: Admin, discord_state: &State<Arc<DiscordState>>) -> Temp
     Template::render(
         "asyncs",
         Context {
+            base_context: BaseContext::new(cxn.deref_mut(), &Some(admin)),
             error: None,
             finished,
             created,
@@ -384,6 +387,7 @@ struct BracketsContext {
 
 fn get_brackets_context(
     szn: Season,
+    admin: &Option<Admin>,
     conn: &mut SqliteConnection,
 ) -> Result<BracketsContext, diesel::result::Error> {
     let mut ctx_brackets = vec![];
@@ -442,7 +446,7 @@ fn get_brackets_context(
     Ok(BracketsContext {
         season: szn,
         brackets: ctx_brackets,
-        base_context: BaseContext::new(conn)
+        base_context: BaseContext::new(conn, admin)
     })
 }
 
@@ -450,6 +454,7 @@ fn get_brackets_context(
 async fn season_brackets(
     id: i32,
     mut db: ConnectionWrapper<'_>,
+    admin: Option<Admin>
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
         Ok(s) => Ok(s),
@@ -457,7 +462,7 @@ async fn season_brackets(
 
         Err(_) => Err(Status::InternalServerError),
     }?;
-    let ctx = get_brackets_context(szn, &mut db).map_err(|_| Status::InternalServerError)?;
+    let ctx = get_brackets_context(szn, &admin, &mut db).map_err(|_| Status::InternalServerError)?;
 
     Ok(Template::render("season_brackets", ctx))
 }
@@ -485,6 +490,7 @@ struct StandingsContext {
 
 fn get_standings_context(
     szn: Season,
+    admin: &Option<Admin>,
     conn: &mut SqliteConnection,
 ) -> Result<StandingsContext, diesel::result::Error> {
     let mut ctx_brackets = vec![];
@@ -545,13 +551,14 @@ fn get_standings_context(
     Ok(StandingsContext {
         season: szn,
         brackets: ctx_brackets,
-        base_context: BaseContext::new(conn)
+        base_context: BaseContext::new(conn, admin)
     })
 }
 
 #[get("/season/<id>/standings")]
 async fn season_standings(
     id: i32,
+    admin: Option<Admin>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
@@ -561,21 +568,22 @@ async fn season_standings(
     }?;
 
     let ctx =
-        get_standings_context(szn, &mut db).map_err(|_| Status::InternalServerError)?;
+        get_standings_context(szn, &admin,&mut db).map_err(|_| Status::InternalServerError)?;
     Ok(Template::render("season_standings", ctx))
 }
 
 #[get("/season/<id>/qualifiers")]
 async fn season_qualifiers(
     id: i32,
-    mut db: ConnectionWrapper<'_>
+    mut db: ConnectionWrapper<'_>,
+    admin: Option<Admin>
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
         Ok(s) => Ok(s),
         Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
     }?;
-    let base_context = BaseContext::new(&mut db);
+    let base_context = BaseContext::new(&mut db, &admin);
     Ok(Template::render("season_qualifiers", context!(season: szn, base_context)))
 }
 
@@ -585,20 +593,20 @@ async fn season_redirect(id: i32) -> Redirect {
 }
 
 #[get("/seasons")]
-async fn season_history(mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
+async fn season_history(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
     let ctx = context!{
-        base_context: BaseContext::new(&mut db),
+        base_context: BaseContext::new(&mut db, &admin),
     };
     Ok(Template::render("season_history", ctx))
 }
 
 #[get("/")]
-async fn home(mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
+async fn home(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
     #[derive(Serialize, Debug)]
     struct HomeCtx {
         base_context: BaseContext
     }
-    let ctx = HomeCtx { base_context: BaseContext::new(&mut db)};
+    let ctx = HomeCtx { base_context: BaseContext::new(&mut db, &admin)};
     Ok(Template::render("home", ctx))
 }
 
