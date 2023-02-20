@@ -14,7 +14,7 @@ pub trait MentionOptional {
     fn mention_maybe(&self) -> Option<String>;
 }
 
-#[derive(Queryable, Debug, Clone, Identifiable, AsChangeset)]
+#[derive(Queryable, Debug, Clone, Identifiable, AsChangeset, serde::Serialize)]
 pub struct Player {
     pub id: i32,
     /// display name
@@ -64,6 +64,17 @@ impl Player {
         conn: &mut SqliteConnection,
     ) -> Result<Option<Self>, diesel::result::Error> {
         players::table.find(id).first(conn).optional()
+    }
+
+
+    pub fn get_by_name(
+        name: &str,
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<Self>, diesel::result::Error> {
+        players::table
+        .filter(players::name.eq(name))
+        .first(conn)
+        .optional()
     }
 
     pub fn mention_or_name(&self) -> String {

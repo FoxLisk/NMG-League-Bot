@@ -39,7 +39,6 @@ impl<T: Clone> SessionManager<T> {
     }
 
     /// Returns the user associated with the given session token, if any
-    #[allow(unused)]
     pub(crate) fn get_user(&mut self, st: &SessionTokenRef) -> Result<T, UserNotAuthenticated> {
         let (uid, exp_at) = self
             .session

@@ -600,6 +600,21 @@ async fn season_history(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> 
     Ok(Template::render("season_history", ctx))
 }
 
+#[get("/player/<name>")]
+async fn player_detail(name: String, admin: Option<Admin>, mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
+    let player = match Player::get_by_name(&name, &mut db) {
+        Ok(p) => p,
+        Err(e) => { return Err(Status::InternalServerError); }
+    };
+    let bc = BaseContext::new(&mut db, &admin);
+    let ctx = context! {
+        base_context: bc,
+        player: player,
+    };
+    Ok(Template::render("player_detail", ctx))
+
+}
+
 #[get("/")]
 async fn home(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
     #[derive(Serialize, Debug)]
@@ -655,7 +670,7 @@ pub(crate) async fn launch_website(
                 season_redirect,
                 season_history,
                 home,
-
+                player_detail,
             ],
         )
         .attach(Template::custom(|e| {
