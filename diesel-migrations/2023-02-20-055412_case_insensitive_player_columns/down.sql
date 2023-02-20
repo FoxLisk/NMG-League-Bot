@@ -1,0 +1,4 @@
+-- this down.sql deliberately left blank
+-- this migration is taking a bunch of case sensitive columns and making them case insensitive
+-- the reverse operation is basically safe, although i guess you're left with case insensitive columns
+-- unexpectedly. i don't think i care though
