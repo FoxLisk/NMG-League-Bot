@@ -385,69 +385,86 @@ struct BracketsContext {
     base_context: BaseContext,
 }
 
-fn get_brackets_context(
-    szn: Season,
-    admin: &Option<Admin>,
-    conn: &mut SqliteConnection,
-) -> Result<BracketsContext, diesel::result::Error> {
-    let mut ctx_brackets = vec![];
-    let brackets = szn.brackets(conn)?;
-    for bracket in brackets {
-        let races = bracket.bracket_races(conn)?;
-        let rounds_by_id: HashMap<i32, BracketRound> =
-            HashMap::from_iter(bracket.rounds(conn)?.into_iter().map(|r| (r.id, r)));
-        let players_by_id: HashMap<i32, Player> =
-            HashMap::from_iter(bracket.players(conn)?.into_iter().map(|r| (r.id, r)));
+fn get_display_bracket(bracket: Bracket, conn: &mut SqliteConnection) -> Result<DisplayBracket, diesel::result::Error> {
+    let races = bracket.bracket_races(conn)?;
+    let rounds_by_id: HashMap<i32, BracketRound> =
+        HashMap::from_iter(bracket.rounds(conn)?.into_iter().map(|r| (r.id, r)));
+    let players_by_id: HashMap<i32, Player> =
+        HashMap::from_iter(bracket.players(conn)?.into_iter().map(|r| (r.id, r)));
 
-        let mut display_rounds_by_num: HashMap<i32, DisplayRound> = Default::default();
-        for race in races {
-            let round = match rounds_by_id.get(&race.round_id) {
-                Some(r) => r,
-                None => {
-                    info!("Missing round with id {}", race.round_id);
-                    continue;
-                }
-            };
-            let p1 = match players_by_id.get(&race.player_1_id) {
-                Some(p) => p,
-                None => {
-                    continue;
-                }
-            };
+    let mut display_rounds_by_num: HashMap<i32, DisplayRound> = Default::default();
+    for race in races {
+        let round = match rounds_by_id.get(&race.round_id) {
+            Some(r) => r,
+            None => {
+                info!("Missing round with id {}", race.round_id);
+                continue;
+            }
+        };
+        let p1 = match players_by_id.get(&race.player_1_id) {
+            Some(p) => p,
+            None => {
+                continue;
+            }
+        };
 
-            let p2 = match players_by_id.get(&race.player_2_id) {
-                Some(p) => p,
-                None => {
-                    continue;
-                }
-            };
-            let r = race.info(conn)?;
-            let dr = DisplayRace::new(p1, p2, &race, &r);
+        let p2 = match players_by_id.get(&race.player_2_id) {
+            Some(p) => p,
+            None => {
+                continue;
+            }
+        };
+        let r = race.info(conn)?;
+        let dr = DisplayRace::new(p1, p2, &race, &r);
 
-            display_rounds_by_num
-                .entry(round.round_num)
-                .or_insert(DisplayRound {
-                    round_num: round.round_num,
-                    races: vec![],
-                })
-                .races
-                .push(dr);
-        }
-        let rounds = display_rounds_by_num
-            .into_iter()
-            .sorted_by_key(|(n, _rs)| n.clone())
-            .map(|(_n, rs)| rs)
-            .collect();
-
-        let disp_b = DisplayBracket { bracket, rounds };
-        ctx_brackets.push(disp_b);
+        display_rounds_by_num
+            .entry(round.round_num)
+            .or_insert(DisplayRound {
+                round_num: round.round_num,
+                races: vec![],
+            })
+            .races
+            .push(dr);
     }
+    let rounds = display_rounds_by_num
+        .into_iter()
+        .sorted_by_key(|(n, _rs)| n.clone())
+        .map(|(_n, rs)| rs)
+        .collect();
 
-    Ok(BracketsContext {
+    Ok(DisplayBracket { bracket, rounds })
+}
+
+#[get("/season/<season_id>/bracket/<bracket_id>")]
+async fn bracket_detail(
+    season_id: i32,
+    bracket_id: i32,
+    admin: Option<Admin>,
+    mut db: ConnectionWrapper<'_>,
+) -> Result<Template, Status> {
+    let szn = match Season::get_by_id(season_id, &mut db) {
+        Ok(s) => Ok(s),
+        Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
+
+        Err(_) => Err(Status::InternalServerError),
+    }?;
+    let bracket = match Bracket::get_by_id(bracket_id, &mut db) {
+        Ok(s) => Ok(s),
+        Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
+
+        Err(_) => Err(Status::InternalServerError),
+    }?;
+    if bracket.season_id != szn.id {
+        return Err(Status::NotFound);
+    }
+    let disp_b = get_display_bracket(bracket, &mut db).or(Err(Status::InternalServerError))?;
+    let ctx = context! {
         season: szn,
-        brackets: ctx_brackets,
-        base_context: BaseContext::new(conn, admin)
-    })
+        bracket: disp_b,
+        base_context: BaseContext::new(&mut db, &admin)
+    };
+
+    Ok(Template::render("bracket_detail", ctx))
 }
 
 #[get("/season/<id>/brackets")]
@@ -462,7 +479,30 @@ async fn season_brackets(
 
         Err(_) => Err(Status::InternalServerError),
     }?;
-    let ctx = get_brackets_context(szn, &admin, &mut db).map_err(|_| Status::InternalServerError)?;
+    let brackets = match szn.brackets(&mut db) {
+        Ok(b) => b,
+        Err(e) => {
+            warn!("Error getting season brackets: {e}");
+            return Err(Status::InternalServerError); }
+    };
+    #[derive(Serialize)]
+    struct BracketInfo {
+        id: i32,
+        name: String,
+        url: String,
+    }
+    let infos = brackets.into_iter().map(|b|
+        BracketInfo {
+            id: b.id,
+            name: b.name,
+            url: format!("/season/{}/bracket/{}", szn.id, b.id)
+        }
+    ).collect::<Vec::<_>>();
+    let ctx = context! {
+        season: szn,
+        brackets: infos,
+        base_context: BaseContext::new(&mut db, &admin)
+    };
 
     Ok(Template::render("season_brackets", ctx))
 }
@@ -604,7 +644,9 @@ async fn season_history(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> 
 async fn player_detail(name: String, admin: Option<Admin>, mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
     let player = match Player::get_by_name(&name, &mut db) {
         Ok(p) => p,
-        Err(e) => { return Err(Status::InternalServerError); }
+        Err(e) => {
+            warn!("Error getting player info: {e}");
+            return Err(Status::InternalServerError); }
     };
     let bc = BaseContext::new(&mut db, &admin);
     let ctx = context! {
@@ -671,6 +713,7 @@ pub(crate) async fn launch_website(
                 season_history,
                 home,
                 player_detail,
+                bracket_detail,
             ],
         )
         .attach(Template::custom(|e| {

@@ -11,7 +11,7 @@
 	</head>
 	<body class="bg-sky-400">
         <div class="bg-sky-600 h-7">
-            <div class="flex">
+            <div class="flex text-indigo-900">
                 <div class="flex md:w-1/5">
                 </div>
                 <div class="flex flex-auto">
@@ -33,7 +33,7 @@
             </div>
             {# header #}
         </div>
-		{% block body %}
-		{% endblock %}
+        {% block body %}
+        {% endblock %}
 	</body>
 </html>
