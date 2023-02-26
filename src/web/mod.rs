@@ -435,25 +435,6 @@ fn get_display_bracket(bracket: Bracket, conn: &mut SqliteConnection) -> Result<
     Ok(DisplayBracket { bracket, rounds })
 }
 
-fn get_brackets_context(
-    szn: Season,
-    admin: &Option<Admin>,
-    conn: &mut SqliteConnection,
-) -> Result<BracketsContext, diesel::result::Error> {
-    let mut ctx_brackets = vec![];
-    let brackets = szn.brackets(conn)?;
-    for bracket in brackets {
-        let disp_b = get_display_bracket(bracket, conn)?;
-        ctx_brackets.push(disp_b);
-    }
-
-    Ok(BracketsContext {
-        season: szn,
-        brackets: ctx_brackets,
-        base_context: BaseContext::new(conn, admin)
-    })
-}
-
 #[get("/season/<season_id>/bracket/<bracket_id>")]
 async fn bracket_detail(
     season_id: i32,
@@ -500,7 +481,9 @@ async fn season_brackets(
     }?;
     let brackets = match szn.brackets(&mut db) {
         Ok(b) => b,
-        Err(e) => { return Err(Status::InternalServerError); }
+        Err(e) => {
+            warn!("Error getting season brackets: {e}");
+            return Err(Status::InternalServerError); }
     };
     #[derive(Serialize)]
     struct BracketInfo {
@@ -661,7 +644,9 @@ async fn season_history(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> 
 async fn player_detail(name: String, admin: Option<Admin>, mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
     let player = match Player::get_by_name(&name, &mut db) {
         Ok(p) => p,
-        Err(e) => { return Err(Status::InternalServerError); }
+        Err(e) => {
+            warn!("Error gettign player info: {e}");
+            return Err(Status::InternalServerError); }
     };
     let bc = BaseContext::new(&mut db, &admin);
     let ctx = context! {
