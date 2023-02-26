@@ -106,6 +106,7 @@ impl Season {
         use crate::schema::brackets as sbrack;
         sbrack::table
             .filter(sbrack::season_id.eq(self.id))
+            .order_by(sbrack::id)
             .load(conn)
     }
 
