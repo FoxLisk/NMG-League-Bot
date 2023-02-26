@@ -60,3 +60,46 @@
     </tbody>
 </table>
 {% endmacro %}
+
+{% macro display_bracket(bracket) %}
+    <div class="p1 border border-1">
+        <span title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</span>
+        {% for round in bracket.rounds %}
+            <div class="p-1 bg-sky-300 border border-1">
+                Round {{ round.round_num }}
+                <div class="p-1">
+                    <table class="border border-slate-500">
+                        <thead>
+                        </thead>
+                        <tbody>
+                        {% for race in round.races %}
+                            <tr class="border-b border-slate-500" title="Race id #{{ race.race_id }}" >
+                                <td class="border-x border-slate-500 pl-1 pr-3
+                                 {% if race.player_1.winner %} bg-emerald-400 {% elif race.player_1.loser %} bg-red-400 {% endif %}
+                                 ">
+                                    {{ race.player_1.name_and_status }}
+                                </td>
+                                <td class="border-x border-slate-500 pl-1 pr-3
+                                 {% if race.player_2.winner %} bg-emerald-400 {% elif race.player_2.loser %} bg-red-400 {% endif %}
+                                 ">
+                                    {{ race.player_2.name_and_status }}
+                                </td>
+                                    <td class="border-x border-slate-500 p-1">
+                                        {% if race.scheduled %}
+                                            {{ race.scheduled }}
+                                        {% endif %}
+                                    </td>
+                                    <td class="border-x border-slate-500 p-1">
+                                        {% if race.scheduled %}
+                                            {{ macros::link(href=race.channel, text=race.channel) }}
+                                        {% endif %}
+                                    </td>
+                            </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+{% endmacro %}

@@ -28,7 +28,7 @@ enum BracketState {
 pub struct Bracket {
     pub id: i32,
     pub name: String,
-    season_id: i32,
+    pub season_id: i32,
     state: String,
 }
 

@@ -4,7 +4,7 @@
 {% block scripts %}
     <script defer type="text/javascript" src="/static/js/season_qualifiers.js"></script>
 {% endblock %}
-{% block pagename %}NMG League {{season.format}} Qualifiers{% endblock %}
+{% block pagename %}{{season.format}} Qualifiers{% endblock %}
 
 {% block templates %}
 <template id="qualifier_submission">

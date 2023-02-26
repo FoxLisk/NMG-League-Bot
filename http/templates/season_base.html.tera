@@ -22,7 +22,7 @@
     </div>
     {# header #}
 </div>
-<div class="p-2 text-2xl md:text-xl lg:text-base">
+<div class="p-2 text-2xl md:text-xl lg:text-base m-4">
     {% block season_body %}
     {% endblock %}
 </div>
