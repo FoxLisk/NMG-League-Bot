@@ -645,7 +645,7 @@ async fn player_detail(name: String, admin: Option<Admin>, mut db: ConnectionWra
     let player = match Player::get_by_name(&name, &mut db) {
         Ok(p) => p,
         Err(e) => {
-            warn!("Error gettign player info: {e}");
+            warn!("Error getting player info: {e}");
             return Err(Status::InternalServerError); }
     };
     let bc = BaseContext::new(&mut db, &admin);
