@@ -2,10 +2,10 @@
 
 {% block body %}
 <div class="bg-sky-600 h-7 mb-2 border-t">
-    <div class="flex">
+    <div class="flex text-indigo-900">
         <div class="flex w-32">
         </div>
-        <div class="flex flex-auto" title="Season #{{season.id}}">
+        <div class="flex flex-auto text-black" title="Season #{{season.id}}">
             {{ season.format }}
         </div>
         <div class="flex flex-auto">
