@@ -1,4 +1,4 @@
-use crate::discord::constants::ADMIN_ROLE_NAME;
+use crate::discord::constants::{ADMIN_ROLE_NAME, COMMENTARY_ROLE_NAME};
 use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
@@ -6,7 +6,7 @@ use diesel::ConnectionError;
 use nmg_league_bot::constants::GUILD_ID_VAR;
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::env_var;
+use nmg_league_bot::utils::{env_var, ResultErrToString};
 use nmg_league_bot::ChannelConfig;
 use racetime_api::client::RacetimeClient;
 use std::ops::DerefMut;
@@ -17,12 +17,11 @@ use twilight_http::Client;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::guild::Role;
 use twilight_model::http::interaction::InteractionResponse;
-use twilight_model::id::marker::{
-    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, UserMarker,
-};
+use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
+use thiserror::Error;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
@@ -39,6 +38,17 @@ pub struct DiscordState {
     pub channel_config: ChannelConfig,
     pub racetime_client: RacetimeClient,
     pub twitch_client_bundle: TwitchClientBundle,
+}
+
+#[derive(Error, Debug)]
+pub enum DiscordStateError {
+    #[error("Member {0} not found")]
+    MemberNotFound(Id<UserMarker>),
+    #[error("Role {role_name} not found in guild {guild_id}")]
+    RoleNotFound {
+        role_name: String,
+        guild_id: Id<GuildMarker>
+    },
 }
 
 impl DiscordState {
@@ -101,12 +111,12 @@ impl DiscordState {
         }
     }
 
-    pub fn get_admin_role(&self, guild_id: Id<GuildMarker>) -> Option<Role> {
+    fn get_role_by_name(&self, guild_id: Id<GuildMarker>, role_name: &str) -> Option<Role> {
         let roles = self.cache.guild_roles(guild_id)?;
 
         for role_id in roles.value() {
             if let Some(role) = self.cache.role(*role_id) {
-                if role.name == ADMIN_ROLE_NAME {
+                if role.name == role_name {
                     // cloning pulls it out of the reference, unlocking the cache
                     return Some(role.resource().clone());
                 }
@@ -115,27 +125,48 @@ impl DiscordState {
         None
     }
 
+    fn has_role(&self, user_id: Id<UserMarker>, guild_id: Id<GuildMarker>, role_id: Id<RoleMarker>) -> Result<bool, DiscordStateError> {
+        let member = self
+            .cache
+            .member(guild_id, user_id)
+            .ok_or(DiscordStateError::MemberNotFound(user_id))?
+            .value()
+            .clone();
+        Ok(member.roles().contains(&role_id))
+    }
+
+    fn has_role_by_name(
+        &self,
+        user_id: Id<UserMarker>,
+        guild_id: Id<GuildMarker>,
+        role_name: &str,
+    ) -> Result<bool, DiscordStateError> {
+        let role = self.get_role_by_name(guild_id, role_name).ok_or(DiscordStateError::RoleNotFound {
+            role_name: role_name.to_string(),
+            guild_id,
+        })?;
+        self.has_role(user_id, guild_id, role.id)
+    }
+
     // making this async now so when i inevitably add an actual HTTP request fallback it's already async
     pub async fn has_admin_role(
         &self,
         user_id: Id<UserMarker>,
         guild_id: Id<GuildMarker>,
-    ) -> Result<bool, String> {
-        let role = self.get_admin_role(guild_id).ok_or(format!(
-            "Error: Cannot find admin role for guild {}",
-            guild_id
-        ))?;
-        let member = self
-            .cache
-            .member(guild_id, user_id)
-            .ok_or(format!("Error: cannot find member {}", user_id))?
-            .value()
-            .clone();
-        Ok(member.roles().contains(&role.id))
+    ) -> Result<bool, DiscordStateError> {
+        self.has_role_by_name(user_id, guild_id, ADMIN_ROLE_NAME)
+    }
+
+    pub async fn has_commentary_role(
+        &self,
+        user_id: Id<UserMarker>,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<bool, DiscordStateError> {
+        self.has_role_by_name(user_id, guild_id, COMMENTARY_ROLE_NAME)
     }
 
     // convenience for website which i have negative interest in adding guild info to
-    pub async fn has_nmg_league_admin_role(&self, user_id: Id<UserMarker>) -> Result<bool, String> {
+    pub async fn has_nmg_league_admin_role(&self, user_id: Id<UserMarker>) -> Result<bool, DiscordStateError> {
         self.has_admin_role(user_id, self.gid.clone()).await
     }
 
@@ -167,7 +198,7 @@ impl DiscordState {
             .author_id()
             .ok_or("Create race called by no one ????".to_string())?;
 
-        self.has_admin_role(uid, gid).await
+        self.has_admin_role(uid, gid).await.map_err_to_string()
     }
 
     /// creates a response and maps any errors to String

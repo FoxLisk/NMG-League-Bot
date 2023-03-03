@@ -325,7 +325,7 @@ macro_rules! clear_bracket_race_info_message {
                             Err(From::from(e))
                         }
                     }
-                    other => Err(From::from(e)),
+                    _ => Err(From::from(e)),
                 },
             }
         } else {

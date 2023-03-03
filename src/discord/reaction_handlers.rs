@@ -14,7 +14,7 @@ use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
-use crate::discord::discord_state::DiscordState;
+use crate::discord::discord_state::{DiscordState, DiscordStateError};
 use crate::discord::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
@@ -46,6 +46,10 @@ enum ReactionAddError {
     RunError(#[from] bb8::RunError<ConnectionError>),
     #[error("Reaction had no member?")]
     InexplicablyMissingMember,
+    #[error("Reaction not created in guild")]
+    MissingGuildId,
+    #[error("Something went wrong checking for roles or whatever: {0}")]
+    DiscordStateError(#[from] DiscordStateError),
     #[error("HTTP Error: {0}")]
     HttpError(#[from] twilight_http::Error),
     #[error("Error deserializing a response body: {0}")]
@@ -307,6 +311,14 @@ async fn handle_commentary_signup(
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
     let mut cxn = state.diesel_cxn().await?;
+
+    if ! state.has_commentary_role(
+        reaction.user_id.clone(),
+        reaction.guild_id.ok_or(ReactionAddError::MissingGuildId)?
+    ).await? {
+        debug!("Non-commentator user {} reacted to commportunity post", reaction.user_id);
+        return Ok(())
+    }
     if info.new_commentator_signup(reaction.user_id, cxn.deref_mut())? {
         let commentators = info.commentator_signups(cxn.deref_mut())?;
         if commentators.len() >= 1 {
