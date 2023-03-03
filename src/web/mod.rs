@@ -18,7 +18,7 @@ use bb8::{Pool, PooledConnection};
 use diesel::prelude::*;
 use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::BracketRace;
+use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;
@@ -297,6 +297,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
 #[derive(Serialize)]
 struct DisplayPlayer {
     name_and_status: String,
+    player_detail_url: String,
     winner: bool,
     loser: bool,
 }
@@ -310,35 +311,29 @@ struct DisplayRace {
     channel: Option<String>,
 }
 
+impl DisplayPlayer {
+    fn new(p: &Player, res: Option<PlayerResult>, winner: bool, loser: bool) -> Self {
+        let name_and_status = if let Some(r) = res {
+            format!("{} ({r})", p.name)
+        } else {
+            p.name.clone()
+        };
+        Self {
+            name_and_status,
+            player_detail_url: uri!(player_detail(name=&p.name)).to_string(),
+            winner,
+            loser,
+        }
+    }
+}
+
 impl DisplayRace {
     fn new(p1: &Player, p2: &Player, race: &BracketRace, race_info: &BracketRaceInfo) -> Self {
-        let outcome = race.outcome().unwrap_or(None);
         use nmg_league_bot::models::bracket_races::Outcome::{P1Win, P2Win};
+        let outcome = race.outcome().unwrap_or(None);
+        let player_1 = DisplayPlayer::new(p1, race.player_1_result(), outcome == Some(P1Win), outcome == Some(P2Win));
+        let player_2 = DisplayPlayer::new(p2, race.player_2_result(), outcome == Some(P2Win), outcome == Some(P1Win));
 
-        let player_1 = match race.player_1_result() {
-            Some(r) => DisplayPlayer {
-                name_and_status: format!("{} ({})", p1.name.clone(), r),
-                winner: outcome == Some(P1Win),
-                loser: outcome == Some(P2Win),
-            },
-            None => DisplayPlayer {
-                name_and_status: p1.name.clone(),
-                winner: false,
-                loser: false,
-            },
-        };
-        let player_2 = match race.player_2_result() {
-            Some(r) => DisplayPlayer {
-                name_and_status: format!("{} ({})", p2.name.clone(), r),
-                winner: outcome == Some(P2Win),
-                loser: outcome == Some(P1Win),
-            },
-            None => DisplayPlayer {
-                name_and_status: p2.name.clone(),
-                winner: false,
-                loser: false,
-            },
-        };
         let (scheduled, channel) = match outcome {
             Some(_) => (None, None),
             None => {

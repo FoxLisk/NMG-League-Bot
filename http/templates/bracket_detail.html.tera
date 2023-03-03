@@ -19,12 +19,12 @@
                     <td class="border-x border-slate-500 pl-1 pr-3
                                  {% if race.player_1.winner %} bg-emerald-400 {% elif race.player_1.loser %} bg-red-400 {% endif %}
                                  ">
-                        {{ race.player_1.name_and_status }}
+                        {{ macros::link(href=race.player_1.player_detail_url, text=race.player_1.name_and_status) }}
                     </td>
                     <td class="border-x border-slate-500 pl-1 pr-3
                                  {% if race.player_2.winner %} bg-emerald-400 {% elif race.player_2.loser %} bg-red-400 {% endif %}
                                  ">
-                        {{ race.player_2.name_and_status }}
+                        {{ macros::link(href=race.player_2.player_detail_url, text=race.player_2.name_and_status) }}
                     </td>
                     <td class="border-x border-slate-500 p-1">
                         {% if race.scheduled %}
