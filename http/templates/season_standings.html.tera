@@ -30,7 +30,7 @@
             {% for player in bracket.players %}
                 <tr class="border-b border-slate-500">
                     <td class="border-x border-slate-500 pl-1 pr-3">
-                        {{ player.name }}
+                        {{ macros::link(href=player.player_detail_url, text=player.name) }}
                     </td>
                     <td class="border-x border-slate-500 pl-1 pr-3">
                         {{ player.points }}

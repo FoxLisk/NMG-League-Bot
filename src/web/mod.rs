@@ -505,6 +505,7 @@ async fn season_brackets(
 #[derive(Serialize)]
 struct StandingsPlayer {
     name: String,
+    player_detail_url: String,
     points: f32,
     opponent_points: f32,
     average_time: String,
@@ -550,6 +551,7 @@ fn get_standings_context(
             players
                 .into_iter()
                 .map(|p| StandingsPlayer {
+                    player_detail_url: uri!(player_detail(name=&p.name)).to_string(),
                     name: p.name,
                     points: 0.0,
                     opponent_points: 0.0,
@@ -564,13 +566,14 @@ fn get_standings_context(
                 .map(|s| {
                     let total_time: u32 = s.times.iter().sum();
                     let avg_time = (total_time as f32) / (s.times.len() as f32);
-
+                    let name = players_map
+                        .get(&s.id)
+                        .cloned()
+                        .unwrap_or("Unknown".to_string());
                     // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     StandingsPlayer {
-                        name: players_map
-                            .get(&s.id)
-                            .cloned()
-                            .unwrap_or("Unknown".to_string()),
+                        player_detail_url: uri!(player_detail(name=&name)).to_string(),
+                        name,
                         points: (s.points as f32) / 2.0,
                         opponent_points: (s.opponent_points as f32) / 2.0,
                         average_time: format_hms(avg_time as u64),
