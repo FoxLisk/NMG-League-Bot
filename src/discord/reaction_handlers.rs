@@ -312,13 +312,6 @@ async fn handle_commentary_signup(
 ) -> Result<(), ReactionAddError> {
     let mut cxn = state.diesel_cxn().await?;
 
-    if ! state.has_commentary_role(
-        reaction.user_id.clone(),
-        reaction.guild_id.ok_or(ReactionAddError::MissingGuildId)?
-    ).await? {
-        debug!("Non-commentator user {} reacted to commportunity post", reaction.user_id);
-        return Ok(())
-    }
     if info.new_commentator_signup(reaction.user_id, cxn.deref_mut())? {
         let commentators = info.commentator_signups(cxn.deref_mut())?;
         if commentators.len() >= 1 {
