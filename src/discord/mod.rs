@@ -70,7 +70,6 @@ mod constants {
     pub const CREATE_RACE_CMD: &str = "create_race";
     pub const CANCEL_RACE_CMD: &str = "cancel_race";
     pub const ADMIN_ROLE_NAME: &'static str = "Admin";
-    pub const COMMENTARY_ROLE_NAME: &'static str = "Commentary";
 
     pub const CREATE_SEASON_CMD: &str = "create_season";
     pub const SET_SEASON_STATE_CMD: &str = "set_season_state";

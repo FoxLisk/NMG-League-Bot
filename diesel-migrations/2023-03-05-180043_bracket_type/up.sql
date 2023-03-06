@@ -1,0 +1,1 @@
+ALTER TABLE brackets ADD COLUMN bracket_type TEXT NOT NULL DEFAULT '"Swiss"';

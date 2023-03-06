@@ -1,12 +1,14 @@
 use crate::models::bracket_race_infos::BracketRaceInfo;
 use chrono::{Duration, NaiveDateTime};
 use diesel::SqliteConnection;
+use enum_iterator::Sequence;
+use log::warn;
+use regex::Regex;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::str::FromStr;
-use log::warn;
+use serde::Serialize;
 use twilight_model::channel::embed::EmbedField;
-use regex::Regex;
 
 pub fn format_hms(secs: u64) -> String {
     let mins = secs / 60;
@@ -27,7 +29,6 @@ pub fn format_hms(secs: u64) -> String {
     }
 }
 
-
 /// parses h:mm:ss (or hh:mm:ss) and returns total number of seconds
 pub fn parse_hms(s: &str) -> Option<u32> {
     let re = Regex::new(r#"(\d+):(\d{2}):(\d{2})"#).ok()?;
@@ -45,7 +46,6 @@ pub fn parse_hms(s: &str) -> Option<u32> {
 
     Some(h * 60 * 60 + m * 60 + s)
 }
-
 
 pub fn format_duration_hms(d: Duration) -> String {
     format_hms(d.num_seconds() as u64)
@@ -175,4 +175,23 @@ pub fn race_to_nice_embeds(
         },
     ];
     Ok(fields)
+}
+
+/// returns a vector with each variant serialized to json
+/// ignores errors (i.e. throws out values that fail to serialize)
+/// (this shouldn't matter since we have control over the input type)
+pub fn enum_variants_serialized<E: Sequence + Serialize>() -> impl Iterator<Item=String> {
+    enum_iterator::all::<E>()
+        .flat_map(|s| serde_json::to_string(&s))
+}
+
+pub fn first_matching_index<T, F>(v: &Vec<T>, mut p: F) -> Option<usize>
+    where F: FnMut(&T) -> bool
+{
+    for (i, e) in v.iter().enumerate() {
+        if p(e) {
+            return Some(i);
+        }
+    }
+    None
 }

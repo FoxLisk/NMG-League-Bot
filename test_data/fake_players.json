@@ -1,0 +1,22 @@
+[
+  {
+    "name": "p1",
+    "discord_id": "1",
+    "restreams_ok": 1
+  },
+  {
+    "name": "p2",
+    "discord_id": "2",
+    "restreams_ok": 1
+  },
+  {
+    "name": "p3",
+    "discord_id": "3",
+    "restreams_ok": 1
+  },
+  {
+    "name": "p4",
+    "discord_id": "4",
+    "restreams_ok": 1
+  }
+]

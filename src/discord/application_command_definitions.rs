@@ -4,7 +4,6 @@ use crate::discord::constants::{
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
-use enum_iterator::all;
 use nmg_league_bot::constants::WEBSITE_URL;
 use nmg_league_bot::models::season::SeasonState;
 use twilight_model::application::command::{
@@ -13,6 +12,8 @@ use twilight_model::application::command::{
 };
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
+use nmg_league_bot::models::brackets::BracketType;
+use nmg_league_bot::utils::enum_variants_serialized;
 
 pub fn application_command_definitions() -> Vec<Command> {
     let create_race = CommandBuilder::new(
@@ -75,8 +76,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
-    let possible_states = all::<SeasonState>()
-        .flat_map(|s| serde_json::to_string(&s))
+    let possible_states = enum_variants_serialized::<SeasonState>()
         .map(|s| CommandOptionChoice::String {
             name: s.clone(),
             name_localizations: None,
@@ -114,6 +114,16 @@ pub fn application_command_definitions() -> Vec<Command> {
     }))
     .build();
 
+
+    let bracket_types = enum_variants_serialized::<BracketType>()
+        .map(|s| CommandOptionChoice::String {
+            name: s.clone(),
+            name_localizations: None,
+            value: s,
+        })
+        .collect();
+
+
     let create_bracket = CommandBuilder::new(
         CREATE_BRACKET_CMD.to_string(),
         "Create a new bracket".to_string(),
@@ -139,6 +149,17 @@ pub fn application_command_definitions() -> Vec<Command> {
         max_value: None,
         min_value: None,
         name: "season_id".to_string(),
+        name_localizations: None,
+        required: true,
+    }))
+    .option(CommandOption::String(ChoiceCommandOptionData {
+        autocomplete: false,
+        choices: bracket_types,
+        description: "Bracket type".to_string(),
+        description_localizations: None,
+        max_length: None,
+        min_length: None,
+        name: "bracket_type".to_string(),
         name_localizations: None,
         required: true,
     }))

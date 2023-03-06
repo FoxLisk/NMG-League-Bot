@@ -393,9 +393,6 @@ mod tests {
             DateTime::parse_from_rfc3339("2022-10-23T19:07:20.025Z").unwrap();
         let dur = scheduled.signed_duration_since(race_started_very_old);
         assert!(dur.num_minutes() > 100);
-        let race_started =
-            DateTime::parse_from_rfc3339("2022-11-02T00:58:02.790200800+00:00").unwrap();
-        assert!(dur.num_minutes() > 100);
     }
 
     fn bracket_race_info(

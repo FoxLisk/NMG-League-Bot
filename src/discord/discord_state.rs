@@ -1,4 +1,4 @@
-use crate::discord::constants::{ADMIN_ROLE_NAME, COMMENTARY_ROLE_NAME};
+use crate::discord::constants::{ADMIN_ROLE_NAME};
 use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
@@ -155,14 +155,6 @@ impl DiscordState {
         guild_id: Id<GuildMarker>,
     ) -> Result<bool, DiscordStateError> {
         self.has_role_by_name(user_id, guild_id, ADMIN_ROLE_NAME)
-    }
-
-    pub async fn has_commentary_role(
-        &self,
-        user_id: Id<UserMarker>,
-        guild_id: Id<GuildMarker>,
-    ) -> Result<bool, DiscordStateError> {
-        self.has_role_by_name(user_id, guild_id, COMMENTARY_ROLE_NAME)
     }
 
     // convenience for website which i have negative interest in adding guild info to

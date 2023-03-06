@@ -6,10 +6,7 @@ use crate::discord::constants::{
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions_utils::{
-    button_component, interaction_to_custom_id, plain_interaction_response,
-    update_resp_to_plain_content,
-};
+use crate::discord::interactions_utils::{autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_response, update_resp_to_plain_content};
 use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::constants::{CANCEL_RACE_TIMEOUT_VAR, WEBSITE_URL};
@@ -24,7 +21,7 @@ use nmg_league_bot::models::bracket_races::{
     BracketRace, BracketRaceState, BracketRaceStateError, get_current_round_race_for_player,
     PlayerResult,
 };
-use nmg_league_bot::models::brackets::{Bracket, NewBracket};
+use nmg_league_bot::models::brackets::{Bracket, BracketType, NewBracket};
 use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
@@ -41,7 +38,7 @@ use std::sync::Arc;
 use log::{info, warn};
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
-use twilight_model::application::command::CommandOptionChoice;
+use twilight_model::application::command::{CommandOptionChoice};
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption,
@@ -323,21 +320,7 @@ fn handle_schedule_race_autocomplete(
             value: day.format("%Y/%m/%d").to_string(),
         });
     }
-    Ok(InteractionResponse {
-        kind: InteractionResponseType::ApplicationCommandAutocompleteResult,
-        data: Some(InteractionResponseData {
-            allowed_mentions: None,
-            attachments: None,
-            choices: Some(options),
-            components: None,
-            content: None,
-            custom_id: None,
-            embeds: None,
-            flags: None,
-            title: None,
-            tts: None,
-        }),
-    })
+    Ok(autocomplete_result(options))
 }
 
 async fn handle_schedule_race(
@@ -1175,11 +1158,14 @@ async fn handle_create_bracket(
 ) -> Result<InteractionResponse, String> {
     let name = get_opt!("name", &mut ac.options, String)?;
     let season_id = get_opt!("season_id", &mut ac.options, Integer)?;
+    let bracket_type = get_opt!("bracket_type", &mut ac.options, String)?;
+    let bt: BracketType = serde_json::from_str(&bracket_type).map_err_to_string()?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let szn = Season::get_by_id(season_id as i32, conn.deref_mut()).map_err_to_string()?;
-    let nb = NewBracket::new(&szn, name);
+    let nb = NewBracket::new(&szn, name, bt);
     nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response("Bracket created!"))
+
 }
 
 async fn handle_finish_bracket(

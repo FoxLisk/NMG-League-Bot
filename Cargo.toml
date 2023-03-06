@@ -62,6 +62,7 @@ diesel_enum_derive = {git = "https://github.com/FoxLisk/diesel_enum_derive"}
 
 log4rs = { version = "1.2.0", features = ["gzip"] }
 log = "0.4.17"
+anyhow = "1"
 
 [dependencies.swiss-pairings]
 #path = "../swiss-pairings"
@@ -80,6 +81,7 @@ branch = "7596ff/fix/http/scheduled-event-privacy-level"
 [build-dependencies]
 tokio = { version = "1.19.0", features = ["rt-multi-thread", "macros"]}
 dotenv = "0.15.0"
+
 
 [patch.crates-io]
 twilight-model = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }

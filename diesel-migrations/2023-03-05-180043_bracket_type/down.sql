@@ -1,0 +1,1 @@
+ALTER TABLE brackets DROP COLUMN bracket_type;

@@ -1,4 +1,5 @@
 use log::warn;
+use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::component::button::ButtonStyle;
 use twilight_model::application::component::{Button, Component};
 use twilight_model::application::interaction::{Interaction, InteractionData};
@@ -59,5 +60,23 @@ pub fn interaction_to_custom_id(i: &Interaction) -> Option<&str> {
             warn!("Unhandled InteractionData type: {:?}", i);
             None
         }
+    }
+}
+
+pub fn autocomplete_result(options: Vec<CommandOptionChoice>) -> InteractionResponse {
+    InteractionResponse {
+        kind: InteractionResponseType::ApplicationCommandAutocompleteResult,
+        data: Some(InteractionResponseData {
+            allowed_mentions: None,
+            attachments: None,
+            choices: Some(options),
+            components: None,
+            content: None,
+            custom_id: None,
+            embeds: None,
+            flags: None,
+            title: None,
+            tts: None,
+        }),
     }
 }
