@@ -9,18 +9,28 @@ use crate::{save_fn, update_fn, NMGLeagueBotError};
 use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
+use enum_iterator::Sequence;
 use itertools::Itertools;
+use log::{debug, warn};
 use rand::thread_rng;
 use serde::Serialize;
-use std::collections::HashMap;
-use log::{debug, warn};
+use std::collections::{HashMap, VecDeque};
 use swiss_pairings::{PairingError, TourneyConfig};
+use thiserror::Error;
+
+use rand::seq::SliceRandom;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 enum BracketState {
     Unstarted,
     Started,
     Finished,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
+pub enum BracketType {
+    Swiss,
+    RoundRobin,
 }
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
@@ -30,20 +40,31 @@ pub struct Bracket {
     pub name: String,
     pub season_id: i32,
     state: String,
+    bracket_type: String,
 }
 
 impl Bracket {}
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum BracketError {
+    #[error("Invalid bracket state")]
     InvalidState,
+    #[error("Cannot generate pairings with odd player counts. Add a bye?")]
     OddPlayerCount,
-    DBError(diesel::result::Error),
+    #[error("Database error: {0}")]
+    DBError(#[from] diesel::result::Error),
+    #[error("Uncategorized error: {0}")]
     Other(String),
-    BracketRaceStateError(BracketRaceStateError),
-    SerializationError(serde_json::Error),
+    #[error("Bracket Race state error: {0}")]
+    BracketRaceStateError(#[from] BracketRaceStateError),
+    #[error("Serialization error (probably from invalid db state): {0}")]
+    SerializationError(#[from] serde_json::Error),
+    #[error("Match result error: {0:?}")]
     MatchResultError(MatchResultError),
+    #[error("Pairings error: {0:?}")]
     PairingError(PairingError),
+    #[error("Round robin error: {0}")]
+    RoundRobinError(String),
 }
 impl From<PairingError> for BracketError {
     fn from(e: PairingError) -> Self {
@@ -55,36 +76,16 @@ impl From<MatchResultError> for BracketError {
         Self::MatchResultError(e)
     }
 }
-impl From<serde_json::Error> for BracketError {
-    fn from(e: serde_json::Error) -> Self {
-        Self::SerializationError(e)
-    }
-}
-impl From<diesel::result::Error> for BracketError {
-    fn from(e: Error) -> Self {
-        Self::DBError(e)
-    }
-}
-
 impl From<String> for BracketError {
     fn from(e: String) -> Self {
         Self::Other(e)
     }
 }
 
-impl From<BracketRaceStateError> for BracketError {
-    fn from(e: BracketRaceStateError) -> Self {
-        BracketError::BracketRaceStateError(e)
-    }
-}
-
-fn generate_next_round_pairings(
+fn generate_next_round_pairings_swiss(
     bracket: &Bracket,
     conn: &mut SqliteConnection,
 ) -> Result<(), BracketError> {
-    if bracket.state()? != BracketState::Started {
-        return Err(BracketError::InvalidState);
-    }
     let rounds = bracket.rounds(conn)?;
 
     let mut round_races = vec![];
@@ -138,6 +139,174 @@ fn generate_next_round_pairings(
     Ok(())
 }
 
+fn generate_next_round_pairings_round_robin(
+    bracket: &Bracket,
+    conn: &mut SqliteConnection,
+) -> Result<(), BracketError> {
+    let rounds = bracket.rounds(conn)?;
+    let mut highest_round_num = 0;
+    for round in rounds {
+        assert!(round.round_num > highest_round_num);
+        highest_round_num = round.round_num;
+    }
+    let new_round = NewBracketRound::new(bracket, highest_round_num + 1);
+    let round = new_round.save(conn)?;
+    generate_pairings_round_robin(bracket, &round, conn)
+}
+
+fn generate_next_round_pairings(
+    bracket: &Bracket,
+    conn: &mut SqliteConnection,
+) -> Result<(), BracketError> {
+    if bracket.state()? != BracketState::Started {
+        return Err(BracketError::InvalidState);
+    }
+    match bracket.bracket_type()? {
+        BracketType::Swiss => generate_next_round_pairings_swiss(bracket, conn),
+        BracketType::RoundRobin => generate_next_round_pairings_round_robin(bracket, conn),
+    }
+}
+
+fn generate_initial_pairings_swiss(
+    bracket: &mut Bracket,
+    conn: &mut SqliteConnection,
+) -> Result<(), BracketError> {
+    let new_round = NewBracketRound::new(bracket, 1);
+    let round = new_round.save(conn)?;
+
+    let mut players = bracket.players(conn)?;
+    players.as_mut_slice().shuffle(&mut thread_rng());
+    let mut nbrs = vec![];
+    while players.len() > 1 {
+        let p1 = players.pop().unwrap();
+        let p2 = players.pop().unwrap();
+        let nbr = NewBracketRace::new(bracket, &round, &p1, &p2);
+        nbrs.push(nbr);
+    }
+    if !players.is_empty() {
+        return Err(BracketError::OddPlayerCount);
+    }
+    insert_bulk(&nbrs, conn)?;
+
+    bracket
+        .set_state(BracketState::Started)
+        .map_err(|e| e.to_string())?;
+    bracket.update(conn)?;
+    Ok(())
+}
+
+/// constructs the polygon of size `n` if `n` is odd `n-1` if `n` is even
+/// rotates it counterclockwise `rotation` times
+/// returns the pairings across the polgyon and the leftover vertex index
+/// returns None if your input sucks shit
+fn polygon_indices(n: usize, rotation: usize) -> Option<(Vec<(usize, usize)>, usize)> {
+    if n < 2 {
+        return None;
+    }
+    let vertices = if n % 2 == 1 { n } else { n - 1 };
+    /*
+    we imagine a polygon with N sides (N-1 if N even). We number vertices
+    clockwise from the bottom left, with N marked in the middle
+            2
+           / \
+        1 | 5 |3
+        0 |___|4
+
+    in each round, we rotate the vertex labels clockwise once. e.g.
+            1
+           / \
+        0 | 5 |2
+        4 |___|3
+
+    players play the person across from them on the polygon, with the left out player at the top
+    vertex playing the middle player
+     */
+    let rotate = |idx: usize| {
+        // idx + rotation corresponds to a counterclockwise rotation of points;
+        // idx - rotation would be anticlockwise (same pairings in the end but they come up
+        // in a different order), however it runs into issues because usize doesn't handle
+        // negative numbers (obviously!)
+        (idx + rotation) % vertices
+    };
+    let mut indices = (0..vertices).map(|i| rotate(i)).collect::<VecDeque<_>>();
+    let mut index_pairs = vec![];
+    while indices.len() > 1 {
+        let i1 = indices.pop_front()?;
+        let i2 = indices.pop_back()?;
+        index_pairs.push((i1, i2));
+    }
+    let middle = indices.pop_front()?;
+    Some((index_pairs, middle))
+}
+
+/// players MUST be sorted the same way on each call to this method!
+/// Returns None if players is empty or some shit
+fn polygon_method<T>(players: &Vec<T>, round: usize) -> Option<Vec<(&T, &T)>> {
+    // https://web.archive.org/web/20230401000000*/https://nrich.maths.org/1443
+    let n = players.len();
+    if round < 1 {
+        return None;
+    }
+    let (pairs, middle) = polygon_indices(n, round - 1)?;
+    let mut player_pairs = vec![];
+    for (i1, i2) in pairs {
+        player_pairs.push((players.get(i1)?, players.get(i2)?));
+    }
+    if n % 2 == 0 {
+        player_pairs.push((players.get(middle)?, players.get(n - 1)?));
+    }
+    Some(player_pairs)
+}
+
+fn generate_pairings_round_robin(
+    bracket: &Bracket,
+    round: &BracketRound,
+    conn: &mut SqliteConnection,
+) -> Result<(), BracketError> {
+    let mut players = bracket.players(conn)?;
+    players.sort_unstable_by_key(|p| p.id);
+    let pairings = polygon_method(&players, round.round_num as usize).ok_or(
+        BracketError::RoundRobinError("Unable to generate pairings".to_string()),
+    )?;
+    let mut nbrs = vec![];
+    for (p1, p2) in pairings {
+        nbrs.push(NewBracketRace::new(bracket, &round, p1, p2));
+    }
+    insert_bulk(&nbrs, conn)?;
+
+    Ok(())
+}
+
+fn generate_initial_pairings_round_robin(
+    bracket: &mut Bracket,
+    conn: &mut SqliteConnection,
+) -> Result<(), BracketError> {
+    let new_round = NewBracketRound::new(bracket, 1);
+    let round = new_round.save(conn)?;
+    generate_pairings_round_robin(bracket, &round, conn)?;
+
+    bracket
+        .set_state(BracketState::Started)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+fn generate_initial_pairings(
+    bracket: &mut Bracket,
+    conn: &mut SqliteConnection,
+) -> Result<(), BracketError> {
+    if bracket.state()? != BracketState::Unstarted {
+        return Err(BracketError::InvalidState);
+    }
+    if let Some(_) = bracket.current_round(conn)? {
+        return Err(BracketError::InvalidState);
+    }
+    match bracket.bracket_type()? {
+        BracketType::Swiss => generate_initial_pairings_swiss(bracket, conn),
+        BracketType::RoundRobin => generate_initial_pairings_round_robin(bracket, conn),
+    }
+}
+
 impl Bracket {
     fn state(&self) -> Result<BracketState, serde_json::Error> {
         serde_json::from_str(&self.state)
@@ -149,6 +318,10 @@ impl Bracket {
 
     pub fn is_finished(&self) -> Result<bool, serde_json::Error> {
         Ok(self.state()? == BracketState::Finished)
+    }
+
+    pub fn bracket_type(&self) -> Result<BracketType, serde_json::Error> {
+        serde_json::from_str(&self.bracket_type)
     }
 
     fn set_state(&mut self, state: BracketState) -> Result<(), serde_json::Error> {
@@ -208,47 +381,11 @@ impl Bracket {
         brackets::table.find(id).first(conn)
     }
 
-    fn generate_initial_pairings(
-        &mut self,
-        conn: &mut SqliteConnection,
-    ) -> Result<(), BracketError> {
-        use rand::seq::SliceRandom;
-
-        if self.state()? != BracketState::Unstarted {
-            return Err(BracketError::InvalidState);
-        }
-        if let Some(_) = self.current_round(conn)? {
-            return Err(BracketError::InvalidState);
-        }
-
-        let new_round = NewBracketRound::new(self, 1);
-        let round = new_round.save(conn)?;
-
-        let mut players = self.players(conn)?;
-        players.as_mut_slice().shuffle(&mut thread_rng());
-        let mut nbrs = vec![];
-        while players.len() > 1 {
-            let p1 = players.pop().unwrap();
-            let p2 = players.pop().unwrap();
-            let nbr = NewBracketRace::new(self, &round, &p1, &p2);
-            nbrs.push(nbr);
-        }
-        if !players.is_empty() {
-            return Err(BracketError::OddPlayerCount);
-        }
-        insert_bulk(&nbrs, conn)?;
-
-        self.set_state(BracketState::Started)
-            .map_err(|e| e.to_string())?;
-        self.update(conn)?;
-        Ok(())
-    }
-
     /// creates and saves a bunch of BracketRaces representing the next round's matchups
     pub fn generate_pairings(&mut self, conn: &mut SqliteConnection) -> Result<(), BracketError> {
         let state = self.state().map_err(|_| BracketError::InvalidState)?;
         match state {
-            BracketState::Unstarted => self.generate_initial_pairings(conn),
+            BracketState::Unstarted => conn.transaction(|c| generate_initial_pairings(self, c)),
             BracketState::Started => conn.transaction(|c| generate_next_round_pairings(self, c)),
             BracketState::Finished => Err(BracketError::InvalidState),
         }
@@ -391,15 +528,20 @@ pub struct NewBracket {
     season_id: i32,
     name: String,
     state: String,
+    bracket_type: String,
 }
 
 impl NewBracket {
-    pub fn new<S: Into<String>>(season: &Season, name: S) -> Self {
+    pub fn new<S: Into<String>>(season: &Season, name: S, type_: BracketType) -> Self {
         // ... okay this would be FINE to .unwrap(), but rules are rules
+        let bracket_type = serde_json::to_string(&type_).unwrap_or("Unknown".to_string());
+        let state =
+            serde_json::to_string(&BracketState::Unstarted).unwrap_or("Unknown".to_string());
         Self {
             season_id: season.id,
             name: name.into(),
-            state: serde_json::to_string(&BracketState::Unstarted).unwrap_or("Unknown".to_string()),
+            state,
+            bracket_type,
         }
     }
 
@@ -408,8 +550,12 @@ impl NewBracket {
 
 #[cfg(test)]
 mod tests {
-    use crate::models::brackets::BracketState;
+    use crate::models::brackets::{polygon_method, BracketState};
     use rocket::serde::json::serde_json;
+    #[derive(Eq, PartialEq, Debug)]
+    struct P {
+        id: usize,
+    }
 
     #[test]
     fn test_serialize() {
@@ -424,6 +570,96 @@ mod tests {
         assert_eq!(
             BracketState::Unstarted,
             serde_json::from_str(r#""Unstarted""#).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_polygon_method_four() {
+        let p1 = P { id: 1 };
+        let p2 = P { id: 2 };
+        let p3 = P { id: 3 };
+        let p4 = P { id: 4 };
+        let players = vec![p1, p2, p3, p4];
+        let r1 = polygon_method(&players, 1).unwrap();
+        let r2 = polygon_method(&players, 2).unwrap();
+        let r3 = polygon_method(&players, 3).unwrap();
+        let r1_pairs = r1
+            .iter()
+            .map(|(pp1, pp2)| (pp1.id, pp2.id))
+            .collect::<Vec<_>>();
+        let r2_pairs = r2
+            .iter()
+            .map(|(pp1, pp2)| (pp1.id, pp2.id))
+            .collect::<Vec<_>>();
+        let r3_pairs = r3
+            .iter()
+            .map(|(pp1, pp2)| (pp1.id, pp2.id))
+            .collect::<Vec<_>>();
+        assert_eq!(vec![(1, 3), (2, 4)], r1_pairs);
+        assert_eq!(vec![(2, 1), (3, 4)], r2_pairs);
+        assert_eq!(vec![(3, 2), (1, 4)], r3_pairs);
+    }
+
+    #[test]
+    fn test_polygon_method_six() {
+        let players = (1..7).map(|id| P { id }).collect::<Vec<_>>();
+        let rounds = (1..=5)
+            .map(|r| {
+                polygon_method(&players, r)
+                    .unwrap()
+                    .iter()
+                    .map(|(p1, p2)| (p1.id, p2.id))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            vec![
+                vec![(1, 5), (2, 4), (3, 6)],
+                vec![(2, 1), (3, 5), (4, 6)],
+                vec![(3, 2), (4, 1), (5, 6)],
+                vec![(4, 3), (5, 2), (1, 6)],
+                vec![(5, 4), (1, 3), (2, 6)],
+            ],
+            rounds
+        );
+    }
+
+    #[test]
+    fn test_polygon_method_three() {
+        let players = (1..=3).map(|id| P { id }).collect::<Vec<_>>();
+        let rounds = (1..=3)
+            .map(|r| {
+                polygon_method(&players, r)
+                    .unwrap()
+                    .iter()
+                    .map(|(p1, p2)| (p1.id, p2.id))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(vec![vec![(1, 3)], vec![(2, 1)], vec![(3, 2)],], rounds);
+    }
+
+    #[test]
+    fn test_polygon_method_five() {
+        let players = (1..=5).map(|id| P { id }).collect::<Vec<_>>();
+        let rounds = (1..=5)
+            .map(|r| {
+                polygon_method(&players, r)
+                    .unwrap()
+                    .iter()
+                    .map(|(p1, p2)| (p1.id, p2.id))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            vec![
+                vec![(1, 5), (2, 4)],
+                vec![(2, 1), (3, 5)],
+                vec![(3, 2), (4, 1)],
+                vec![(4, 3), (5, 2)],
+                vec![(5, 4), (1, 3)],
+            ],
+            rounds
         );
     }
 }

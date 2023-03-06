@@ -44,6 +44,7 @@ diesel::table! {
         name -> Text,
         season_id -> Integer,
         state -> Text,
+        bracket_type -> Text,
     }
 }
 

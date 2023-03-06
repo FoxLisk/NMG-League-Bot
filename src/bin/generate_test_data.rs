@@ -1,6 +1,6 @@
 use diesel::SqliteConnection;
 use nmg_league_bot::db::{raw_diesel_cxn_from_env, run_migrations};
-use nmg_league_bot::models::brackets::NewBracket;
+use nmg_league_bot::models::brackets::{BracketType, NewBracket};
 use nmg_league_bot::models::player::NewPlayer;
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::season::{NewSeason, Season};
@@ -24,16 +24,17 @@ async fn main() {
     let nsn = NewSeason::new("Test NMG");
     let sn = nsn.save(&mut db).unwrap();
 
-    generate_bracket(&sn, 1, &mut db).unwrap();
-    generate_bracket(&sn, 2, &mut db).unwrap();
+    generate_bracket(&sn, 1, BracketType::Swiss, &mut db).unwrap();
+    generate_bracket(&sn, 2, BracketType::Swiss, &mut db).unwrap();
 }
 
 fn generate_bracket(
     season: &Season,
     id: i32,
+    bt: BracketType,
     conn: &mut SqliteConnection,
 ) -> Result<(), diesel::result::Error> {
-    let nb = NewBracket::new(season, format!("Test Bracket {id}"));
+    let nb = NewBracket::new(season, format!("Test Bracket {id}"), bt);
     let b = nb.save(conn)?;
     println!("season: {:?}, bracket: {:?}", season, b);
     for np in get_players(16 * id, id == 1) {

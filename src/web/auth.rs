@@ -159,6 +159,7 @@ impl<'r> FromRequest<'r> for Admin {
                 Ok(u) => u,
                 Err(e) => {
                     info!("User not found for session token {}: {:?}", st, e);
+                    // TODO: clear the cookie
                     return Outcome::Forward(());
                 }
             }

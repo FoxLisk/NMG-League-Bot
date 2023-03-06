@@ -1672,6 +1672,7 @@ name = "nmg-league-bot"
 version = "0.1.0"
 dependencies = [
  "aliri_braid 0.2.4",
+ "anyhow",
  "async-trait",
  "bb8",
  "chrono",
