@@ -6,8 +6,7 @@ use nmg_league_bot::models::season::{ Season};
 
 extern crate dotenv;
 
-// Generates season, bracket, and 16 players, including 1 for me and 1 for my alt
-
+// Generates a 4-player round robin bracket
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
