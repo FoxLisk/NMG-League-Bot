@@ -314,16 +314,12 @@ async fn handle_commentary_signup(
 
     if info.new_commentator_signup(reaction.user_id, cxn.deref_mut())? {
         let commentators = info.commentator_signups(cxn.deref_mut())?;
-        if commentators.len() >= 1 {
-            // flatten just throws away any that fail to parse, which seems... sketchy?
-            // but fine, and easy
-            let ids = commentators
-                .into_iter()
-                .map(|c| c.discord_id())
-                .flatten()
-                .collect();
-            create_sirius_inbox_post(&reaction, ids, &info, state).await?;
-        }
+        let ids = commentators
+            .into_iter()
+            .map(|c| c.discord_id())
+            .flatten()
+            .collect();
+        create_sirius_inbox_post(&reaction, ids, &info, state).await?;
     }
     Ok(())
 }
