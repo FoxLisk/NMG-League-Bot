@@ -285,9 +285,12 @@ fn generate_initial_pairings_round_robin(
     let round = new_round.save(conn)?;
     generate_pairings_round_robin(bracket, &round, conn)?;
 
+    // TODO: setting state can be pulled up an abstraction layer
     bracket
         .set_state(BracketState::Started)
         .map_err(|e| e.to_string())?;
+
+    bracket.update(conn)?;
     Ok(())
 }
 
