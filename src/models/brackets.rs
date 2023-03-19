@@ -408,8 +408,11 @@ impl Bracket {
     }
 
     pub fn standings(&self, conn: &mut SqliteConnection) -> Result<Vec<PlayerInfo>, BracketError> {
-        if self.state()? != BracketState::Started {
-            return Err(BracketError::InvalidState);
+        match self.state()? {
+            BracketState::Unstarted => {
+                return Err(BracketError::InvalidState);
+            }
+            BracketState::Started | BracketState::Finished => {}
         }
         let rounds = self.rounds(conn)?;
         let mut races = vec![];
