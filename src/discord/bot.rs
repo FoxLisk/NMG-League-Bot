@@ -8,16 +8,16 @@ use nmg_league_bot::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use racetime_api::client::RacetimeClient;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_gateway::Cluster;
+use twilight_gateway::{Config, stream};
+use twilight_gateway::stream::ShardEventStream;
 use twilight_http::Client;
-use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::component::text_input::TextInputStyle;
-use twilight_model::application::component::{Component, TextInput};
 use twilight_model::application::interaction::message_component::MessageComponentInteractionData;
 use twilight_model::application::interaction::modal::{
     ModalInteractionData, ModalInteractionDataActionRow,
 };
 use twilight_model::application::interaction::InteractionData;
+use twilight_model::channel::message::Component;
+use twilight_model::channel::message::component::{ButtonStyle, TextInput, TextInputStyle};
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
@@ -94,27 +94,39 @@ async fn run_bot(
         // subsequent http requests
         | Intents::GUILD_PRESENCES;
 
-    let (cluster, mut events) = Cluster::builder(token.clone(), intents)
-        .build()
-        .await
-        .unwrap();
+    let cfg = Config::builder(token.clone(), intents).build();
 
-    let cluster = Arc::new(cluster);
-    let cluster_start = cluster.clone();
-    let cluster_stop = cluster.clone();
-    tokio::spawn(async move {
-        cluster_start.up().await;
-    });
+    let mut shards = stream::create_recommended(
+        &state.client,
+        cfg,
+        |_, builder| builder.build()
+    ).await.unwrap().collect::<Vec<_>>();
+
+    // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
+    // convince the compiler that i have an iterator of mutable references in a simpler way
+    let mut events = ShardEventStream::new(shards.iter_mut());
+
     loop {
         tokio::select! {
-            Some((_shard_id, event)) = events.next() => {
-                state.cache.update(&event);
-                state.standby.process(&event);
-                tokio::spawn(handle_event(event, state.clone()));
+            Some((_shard_id, evt)) = events.next() => {
+                match evt {
+                    Ok(event) => {
+                        state.cache.update(&event);
+                        state.standby.process(&event);
+                        tokio::spawn(handle_event(event, state.clone()));
+                    }
+                    Err(e) => {
+                        warn!("Got error receiving discord event: {e}");
+                        if e.is_fatal() {
+                            info!("Twilight bot shutting down due to fatal error");
+                            break;
+                        }
+                    }
+                }
             },
+
             _sd = shutdown.recv() => {
                 info!("Twilight bot shutting down...");
-                cluster_stop.down();
                 break;
             }
         }

@@ -1,9 +1,8 @@
 use log::warn;
 use twilight_model::application::command::CommandOptionChoice;
-use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::component::{Button, Component};
 use twilight_model::application::interaction::{Interaction, InteractionData};
-use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
+use twilight_model::channel::message::{AllowedMentions, Component};
+use twilight_model::channel::message::component::{Button, ButtonStyle};
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
@@ -12,7 +11,7 @@ use twilight_model::http::interaction::{
 fn plain_interaction_data<S: Into<String>>(content: S) -> InteractionResponseData {
     InteractionResponseData {
         content: Some(content.into()),
-        allowed_mentions: Some(AllowedMentionsBuilder::new().build()),
+        allowed_mentions: Some(AllowedMentions::default()),
         ..Default::default()
     }
 }

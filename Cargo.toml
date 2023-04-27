@@ -43,13 +43,13 @@ enum-iterator = "1.2.0"
 reqwest = "0.11.13"
 twitch_api = { version = "0.7.0-rc.4", features = ["client", "reqwest", "helix"]}
 
-twilight-model = "0.13.5"
-twilight-validate = "0.13.1"
-twilight-mention = "0.13.0"
-twilight-cache-inmemory = "0.13.0"
-twilight-gateway = { version = "0.13.0", features=["rustls-webpki-roots"] }
-twilight-util = { version = "0.13.1", features = ["builder", "link"]}
-twilight-standby = "0.13.0"
+twilight-model = "0.15.1"
+twilight-validate = "0.15.1"
+twilight-mention = "0.15.1"
+twilight-cache-inmemory = "0.15.1"
+twilight-gateway = { version = "0.15.1", features=["rustls-webpki-roots"] }
+twilight-util = { version = "0.15.1", features = ["builder", "link"]}
+twilight-standby = "0.15.1"
 
 rustls = "0.20"
 rustls-native-certs = "0.6.2"
@@ -73,8 +73,9 @@ git = "https://github.com/FoxLisk/swiss-pairings.git"
 git = "https://github.com/FoxLisk/racetime-api.git"
 
 [dependencies.twilight-http]
-git = "https://github.com/twilight-rs/twilight.git"
-branch = "7596ff/fix/http/scheduled-event-privacy-level"
+version = "0.15.1"
+#git = "https://github.com/twilight-rs/twilight.git"
+#branch = "7596ff/fix/http/scheduled-event-privacy-level"
 ##rev = "f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
 #path = "../twilight/twilight-http"
 

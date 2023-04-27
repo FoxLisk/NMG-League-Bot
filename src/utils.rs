@@ -8,7 +8,7 @@ use std::ffi::OsStr;
 use std::fmt::Display;
 use std::str::FromStr;
 use serde::Serialize;
-use twilight_model::channel::embed::EmbedField;
+use twilight_model::channel::message::embed::EmbedField;
 
 pub fn format_hms(secs: u64) -> String {
     let mins = secs / 60;
