@@ -18,7 +18,7 @@ use log::{info, warn};
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
-use twilight_model::channel::embed::{Embed, EmbedField};
+use twilight_model::channel::message::embed::{Embed, EmbedField};
 use twilight_model::channel::Message;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;

@@ -38,13 +38,14 @@ use std::sync::Arc;
 use log::{info, warn};
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
-use twilight_model::application::command::{CommandOptionChoice};
-use twilight_model::application::component::button::ButtonStyle;
+use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption,
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
-use twilight_model::channel::embed::{Embed, EmbedField};
+use twilight_model::channel::message::component::ButtonStyle;
+use twilight_model::channel::message::Embed;
+use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
@@ -314,10 +315,10 @@ fn handle_schedule_race_autocomplete(
     for i in 0..7 {
         let dur = Duration::days(i);
         let day = today.clone() + dur;
-        options.push(CommandOptionChoice::String {
+        options.push(CommandOptionChoice {
             name: day.format("%A, %B %d").to_string(),
             name_localizations: None,
-            value: day.format("%Y/%m/%d").to_string(),
+            value: CommandOptionChoiceValue::String(day.format("%Y/%m/%d").to_string()),
         });
     }
     Ok(autocomplete_result(options))
@@ -805,10 +806,10 @@ async fn get_bracket_autocompletes(
     let brackets = szn.brackets(cxn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(brackets
         .into_iter()
-        .map(|b| CommandOptionChoice::String {
+        .map(|b| CommandOptionChoice {
             name: b.name.clone(),
             name_localizations: None,
-            value: b.name,
+            value: CommandOptionChoiceValue::String(b.name),
         })
         .collect())
 }

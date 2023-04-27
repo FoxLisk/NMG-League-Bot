@@ -14,14 +14,10 @@ use twilight_http::Client;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;
-use twilight_model::application::component::button::ButtonStyle;
-use twilight_model::application::component::{ActionRow, Component};
 use twilight_model::application::interaction::application_command::CommandDataOption;
-use twilight_model::channel::embed::Embed;
 use twilight_model::channel::Message;
 use twilight_model::id::marker::GuildMarker;
 use twilight_model::id::Id;
-use twilight_model::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 
@@ -37,6 +33,9 @@ use nmg_league_bot::worker_funcs::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
 use thiserror::Error;
+use twilight_model::channel::message::{Component, Embed};
+use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
+use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 pub(crate) use webhooks::Webhooks;
 
 use crate::discord::discord_state::DiscordState;

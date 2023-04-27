@@ -6,9 +6,9 @@ use log::{debug, warn};
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
-use twilight_model::channel::embed::{Embed, EmbedField};
-use twilight_model::channel::message::allowed_mentions::AllowedMentionsBuilder;
-use twilight_model::channel::{Message, ReactionType};
+use twilight_model::channel::{Message};
+use twilight_model::channel::message::embed::EmbedField;
+use twilight_model::channel::message::{AllowedMentions, Embed, MentionType, ReactionType};
 use twilight_model::gateway::payload::incoming::{ReactionAdd, ReactionRemove};
 use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
@@ -462,7 +462,10 @@ async fn handle_restream_request_reaction(
         .create_message(state.channel_config.commentary_discussion)
         .embeds(&embeds)?
         .content(&pings.join(" "))?
-        .allowed_mentions(Some(&AllowedMentionsBuilder::new().users().build()))
+        .allowed_mentions(Some(&AllowedMentions {
+            parse: vec![MentionType::Users],
+            ..Default::default()
+        } ))
         .exec()
         .await
     {
