@@ -3854,38 +3854,3 @@ name = "yansi"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09041cd90cf85f7f8b2df60c646f853b7f535ce68f85244eb6731cf89fa498ec"
-
-[[patch.unused]]
-name = "twilight-cache-inmemory"
-version = "0.13.0"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-
-[[patch.unused]]
-name = "twilight-gateway"
-version = "0.13.3"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-
-[[patch.unused]]
-name = "twilight-mention"
-version = "0.13.0"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-
-[[patch.unused]]
-name = "twilight-model"
-version = "0.13.5"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-
-[[patch.unused]]
-name = "twilight-standby"
-version = "0.13.2"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-
-[[patch.unused]]
-name = "twilight-util"
-version = "0.13.3"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"
-
-[[patch.unused]]
-name = "twilight-validate"
-version = "0.13.1"
-source = "git+https://github.com/twilight-rs/twilight.git?branch=7596ff/fix/http/scheduled-event-privacy-level#f1fe47d999e5e4aada531c60abc8fb1dcdd419c2"

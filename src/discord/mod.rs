@@ -1,6 +1,7 @@
 extern crate rand;
 extern crate tokio;
 
+use std::env::VarError;
 use std::fmt::{Display, Formatter};
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -35,7 +36,10 @@ use nmg_league_bot::worker_funcs::{
 use thiserror::Error;
 use twilight_model::channel::message::{Component, Embed};
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
+use twilight_model::guild::Permissions;
 use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
+use nmg_league_bot::constants::CLIENT_ID_VAR;
+use nmg_league_bot::NMGLeagueBotError;
 pub(crate) use webhooks::Webhooks;
 
 use crate::discord::discord_state::DiscordState;
@@ -456,4 +460,33 @@ fn multistream_link(p1: &Player, p2: &Player) -> String {
             .clone()
             .unwrap_or("<unknown>".to_string()),
     )
+}
+
+pub fn generate_invite_link() -> Result<String, VarError> {
+    let client_id = std::env::var(CLIENT_ID_VAR)?;
+    let permissions = Permissions::MANAGE_ROLES |
+        Permissions::MANAGE_CHANNELS |
+        Permissions::MANAGE_NICKNAMES |
+        Permissions::CHANGE_NICKNAME |
+        Permissions::MANAGE_EMOJIS_AND_STICKERS |
+        Permissions::MANAGE_WEBHOOKS |
+        Permissions::READ_MESSAGE_HISTORY |
+        Permissions::MANAGE_EVENTS |
+        Permissions::MODERATE_MEMBERS |
+        Permissions::SEND_MESSAGES |
+        Permissions::SEND_MESSAGES_IN_THREADS |
+        Permissions::CREATE_PUBLIC_THREADS |
+        Permissions::CREATE_PRIVATE_THREADS |
+        Permissions::SEND_TTS_MESSAGES |
+        Permissions::MANAGE_MESSAGES |
+        Permissions::MANAGE_THREADS |
+        Permissions::EMBED_LINKS |
+        Permissions::ATTACH_FILES |
+        Permissions::MENTION_EVERYONE |
+        Permissions::ADD_REACTIONS |
+        Permissions::USE_EXTERNAL_EMOJIS |
+        Permissions::USE_EXTERNAL_STICKERS |
+        Permissions::USE_SLASH_COMMANDS;
+    let permissions = permissions.bits() | (1 << 44); // this is CREATE_EVENTS, an undocumented(?) new(?) permission
+    Ok(format!("https://discord.com/oauth2/authorize?client_id={client_id}&permissions={permissions}&scope=bot%20applications.commands"))
 }

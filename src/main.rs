@@ -35,12 +35,14 @@ use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::db::run_migrations;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::env_var;
+use crate::discord::generate_invite_link;
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
     let log_config_path = env_var("LOG4RS_CONFIG_FILE");
     log4rs::init_file(Path::new(&log_config_path), Default::default()).expect("Couldn't initialize logging");
+    println!("{:?}", generate_invite_link());
 
     let webhooks = Webhooks::new().await.expect("Unable to construct Webhooks");
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);

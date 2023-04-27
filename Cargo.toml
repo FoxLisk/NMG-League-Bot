@@ -82,13 +82,13 @@ version = "0.15.1"
 [build-dependencies]
 tokio = { version = "1.19.0", features = ["rt-multi-thread", "macros"]}
 dotenv = "0.15.0"
-
-
-[patch.crates-io]
-twilight-model = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
-twilight-validate = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
-twilight-mention = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
-twilight-cache-inmemory = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
-twilight-gateway = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
-twilight-util = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
-twilight-standby = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#
+#
+#[patch.crates-io]
+#twilight-model = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#twilight-validate = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#twilight-mention = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#twilight-cache-inmemory = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#twilight-gateway = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#twilight-util = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
+#twilight-standby = { git = "https://github.com/twilight-rs/twilight.git", branch = "7596ff/fix/http/scheduled-event-privacy-level" }
