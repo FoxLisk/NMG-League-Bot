@@ -54,31 +54,11 @@ dependencies = [
 
 [[package]]
 name = "aliri_braid"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8fd6ab55f1ff5293c7dc9e0e65511cc6a1d0e2e625f2b3c32da83748ceb5f65"
-dependencies = [
- "aliri_braid_impl 0.2.4",
-]
-
-[[package]]
-name = "aliri_braid"
 version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8229f042e9dd9f4a59fd80ff0a78a9852015f3ea4692c105f075e35defccd51a"
 dependencies = [
- "aliri_braid_impl 0.3.1",
-]
-
-[[package]]
-name = "aliri_braid_impl"
-version = "0.2.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0856c8aaba3fca9cc15c723e0cab5dd352cd236e9fedd96759e56874abef6cb"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
+ "aliri_braid_impl",
 ]
 
 [[package]]
@@ -1648,7 +1628,7 @@ dependencies = [
 name = "nmg-league-bot"
 version = "0.1.0"
 dependencies = [
- "aliri_braid 0.2.4",
+ "aliri_braid",
  "anyhow",
  "async-trait",
  "bb8",
@@ -3276,7 +3256,7 @@ version = "0.7.0-rc.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dd1fa6d9a6a8623dd4d20ffecba5edc708bd537cd6e5a335d825948ee6023890"
 dependencies = [
- "aliri_braid 0.3.1",
+ "aliri_braid",
  "async-trait",
  "displaydoc",
  "futures",
@@ -3300,7 +3280,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a56903ec87be83c54f57c123df3101ea7b97f54eb617e8493fde8978c43b0a8a"
 dependencies = [
- "aliri_braid 0.3.1",
+ "aliri_braid",
  "async-trait",
  "base64 0.13.1",
  "displaydoc",
@@ -3321,7 +3301,7 @@ version = "0.3.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "015e62ee19cc924c3199e9a9641d122ab5ee14e5b94fcba9693d6505f537b36e"
 dependencies = [
- "aliri_braid 0.3.1",
+ "aliri_braid",
  "displaydoc",
  "serde",
  "serde_derive",
