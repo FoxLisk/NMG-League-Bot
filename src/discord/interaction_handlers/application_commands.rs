@@ -983,7 +983,6 @@ async fn handle_cancel_race_started(
     let msg_resp = state
         .interaction_client()
         .response(&ac.token)
-        .exec()
         .await
         .map_err(|e| format!("Error asking you if you were serious? lol what: {}", e))?;
     let msg = msg_resp
@@ -1018,7 +1017,6 @@ async fn handle_cancel_race_started(
                 .map_err(|validation_error| {
                     format!("Error building message: {}", validation_error)
                 })?
-                .exec()
                 .await
                 .map_err(|e| format!("Error updating message: {}", e))
                 .map(|_| ())
@@ -1097,7 +1095,6 @@ async fn update_cancelled_race_message(
     )
     .map_err(|e| e.to_string())?;
     update
-        .exec()
         .await
         .map_err(|e| format!("Error updating race run message: {}", e))
         .map(|_| ())

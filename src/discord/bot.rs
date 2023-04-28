@@ -609,7 +609,6 @@ async fn set_application_commands(
     let resp = state
         .interaction_client()
         .set_guild_commands(gc.id.clone(), &commands)
-        .exec()
         .await
         .map_err(|e| e.to_string())?;
 

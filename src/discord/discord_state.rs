@@ -96,7 +96,6 @@ impl DiscordState {
         let created = self
             .client
             .create_private_channel(user.clone())
-            .exec()
             .await
             .map_err(|e| e.to_string())?;
         if created.status().is_success() {
@@ -174,7 +173,6 @@ impl DiscordState {
     ) -> Result<(), twilight_http::Error> {
         self.interaction_client()
             .create_response(interaction_id, token, resp)
-            .exec()
             .await
             .map(|_| ())
     }

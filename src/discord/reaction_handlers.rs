@@ -46,8 +46,6 @@ enum ReactionAddError {
     RunError(#[from] bb8::RunError<ConnectionError>),
     #[error("Reaction had no member?")]
     InexplicablyMissingMember,
-    #[error("Reaction not created in guild")]
-    MissingGuildId,
     #[error("Something went wrong checking for roles or whatever: {0}")]
     DiscordStateError(#[from] DiscordStateError),
     #[error("HTTP Error: {0}")]
@@ -243,7 +241,6 @@ async fn create_tentative_commentary_discussion_post(
         .client
         .create_message(state.channel_config.commentary_discussion.clone())
         .embeds(&embeds)?
-        .exec()
         .await?
         .model()
         .await
@@ -273,7 +270,6 @@ async fn create_restream_request_post(
         .client
         .create_message(state.channel_config.zsr.clone())
         .embeds(&embeds)?
-        .exec()
         .await?
         .model()
         .await
@@ -301,7 +297,7 @@ async fn update_scheduled_event(
     if let Some(chan) = restream_channel.as_ref() {
         req = req.location(Some(chan));
     }
-    req.exec().await?;
+    req.await?;
     Ok(())
 }
 
@@ -377,7 +373,6 @@ async fn create_sirius_inbox_post(
         .client
         .create_message(state.channel_config.sirius_inbox.clone())
         .embeds(&embeds)?
-        .exec()
         .await?
         .model()
         .await
@@ -466,7 +461,6 @@ async fn handle_restream_request_reaction(
             parse: vec![MentionType::Users],
             ..Default::default()
         } ))
-        .exec()
         .await
     {
         Ok(rm) => match rm.model().await {

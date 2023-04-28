@@ -39,7 +39,6 @@ use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::guild::Permissions;
 use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use nmg_league_bot::constants::CLIENT_ID_VAR;
-use nmg_league_bot::NMGLeagueBotError;
 pub(crate) use webhooks::Webhooks;
 
 use crate::discord::discord_state::DiscordState;
@@ -133,7 +132,6 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         })])
         .and_then(|cm| cm.content(&content))
         .map_err(|e| e.to_string())?
-        .exec()
         .await
         .map_err(|e| e.to_string())?;
 
@@ -387,7 +385,6 @@ async fn create_commportunities_post(
         .create_message(state.channel_config.commportunities.clone())
         .embeds(&embeds)
         .map_err_to_string()?
-        .exec()
         .await
         .map_err_to_string()?;
 
@@ -396,7 +393,6 @@ async fn create_commportunities_post(
     if let Err(e) = state
         .client
         .create_reaction(m.channel_id, m.id, &emojum)
-        .exec()
         .await
     {
         warn!(
@@ -423,12 +419,12 @@ async fn create_or_update_event(
     let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
         .map_err(|e| e.to_string())?;
 
-    let req = if let Some(existing_id) = old_info.get_scheduled_event_id() {
+    let resp = if let Some(existing_id) = old_info.get_scheduled_event_id() {
         client
             .update_guild_scheduled_event(gid, existing_id)
             .scheduled_start_time(&start)
             .scheduled_end_time(Some(&end))
-            .exec()
+            .await
     } else {
         client
             .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
@@ -439,9 +435,9 @@ async fn create_or_update_event(
                 &end,
             )
             .map_err(|e| e.to_string())?
-            .exec()
+            .await
     };
-    let resp = req.await.map_err(|e| e.to_string())?;
+    let resp = resp.map_err(|e| e.to_string())?;
     resp.model().await.map_err(|e| {
         format!(
             "Error setting event id on race: couldn't deserialize body?! {}",

@@ -217,7 +217,7 @@ pub async fn discord_login(
 
     let client = twilight_http::client::Client::new(user_token);
 
-    let user_info = match client.current_user().exec().await {
+    let user_info = match client.current_user().await {
         Ok(resp) => match resp.model().await {
             Ok(cu) => cu,
             Err(e) => {

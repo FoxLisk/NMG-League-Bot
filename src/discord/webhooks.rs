@@ -33,7 +33,7 @@ pub struct WebhookInfo {
 async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<WebhookInfo, String> {
     let (id, tokeno) = parse(&url).map_err(|e| e.to_string())?;
     let token = tokeno.ok_or(format!("No token found for webhook {}", id))?;
-    let resp: Response<Webhook> = match client.webhook(id).token(&token).exec().await {
+    let resp: Response<Webhook> = match client.webhook(id).token(&token).await {
         Ok(r) => r,
         Err(e) => {
             let er = format!("Error fetching webhook {}: {}", id, e);
@@ -74,7 +74,6 @@ impl Webhooks {
         let resp: Response<EmptyBody> = ew
             .content(content)
             .map_err(|e| e.to_string())?
-            .exec()
             .await
             .map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
@@ -85,7 +84,7 @@ impl Webhooks {
     }
 
     pub async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
-        let resp: Response<EmptyBody> = ew.exec().await.map_err(|e| e.to_string())?;
+        let resp: Response<EmptyBody> = ew.await.map_err(|e| e.to_string())?;
         if !resp.status().is_success() {
             Err(format!("Error executing webhook: {:?}", resp.text().await))
         } else {

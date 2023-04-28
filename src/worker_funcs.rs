@@ -303,7 +303,6 @@ async fn post_match_results(
     let m = c
         .create_message(options.channel_id)
         .embeds(&vec![embed])?
-        .exec()
         .await?;
     m.model().await.map_err(From::from)
 }
@@ -311,7 +310,7 @@ async fn post_match_results(
 macro_rules! clear_bracket_race_info_message {
     ($info:expr, $client:expr, $channel_id:expr, $mid_fn:ident, $clear_fn:ident) => {
         if let Some(mid) = $info.$mid_fn() {
-            match $client.delete_message($channel_id, mid).exec().await {
+            match $client.delete_message($channel_id, mid).await {
                 Ok(_) => {
                     $info.$clear_fn();
                     Ok(true)
