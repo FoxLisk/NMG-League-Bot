@@ -281,7 +281,6 @@ async fn schedule_race<Tz: TimeZone>(
             .unwrap_or("".to_string());
         match create_or_update_event(
             bracket_name,
-            &old_info,
             &new_info,
             &p1,
             &p2,
@@ -405,21 +404,20 @@ async fn create_commportunities_post(
 
 async fn create_or_update_event(
     bracket_name: String,
-    old_info: &BracketRaceInfo,
-    new_info: &BracketRaceInfo,
+    info: &BracketRaceInfo,
     p1: &Player,
     p2: &Player,
     gid: Id<GuildMarker>,
     client: &Client,
 ) -> Result<GuildScheduledEvent, String> {
-    let when = new_info
+    let when = info
         .scheduled()
         .ok_or("Error: No timestamp on new bracket race info".to_string())?;
     let start = ModelTimestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
     let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
         .map_err(|e| e.to_string())?;
 
-    let resp = if let Some(existing_id) = old_info.get_scheduled_event_id() {
+    let resp = if let Some(existing_id) = info.get_scheduled_event_id() {
         client
             .update_guild_scheduled_event(gid, existing_id)
             .scheduled_start_time(&start)
