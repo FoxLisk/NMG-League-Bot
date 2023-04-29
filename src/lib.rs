@@ -3,18 +3,14 @@ extern crate rand;
 extern crate serde_json;
 extern crate swiss_pairings;
 
-use crate::constants::{
-    COMMENTARY_DISCUSSION_CHANNEL_ID_VAR, COMMPORTUNITIES_CHANNEL_ID_VAR,
-    MATCH_RESULTS_CHANNEL_ID_VAR, SIRIUS_INBOX_CHANNEL_ID_VAR, ZSR_CHANNEL_ID_VAR,
-};
-use crate::utils::env_var;
+use crate::config::CONFIG;
 use racetime_api::err::RacetimeError;
-use std::str::FromStr;
 use thiserror::Error;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twitch_api::helix::ClientRequestError;
 
+pub mod config;
 pub mod constants;
 pub mod db;
 pub mod models;
@@ -35,15 +31,14 @@ pub struct ChannelConfig {
 impl ChannelConfig {
     /// explodes if any env vars are missing
     pub fn new_from_env() -> Self {
-        let commportunities = Id::from_str(&env_var(COMMPORTUNITIES_CHANNEL_ID_VAR)).unwrap();
-        let sirius_inbox = Id::from_str(&env_var(SIRIUS_INBOX_CHANNEL_ID_VAR)).unwrap();
+        let commportunities = CONFIG.commportunities_channel_id;
+        let sirius_inbox = CONFIG.sirius_inbox_channel_id;
 
-        let zsr = Id::from_str(&env_var(ZSR_CHANNEL_ID_VAR)).unwrap();
+        let zsr = CONFIG.zsr_channel_id;
 
-        let commentary_discussion =
-            Id::from_str(&env_var(COMMENTARY_DISCUSSION_CHANNEL_ID_VAR)).unwrap();
+        let commentary_discussion = CONFIG.commentary_discussion_channel_id;
 
-        let match_results = Id::from_str(&env_var(MATCH_RESULTS_CHANNEL_ID_VAR)).unwrap();
+        let match_results = CONFIG.match_results_channel_id;
         Self {
             commportunities,
             sirius_inbox,

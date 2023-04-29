@@ -10,7 +10,7 @@ pub enum PlayerResultError {
     #[error("Error parsing finish time")]
     ParseError(String),
     #[error("Finish time was over a day")]
-    CantConvertToSeconds(iso8601_duration::Duration)
+    CantConvertToSeconds(iso8601_duration::Duration),
 }
 
 #[derive(Deserialize, Debug)]
@@ -60,10 +60,11 @@ impl Entrant {
                     .as_ref()
                     .ok_or(PlayerResultError::NoFinishTime)?;
                 let t = iso8601_duration::Duration::parse(ft)
-                    .map_err(|e| PlayerResultError::ParseError(
-                        format!("{:?}", e)
-                    ))?;
-                let secs = t.num_seconds().ok_or(PlayerResultError::CantConvertToSeconds(t))? as u32;
+                    .map_err(|e| PlayerResultError::ParseError(format!("{:?}", e)))?;
+                let secs = t
+                    .num_seconds()
+                    .ok_or(PlayerResultError::CantConvertToSeconds(t))?
+                    as u32;
                 Ok(PlayerResult::Finish(secs))
             }
             _ => Err(PlayerResultError::NoFinishTime),

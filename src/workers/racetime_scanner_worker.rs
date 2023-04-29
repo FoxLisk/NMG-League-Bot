@@ -1,10 +1,10 @@
 use crate::discord::discord_state::DiscordState;
 use crate::schema::players;
-use crate::workers::get_tick_duration;
 use crate::Shutdown;
 use bb8::RunError;
 use diesel::prelude::*;
-use nmg_league_bot::constants::RACETIME_TICK_SECS;
+use log::{debug, info, warn};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
@@ -20,7 +20,7 @@ use racetime_api::err::RacetimeError;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use log::{debug, info, warn};
+use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
 
@@ -113,7 +113,7 @@ async fn maybe_do_race_stuff(
 }
 
 pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
-    let tick_duration = get_tick_duration(RACETIME_TICK_SECS);
+    let tick_duration = Duration::from_secs(CONFIG.racetime_tick_secs);
     info!(
         "Starting racetime scanner worker: running every {} seconds",
         tick_duration.as_secs()

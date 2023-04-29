@@ -9,9 +9,9 @@ use crate::utils::format_hms;
 use chrono::{DateTime, Duration, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
+use log::warn;
 use serde::Serialize;
 use std::fmt::{Display, Formatter};
-use log::warn;
 use swiss_pairings::MatchResult;
 use thiserror::Error;
 

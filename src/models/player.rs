@@ -66,15 +66,14 @@ impl Player {
         players::table.find(id).first(conn).optional()
     }
 
-
     pub fn get_by_name(
         name: &str,
         conn: &mut SqliteConnection,
     ) -> Result<Option<Self>, diesel::result::Error> {
         players::table
-        .filter(players::name.eq(name))
-        .first(conn)
-        .optional()
+            .filter(players::name.eq(name))
+            .first(conn)
+            .optional()
     }
 
     pub fn mention_or_name(&self) -> String {

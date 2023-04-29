@@ -1,14 +1,14 @@
-use std::path::{Path, PathBuf};
 use log::info;
 use rocket::fs::NamedFile;
 use rocket::request::{FromRequest, Outcome};
+use std::path::{Path, PathBuf};
 const STATIC_SUFFIXES: [&str; 8] = [
     &"js", &"css", &"mp3", &"html", &"jpg", &"ttf", &"otf", &"gif",
 ];
 use rocket::{get, Request};
 
 // Copied from botlisk - not sure the best way to handle reusing this
-pub (in super) struct StaticAsset {}
+pub(super) struct StaticAsset {}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for StaticAsset {
@@ -35,7 +35,7 @@ impl<'r> FromRequest<'r> for StaticAsset {
 }
 
 #[get("/<file..>")]
-pub(in super) async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<NamedFile> {
+pub(super) async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<NamedFile> {
     let p = Path::new("http/static/").join(file);
     if !p.exists() {
         info!("{:?} does not exist", p);
@@ -45,7 +45,7 @@ pub(in super) async fn statics(file: PathBuf, _asset: StaticAsset) -> Option<Nam
 }
 
 #[get("/favicon.ico")]
-pub (in super) async fn favicon() -> Option<NamedFile> {
+pub(super) async fn favicon() -> Option<NamedFile> {
     let p = Path::new("http/static/favicon.ico");
     NamedFile::open(p).await.ok()
 }

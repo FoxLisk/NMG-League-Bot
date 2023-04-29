@@ -1,11 +1,11 @@
 use diesel::prelude::*;
-use diesel::{RunQueryDsl};
+use diesel::RunQueryDsl;
 use serde::Serialize;
 
-use crate::{ save_fn, update_fn};
-use crate::schema::qualifier_submissions;
 use crate::models::player::Player;
 use crate::models::season::Season;
+use crate::schema::qualifier_submissions;
+use crate::{save_fn, update_fn};
 
 #[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
 pub struct QualifierSubmission {

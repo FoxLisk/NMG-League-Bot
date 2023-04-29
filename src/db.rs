@@ -5,8 +5,8 @@ use diesel::migration::MigrationVersion;
 use diesel::{Connection, ConnectionError, SqliteConnection};
 use diesel_migrations::{MigrationError, MigrationHarness};
 use lazy_static::lazy_static;
-use std::error::Error;
 use log::debug;
+use std::error::Error;
 use thiserror::Error;
 use tokio::sync::{Mutex, MutexGuard};
 

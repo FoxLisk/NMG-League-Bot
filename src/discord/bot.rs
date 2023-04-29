@@ -4,27 +4,27 @@ use std::sync::Arc;
 use diesel::SqliteConnection;
 use lazy_static::lazy_static;
 use log::{debug, info, warn};
-use nmg_league_bot::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
+use nmg_league_bot::config::CONFIG;
 use racetime_api::client::RacetimeClient;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_gateway::{Config, stream};
 use twilight_gateway::stream::ShardEventStream;
+use twilight_gateway::{stream, Config};
 use twilight_http::Client;
 use twilight_model::application::interaction::message_component::MessageComponentInteractionData;
 use twilight_model::application::interaction::modal::{
     ModalInteractionData, ModalInteractionDataActionRow,
 };
 use twilight_model::application::interaction::InteractionData;
-use twilight_model::channel::message::Component;
 use twilight_model::channel::message::component::{ButtonStyle, TextInput, TextInputStyle};
+use twilight_model::channel::message::Component;
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ApplicationMarker, MessageMarker};
+use twilight_model::id::marker::MessageMarker;
 use twilight_model::id::Id;
 use twilight_standby::Standby;
 use twilight_util::builder::InteractionResponseDataBuilder;
@@ -47,7 +47,6 @@ use crate::{Shutdown, Webhooks};
 use nmg_league_bot::db::get_diesel_pool;
 use nmg_league_bot::models::race_run::RaceRun;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::env_var;
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
@@ -55,11 +54,9 @@ pub(crate) async fn launch(
     twitch_client_bundle: TwitchClientBundle,
     shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Arc<DiscordState> {
-    let token = env_var(TOKEN_VAR);
-    let aid_str = env_var(APPLICATION_ID_VAR);
-    let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
+    let aid = CONFIG.discord_application_id;
 
-    let http = Client::new(token.clone());
+    let http = Client::new(CONFIG.discord_token.clone());
     let cache = InMemoryCache::builder().build();
     let standby = Arc::new(Standby::new());
     let diesel_pool = get_diesel_pool().await;
@@ -74,7 +71,11 @@ pub(crate) async fn launch(
         twitch_client_bundle,
     ));
 
-    tokio::spawn(run_bot(token, state.clone(), shutdown));
+    tokio::spawn(run_bot(
+        CONFIG.discord_token.clone(),
+        state.clone(),
+        shutdown,
+    ));
     state
 }
 
@@ -96,11 +97,10 @@ async fn run_bot(
 
     let cfg = Config::builder(token.clone(), intents).build();
 
-    let mut shards = stream::create_recommended(
-        &state.client,
-        cfg,
-        |_, builder| builder.build()
-    ).await.unwrap().collect::<Vec<_>>();
+    let mut shards = stream::create_recommended(&state.client, cfg, |_, builder| builder.build())
+        .await
+        .unwrap()
+        .collect::<Vec<_>>();
 
     // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
     // convince the compiler that i have an iterator of mutable references in a simpler way

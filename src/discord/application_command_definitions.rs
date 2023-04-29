@@ -1,17 +1,20 @@
-use twilight_model::application::command::{Command, CommandOption, CommandOptionChoice, CommandOptionChoiceValue, CommandOptionType, CommandOptionValue, CommandType};
 use crate::discord::constants::{
     ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
     CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
-use nmg_league_bot::constants::WEBSITE_URL;
 use nmg_league_bot::models::season::SeasonState;
+use twilight_model::application::command::{
+    Command, CommandOption, CommandOptionChoice, CommandOptionChoiceValue, CommandOptionType,
+    CommandOptionValue, CommandType,
+};
 
-use twilight_model::guild::Permissions;
-use twilight_util::builder::command::CommandBuilder;
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::brackets::BracketType;
 use nmg_league_bot::utils::enum_variants_serialized;
+use twilight_model::guild::Permissions;
+use twilight_util::builder::command::CommandBuilder;
 
 pub fn application_command_definitions() -> Vec<Command> {
     fn command_option_default() -> CommandOption {
@@ -48,7 +51,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::User,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Second racer".to_string(),
         description_localizations: None,
         name: "p2".to_string(),
@@ -65,8 +68,8 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
-        description: format!("Race ID. Get this from {}", WEBSITE_URL),
+    .option(CommandOption {
+        description: format!("Race ID. Get this from {}", CONFIG.website_url),
         description_localizations: None,
         max_value: None,
         min_value: None,
@@ -84,7 +87,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Format (e.g. Any% NMG)".to_string(),
         description_localizations: None,
         max_length: None,
@@ -111,7 +114,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "The Season's id".to_string(),
         description_localizations: None,
         max_value: None,
@@ -136,7 +139,6 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .build();
 
-
     let bracket_types = enum_variants_serialized::<BracketType>()
         .map(|s| CommandOptionChoice {
             name: s.clone(),
@@ -144,7 +146,6 @@ pub fn application_command_definitions() -> Vec<Command> {
             value: CommandOptionChoiceValue::String(s),
         })
         .collect();
-
 
     let create_bracket = CommandBuilder::new(
         CREATE_BRACKET_CMD.to_string(),
@@ -163,7 +164,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Season ID".to_string(),
         description_localizations: None,
         max_value: None,
@@ -174,7 +175,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::Integer,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         choices: Some(bracket_types),
         description: "Bracket type".to_string(),
         description_localizations: None,
@@ -194,7 +195,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: format!("The player. Add with /{}", ADD_PLAYER_TO_BRACKET_CMD),
         description_localizations: None,
         name: "user".to_string(),
@@ -223,7 +224,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Bracket ID".to_string(),
         description_localizations: None,
         max_value: None,
@@ -242,7 +243,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "user".to_string(),
         description_localizations: None,
         name: "user".to_string(),
@@ -251,7 +252,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::User,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "RaceTime.gg username".to_string(),
         description_localizations: None,
         max_length: None,
@@ -262,7 +263,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Twitch username".to_string(),
         description_localizations: None,
         max_length: None,
@@ -273,7 +274,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Name (if different than discord name)".to_string(),
         description_localizations: None,
         max_length: None,
@@ -293,10 +294,10 @@ pub fn application_command_definitions() -> Vec<Command> {
         })
         .collect();
     let ampm_opts = vec![
-        CommandOptionChoice  {
+        CommandOptionChoice {
             name: "AM".to_string(),
             name_localizations: None,
-            value: CommandOptionChoiceValue::String( "AM".to_string()),
+            value: CommandOptionChoiceValue::String("AM".to_string()),
         },
         CommandOptionChoice {
             name: "PM".to_string(),
@@ -322,7 +323,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::Integer,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Minute (1-59 to avoid noon/midnight confusion)".to_string(),
         description_localizations: None,
         max_value: Some(CommandOptionValue::Integer(59)),
@@ -345,7 +346,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         autocomplete: Some(true),
         description: "Day (yyyy/mm/dd format) (wait for suggestions)".to_string(),
         description_localizations: None,
@@ -365,7 +366,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Race id".to_string(),
         description_localizations: None,
         max_value: None,
@@ -398,7 +399,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Racetime url (if any)".to_string(),
         description_localizations: None,
         max_length: None,
@@ -416,7 +417,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Race id".to_string(),
         description_localizations: None,
         max_value: None,
@@ -427,7 +428,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::Integer,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: r#"Player 1 result ("forfeit" if forfeit, h:mm:ss otherwise)"#.to_string(),
         description_localizations: None,
         max_length: None,
@@ -467,7 +468,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Bracket ID".to_string(),
         description_localizations: None,
         max_value: None,
@@ -485,7 +486,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         "Submit a time for qualification",
         CommandType::ChatInput,
     )
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Time in h:mm:ss format (e.g. 1:25:40)".to_string(),
         description_localizations: None,
         max_length: Some(8),
@@ -514,7 +515,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         "Update your info (twitch, racetime, etc)",
         CommandType::ChatInput,
     )
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Set a new nickname for display".to_string(),
         description_localizations: None,
         max_length: None,
@@ -534,7 +535,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Your RaceTime.gg username, with discriminator (e.g. FoxLisk#8582)"
             .to_string(),
         description_localizations: None,
@@ -561,7 +562,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
     .option(CommandOption {
-        description: format!("Race ID. Get this from {}", WEBSITE_URL),
+        description: format!("Race ID. Get this from {}", CONFIG.website_url),
         description_localizations: None,
         max_value: None,
         min_value: None,
@@ -571,7 +572,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::Integer,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         choices: Some(hours),
         description: "Hour".to_string(),
         description_localizations: None,
@@ -583,7 +584,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::Integer,
         ..command_option_default()
     })
-    .option(CommandOption  {
+    .option(CommandOption {
         description: "Minute (1-59 to avoid noon/midnight confusion)".to_string(),
         description_localizations: None,
         max_value: Some(CommandOptionValue::Integer(59)),

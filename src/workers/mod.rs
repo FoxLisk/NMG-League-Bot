@@ -1,9 +1,2 @@
-use nmg_league_bot::utils::env_default;
-use std::time::Duration;
-
 pub mod async_race_worker;
 pub mod racetime_scanner_worker;
-
-fn get_tick_duration(env_var: &str) -> Duration {
-    Duration::from_secs(env_default(env_var, 60))
-}

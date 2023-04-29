@@ -1,8 +1,8 @@
 use log::warn;
 use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::interaction::{Interaction, InteractionData};
-use twilight_model::channel::message::{AllowedMentions, Component};
 use twilight_model::channel::message::component::{Button, ButtonStyle};
+use twilight_model::channel::message::{AllowedMentions, Component};
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };

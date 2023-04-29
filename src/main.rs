@@ -1,8 +1,8 @@
-use std::path::Path;
 use log::{debug, info};
+use once_cell::sync::Lazy;
 use racetime_api::client::RacetimeClient;
 use shutdown::Shutdown;
-use twitch_api::twitch_oauth2::{ClientId, ClientSecret};
+use std::path::Path;
 
 mod discord;
 mod schema;
@@ -29,30 +29,35 @@ extern crate twilight_standby;
 extern crate twilight_util;
 extern crate twilight_validate;
 
+use crate::discord::generate_invite_link;
 use discord::Webhooks;
-use nmg_league_bot::constants::{TWITCH_CLIENT_ID_VAR, TWITCH_CLIENT_SECRET_VAR};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::db::run_migrations;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::env_var;
-use crate::discord::generate_invite_link;
 
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
+    // Config is lazy-loaded to make it a WORM type, but we need to make sure it loads correctly, so
+    // we force it on startup.
+    Lazy::force(&CONFIG);
     let log_config_path = env_var("LOG4RS_CONFIG_FILE");
-    log4rs::init_file(Path::new(&log_config_path), Default::default()).expect("Couldn't initialize logging");
+    log4rs::init_file(Path::new(&log_config_path), Default::default())
+        .expect("Couldn't initialize logging");
     println!("{:?}", generate_invite_link());
 
     let webhooks = Webhooks::new().await.expect("Unable to construct Webhooks");
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
     let racetime_client = RacetimeClient::new().expect("Unable to construct RacetimeClient");
 
-    let client_id = ClientId::new(env_var(TWITCH_CLIENT_ID_VAR));
-    let client_secret = ClientSecret::new(env_var(TWITCH_CLIENT_SECRET_VAR));
-    let twitch_client = TwitchClientBundle::new(client_id, client_secret)
-        .await
-        .expect("Couldn't construct twitch client");
+    let twitch_client = TwitchClientBundle::new(
+        CONFIG.twitch_client_id.clone(),
+        CONFIG.twitch_client_secret.clone(),
+    )
+    .await
+    .expect("Couldn't construct twitch client");
     let state = discord::bot::launch(
         webhooks.clone(),
         racetime_client,

@@ -4,10 +4,10 @@ use diesel::SqliteConnection;
 use enum_iterator::Sequence;
 use log::warn;
 use regex::Regex;
+use serde::Serialize;
 use std::ffi::OsStr;
 use std::fmt::Display;
 use std::str::FromStr;
-use serde::Serialize;
 use twilight_model::channel::message::embed::EmbedField;
 
 pub fn format_hms(secs: u64) -> String {
@@ -180,13 +180,13 @@ pub fn race_to_nice_embeds(
 /// returns a vector with each variant serialized to json
 /// ignores errors (i.e. throws out values that fail to serialize)
 /// (this shouldn't matter since we have control over the input type)
-pub fn enum_variants_serialized<E: Sequence + Serialize>() -> impl Iterator<Item=String> {
-    enum_iterator::all::<E>()
-        .flat_map(|s| serde_json::to_string(&s))
+pub fn enum_variants_serialized<E: Sequence + Serialize>() -> impl Iterator<Item = String> {
+    enum_iterator::all::<E>().flat_map(|s| serde_json::to_string(&s))
 }
 
 pub fn first_matching_index<T, F>(v: &Vec<T>, mut p: F) -> Option<usize>
-    where F: FnMut(&T) -> bool
+where
+    F: FnMut(&T) -> bool,
 {
     for (i, e) in v.iter().enumerate() {
         if p(e) {
