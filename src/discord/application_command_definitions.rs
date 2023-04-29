@@ -5,11 +5,11 @@ use crate::discord::constants::{
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
-use nmg_league_bot::constants::WEBSITE_URL;
 use nmg_league_bot::models::season::SeasonState;
 
 use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::brackets::BracketType;
 use nmg_league_bot::utils::enum_variants_serialized;
 
@@ -66,7 +66,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
     .option(CommandOption  {
-        description: format!("Race ID. Get this from {}", WEBSITE_URL),
+        description: format!("Race ID. Get this from {}", CONFIG.website_url),
         description_localizations: None,
         max_value: None,
         min_value: None,
@@ -561,7 +561,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
     .option(CommandOption {
-        description: format!("Race ID. Get this from {}", WEBSITE_URL),
+        description: format!("Race ID. Get this from {}", CONFIG.website_url),
         description_localizations: None,
         max_value: None,
         min_value: None,

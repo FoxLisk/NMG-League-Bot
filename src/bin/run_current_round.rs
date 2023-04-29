@@ -1,5 +1,4 @@
 use diesel::SqliteConnection;
-use nmg_league_bot::constants::TOKEN_VAR;
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::models::bracket_races::{
     get_current_round_race_for_player, BracketRaceState, PlayerResult,
@@ -7,11 +6,11 @@ use nmg_league_bot::models::bracket_races::{
 use nmg_league_bot::models::brackets::Bracket;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
-use nmg_league_bot::utils::env_var;
 use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishOptions};
 use nmg_league_bot::ChannelConfig;
 use rand::{thread_rng, Rng};
 use twilight_http::Client;
+use nmg_league_bot::config::CONFIG;
 
 fn hms_to_secs(h: u32, m: u32, s: u32) -> u32 {
     s + (m * 60) + (h * 60 * 60)
@@ -20,8 +19,9 @@ fn hms_to_secs(h: u32, m: u32, s: u32) -> u32 {
 #[tokio::main]
 async fn main() {
     dotenv::dotenv().unwrap();
+    let client = Client::new(CONFIG.discord_client_id.clone());
+
     let mut db = raw_diesel_cxn_from_env().unwrap();
-    let client = Client::new(env_var(TOKEN_VAR));
 
     let chans = ChannelConfig::new_from_env();
     let brackets = Season::get_active_season(&mut db)

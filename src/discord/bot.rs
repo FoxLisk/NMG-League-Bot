@@ -4,7 +4,6 @@ use std::sync::Arc;
 use diesel::SqliteConnection;
 use lazy_static::lazy_static;
 use log::{debug, info, warn};
-use nmg_league_bot::constants::{APPLICATION_ID_VAR, TOKEN_VAR};
 use racetime_api::client::RacetimeClient;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
@@ -24,10 +23,11 @@ use twilight_model::gateway::Intents;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ApplicationMarker, MessageMarker};
+use twilight_model::id::marker::{MessageMarker};
 use twilight_model::id::Id;
 use twilight_standby::Standby;
 use twilight_util::builder::InteractionResponseDataBuilder;
+use nmg_league_bot::config::CONFIG;
 
 use crate::discord::application_command_definitions::application_command_definitions;
 use crate::discord::components::action_row;
@@ -47,7 +47,6 @@ use crate::{Shutdown, Webhooks};
 use nmg_league_bot::db::get_diesel_pool;
 use nmg_league_bot::models::race_run::RaceRun;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::env_var;
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
@@ -55,11 +54,9 @@ pub(crate) async fn launch(
     twitch_client_bundle: TwitchClientBundle,
     shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Arc<DiscordState> {
-    let token = env_var(TOKEN_VAR);
-    let aid_str = env_var(APPLICATION_ID_VAR);
-    let aid = Id::<ApplicationMarker>::new(aid_str.parse::<u64>().unwrap());
+    let aid = CONFIG.discord_application_id;
 
-    let http = Client::new(token.clone());
+    let http = Client::new(CONFIG.discord_token.clone());
     let cache = InMemoryCache::builder().build();
     let standby = Arc::new(Standby::new());
     let diesel_pool = get_diesel_pool().await;
@@ -74,7 +71,7 @@ pub(crate) async fn launch(
         twitch_client_bundle,
     ));
 
-    tokio::spawn(run_bot(token, state.clone(), shutdown));
+    tokio::spawn(run_bot(CONFIG.discord_token.clone(), state.clone(), shutdown));
     state
 }
 

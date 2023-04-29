@@ -38,7 +38,7 @@ use twilight_model::channel::message::{Component, Embed};
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::guild::Permissions;
 use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
-use nmg_league_bot::constants::CLIENT_ID_VAR;
+use nmg_league_bot::config::CONFIG;
 pub(crate) use webhooks::Webhooks;
 
 use crate::discord::discord_state::DiscordState;
@@ -457,7 +457,7 @@ fn multistream_link(p1: &Player, p2: &Player) -> String {
 }
 
 pub fn generate_invite_link() -> Result<String, VarError> {
-    let client_id = std::env::var(CLIENT_ID_VAR)?;
+    let client_id = &CONFIG.discord_client_id;
     let permissions = Permissions::MANAGE_ROLES |
         Permissions::MANAGE_CHANNELS |
         Permissions::MANAGE_NICKNAMES |

@@ -3,10 +3,9 @@ use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
-use nmg_league_bot::constants::GUILD_ID_VAR;
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::{env_var, ResultErrToString};
+use nmg_league_bot::utils::{ ResultErrToString};
 use nmg_league_bot::ChannelConfig;
 use racetime_api::client::RacetimeClient;
 use std::ops::DerefMut;
@@ -22,6 +21,7 @@ use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
 use thiserror::Error;
+use nmg_league_bot::config::CONFIG;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
@@ -62,8 +62,6 @@ impl DiscordState {
         racetime_client: RacetimeClient,
         twitch_client_bundle: TwitchClientBundle,
     ) -> Self {
-        let gid_s = env_var(GUILD_ID_VAR);
-        let gid = Id::<GuildMarker>::new(gid_s.parse::<u64>().unwrap());
         let channel_config = ChannelConfig::new_from_env();
 
         Self {
@@ -74,7 +72,7 @@ impl DiscordState {
             standby,
             application_id: aid,
             private_channels: Default::default(),
-            gid,
+            gid: CONFIG.guild_id,
             channel_config,
             racetime_client,
             twitch_client_bundle,

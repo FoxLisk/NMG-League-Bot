@@ -1,10 +1,8 @@
-use nmg_league_bot::constants::{
-    AUTHORIZE_URL_VAR, CLIENT_ID_VAR, CLIENT_SECRET_VAR, DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
+use nmg_league_bot::constants::{DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
 };
 use crate::discord::discord_state::DiscordState;
 use crate::web::session_manager::SessionToken;
 use crate::web::{SessionManager, SESSION_COOKIE_NAME};
-use nmg_league_bot::utils::env_var;
 use oauth2::basic::{BasicClient, BasicErrorResponseType, BasicTokenType};
 use oauth2::reqwest::async_http_client;
 use oauth2::url::Url;
@@ -25,6 +23,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use log::{debug, info, warn};
 use tokio::time::Instant;
+use nmg_league_bot::config::CONFIG;
 
 type TokenResponse = StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>;
 
@@ -52,12 +51,12 @@ impl OauthClient {
     pub fn new() -> Self {
         Self {
             client: BasicClient::new(
-                ClientId::new(env_var(CLIENT_ID_VAR)),
-                Some(ClientSecret::new(env_var(CLIENT_SECRET_VAR))),
+                ClientId::new(CONFIG.discord_client_id.clone()),
+                Some(ClientSecret::new(CONFIG.discord_client_secret.clone())),
                 AuthUrl::new(DISCORD_AUTHORIZE_URL.to_string()).unwrap(),
                 Some(TokenUrl::new(DISCORD_TOKEN_URL.to_string()).unwrap()),
             )
-            .set_redirect_uri(RedirectUrl::new(env_var(AUTHORIZE_URL_VAR)).unwrap()),
+            .set_redirect_uri(RedirectUrl::new(CONFIG.discord_authorize_url.clone()).unwrap()),
             states: Arc::new(Mutex::new(HashMap::new())),
         }
     }
