@@ -1296,10 +1296,11 @@ async fn handle_generate_pairings(
         }
     };
 
+
+    let url = crate::uri!(bracket_detail(season_id=b.season_id, bracket_id=b.id));
     match b.generate_pairings(cxn.deref_mut()) {
         Ok(()) => Ok(plain_interaction_response(format!(
-            "Pairings generated! See them at {}/brackets",
-            WEBSITE_URL
+            "Pairings generated! See them at {WEBSITE_URL}{url}",
         ))),
         Err(e) => Err(format!("Error generating pairings: {e:?}")),
     }
