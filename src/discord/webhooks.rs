@@ -1,6 +1,6 @@
-
-use std::sync::Arc;
 use log::warn;
+use nmg_league_bot::config::CONFIG;
+use std::sync::Arc;
 use twilight_http::client::Client;
 use twilight_http::request::channel::webhook::ExecuteWebhook;
 use twilight_http::response::marker::EmptyBody;
@@ -9,7 +9,6 @@ use twilight_model::channel::Webhook;
 use twilight_model::id::marker::WebhookMarker;
 use twilight_model::id::Id;
 use twilight_util::link::webhook::parse;
-use nmg_league_bot::config::CONFIG;
 
 #[derive(Clone)]
 pub struct Webhooks {

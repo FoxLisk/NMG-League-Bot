@@ -16,6 +16,7 @@ use crate::web::auth::{Admin, OauthClient};
 use crate::web::session_manager::SessionManager as _SessionManager;
 use bb8::{Pool, PooledConnection};
 use diesel::prelude::*;
+use log::{info, warn};
 use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
@@ -26,19 +27,18 @@ use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::utils::format_hms;
+use rocket::request::{FromRequest, Outcome};
+use rocket::response::Redirect;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::{Deref, DerefMut};
-use log::{info, warn};
-use rocket::request::{FromRequest, Outcome};
-use rocket::response::Redirect;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 
+mod api;
 mod auth;
 mod session_manager;
 mod statics;
-mod api;
 
 type SessionManager = _SessionManager<Id<UserMarker>>;
 
@@ -71,24 +71,21 @@ impl<'r> FromRequest<'r> for ConnectionWrapper<'r> {
     type Error = ();
 
     async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let pool = match request.guard::<&State<Pool<DieselConnectionManager>>>()
-            .await {
+        let pool = match request
+            .guard::<&State<Pool<DieselConnectionManager>>>()
+            .await
+        {
             Outcome::Success(pool) => pool,
             _ => {
                 return Outcome::Failure((Status::InternalServerError, ()));
             }
         };
         match pool.get().await {
-            Ok(a) => {
-                Outcome::Success(ConnectionWrapper(a))
-            }
-            Err(_) => {
-                Outcome::Failure((Status::InternalServerError, ()))
-            }
+            Ok(a) => Outcome::Success(ConnectionWrapper(a)),
+            Err(_) => Outcome::Failure((Status::InternalServerError, ())),
         }
     }
 }
-
 
 #[derive(Serialize, Debug, Default)]
 struct BaseContext {
@@ -99,7 +96,10 @@ struct BaseContext {
 impl BaseContext {
     fn new(conn: &mut SqliteConnection, admin: &Option<Admin>) -> Self {
         let current_season = Season::get_active_season(conn).ok().flatten();
-        Self { current_season, admin: admin.is_some() }
+        Self {
+            current_season,
+            admin: admin.is_some(),
+        }
     }
 }
 
@@ -320,7 +320,7 @@ impl DisplayPlayer {
         };
         Self {
             name_and_status,
-            player_detail_url: uri!(player_detail(name=&p.name)).to_string(),
+            player_detail_url: uri!(player_detail(name = &p.name)).to_string(),
             winner,
             loser,
         }
@@ -331,8 +331,18 @@ impl DisplayRace {
     fn new(p1: &Player, p2: &Player, race: &BracketRace, race_info: &BracketRaceInfo) -> Self {
         use nmg_league_bot::models::bracket_races::Outcome::{P1Win, P2Win};
         let outcome = race.outcome().unwrap_or(None);
-        let player_1 = DisplayPlayer::new(p1, race.player_1_result(), outcome == Some(P1Win), outcome == Some(P2Win));
-        let player_2 = DisplayPlayer::new(p2, race.player_2_result(), outcome == Some(P2Win), outcome == Some(P1Win));
+        let player_1 = DisplayPlayer::new(
+            p1,
+            race.player_1_result(),
+            outcome == Some(P1Win),
+            outcome == Some(P2Win),
+        );
+        let player_2 = DisplayPlayer::new(
+            p2,
+            race.player_2_result(),
+            outcome == Some(P2Win),
+            outcome == Some(P1Win),
+        );
 
         let (scheduled, channel) = match outcome {
             Some(_) => (None, None),
@@ -380,7 +390,10 @@ struct BracketsContext {
     base_context: BaseContext,
 }
 
-fn get_display_bracket(bracket: Bracket, conn: &mut SqliteConnection) -> Result<DisplayBracket, diesel::result::Error> {
+fn get_display_bracket(
+    bracket: Bracket,
+    conn: &mut SqliteConnection,
+) -> Result<DisplayBracket, diesel::result::Error> {
     let races = bracket.bracket_races(conn)?;
     let rounds_by_id: HashMap<i32, BracketRound> =
         HashMap::from_iter(bracket.rounds(conn)?.into_iter().map(|r| (r.id, r)));
@@ -466,7 +479,7 @@ async fn bracket_detail(
 async fn season_brackets(
     id: i32,
     mut db: ConnectionWrapper<'_>,
-    admin: Option<Admin>
+    admin: Option<Admin>,
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
         Ok(s) => Ok(s),
@@ -478,7 +491,8 @@ async fn season_brackets(
         Ok(b) => b,
         Err(e) => {
             warn!("Error getting season brackets: {e}");
-            return Err(Status::InternalServerError); }
+            return Err(Status::InternalServerError);
+        }
     };
     #[derive(Serialize)]
     struct BracketInfo {
@@ -486,13 +500,14 @@ async fn season_brackets(
         name: String,
         url: String,
     }
-    let infos = brackets.into_iter().map(|b|
-        BracketInfo {
+    let infos = brackets
+        .into_iter()
+        .map(|b| BracketInfo {
             id: b.id,
             name: b.name,
-            url: format!("/season/{}/bracket/{}", szn.id, b.id)
-        }
-    ).collect::<Vec::<_>>();
+            url: format!("/season/{}/bracket/{}", szn.id, b.id),
+        })
+        .collect::<Vec<_>>();
     let ctx = context! {
         season: szn,
         brackets: infos,
@@ -551,7 +566,7 @@ fn get_standings_context(
             players
                 .into_iter()
                 .map(|p| StandingsPlayer {
-                    player_detail_url: uri!(player_detail(name=&p.name)).to_string(),
+                    player_detail_url: uri!(player_detail(name = &p.name)).to_string(),
                     name: p.name,
                     points: 0.0,
                     opponent_points: 0.0,
@@ -572,7 +587,7 @@ fn get_standings_context(
                         .unwrap_or("Unknown".to_string());
                     // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     StandingsPlayer {
-                        player_detail_url: uri!(player_detail(name=&name)).to_string(),
+                        player_detail_url: uri!(player_detail(name = &name)).to_string(),
                         name,
                         points: (s.points as f32) / 2.0,
                         opponent_points: (s.opponent_points as f32) / 2.0,
@@ -589,7 +604,7 @@ fn get_standings_context(
     Ok(StandingsContext {
         season: szn,
         brackets: ctx_brackets,
-        base_context: BaseContext::new(conn, admin)
+        base_context: BaseContext::new(conn, admin),
     })
 }
 
@@ -606,7 +621,7 @@ async fn season_standings(
     }?;
 
     let ctx =
-        get_standings_context(szn, &admin,&mut db).map_err(|_| Status::InternalServerError)?;
+        get_standings_context(szn, &admin, &mut db).map_err(|_| Status::InternalServerError)?;
     Ok(Template::render("season_standings", ctx))
 }
 
@@ -614,7 +629,7 @@ async fn season_standings(
 async fn season_qualifiers(
     id: i32,
     mut db: ConnectionWrapper<'_>,
-    admin: Option<Admin>
+    admin: Option<Admin>,
 ) -> Result<Template, Status> {
     let szn = match Season::get_by_id(id, &mut db) {
         Ok(s) => Ok(s),
@@ -622,29 +637,40 @@ async fn season_qualifiers(
         Err(_) => Err(Status::InternalServerError),
     }?;
     let base_context = BaseContext::new(&mut db, &admin);
-    Ok(Template::render("season_qualifiers", context!(season: szn, base_context)))
+    Ok(Template::render(
+        "season_qualifiers",
+        context!(season: szn, base_context),
+    ))
 }
 
 #[get("/season/<id>")]
 async fn season_redirect(id: i32) -> Redirect {
-    Redirect::to(uri!(season_brackets(id=id)))
+    Redirect::to(uri!(season_brackets(id = id)))
 }
 
 #[get("/seasons")]
-async fn season_history(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
-    let ctx = context!{
+async fn season_history(
+    mut db: ConnectionWrapper<'_>,
+    admin: Option<Admin>,
+) -> Result<Template, Status> {
+    let ctx = context! {
         base_context: BaseContext::new(&mut db, &admin),
     };
     Ok(Template::render("season_history", ctx))
 }
 
 #[get("/player/<name>")]
-async fn player_detail(name: String, admin: Option<Admin>, mut db: ConnectionWrapper<'_>) -> Result<Template, Status> {
+async fn player_detail(
+    name: String,
+    admin: Option<Admin>,
+    mut db: ConnectionWrapper<'_>,
+) -> Result<Template, Status> {
     let player = match Player::get_by_name(&name, &mut db) {
         Ok(p) => p,
         Err(e) => {
             warn!("Error getting player info: {e}");
-            return Err(Status::InternalServerError); }
+            return Err(Status::InternalServerError);
+        }
     };
     let bc = BaseContext::new(&mut db, &admin);
     let ctx = context! {
@@ -652,16 +678,17 @@ async fn player_detail(name: String, admin: Option<Admin>, mut db: ConnectionWra
         player: player,
     };
     Ok(Template::render("player_detail", ctx))
-
 }
 
 #[get("/")]
 async fn home(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
     #[derive(Serialize, Debug)]
     struct HomeCtx {
-        base_context: BaseContext
+        base_context: BaseContext,
     }
-    let ctx = HomeCtx { base_context: BaseContext::new(&mut db, &admin)};
+    let ctx = HomeCtx {
+        base_context: BaseContext::new(&mut db, &admin),
+    };
     Ok(Template::render("home", ctx))
 }
 

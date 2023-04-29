@@ -3,6 +3,8 @@ use crate::schema::players;
 use crate::Shutdown;
 use bb8::RunError;
 use diesel::prelude::*;
+use log::{debug, info, warn};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
@@ -19,10 +21,8 @@ use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
-use log::{debug, info, warn};
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
-use nmg_league_bot::config::CONFIG;
 
 #[derive(Error, Debug)]
 enum ScanError {

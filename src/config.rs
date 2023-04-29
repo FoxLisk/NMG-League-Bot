@@ -1,9 +1,9 @@
-use std::str::FromStr;
-use once_cell::sync::Lazy;
-use twilight_model::id::Id;
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker};
-use twitch_api::twitch_oauth2::{ClientId, ClientSecret};
 use crate::utils::env_var;
+use once_cell::sync::Lazy;
+use std::str::FromStr;
+use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker};
+use twilight_model::id::Id;
+use twitch_api::twitch_oauth2::{ClientId, ClientSecret};
 
 const TOKEN_VAR: &str = "DISCORD_TOKEN";
 const APPLICATION_ID_VAR: &str = "APPLICATION_ID";
@@ -29,9 +29,7 @@ const RACETIME_TICK_SECS: &str = "RACETIME_TICK_SECS";
 
 const GUILD_ID_VAR: &str = "LEAGUE_GUILD_ID";
 
-
 pub const LOG4RS_CONF_FILE_VAR: &str = "LOG4RS_CONFIG_FILE";
-
 
 const WEBSITE_URL_VAR: &'static str = "WEBSITE_URL";
 
@@ -71,12 +69,12 @@ fn id_from_env<T>(k: &str) -> Id<T> {
 }
 
 fn parse<T: FromStr>(k: &str) -> T {
-    match env_var(k).parse::<T>()
-    {
+    match env_var(k).parse::<T>() {
         Ok(t) => t,
         Err(_e) => {
             panic!(
-                "Failed to parse value of {k} as {}", std::any::type_name::<T>()
+                "Failed to parse value of {k} as {}",
+                std::any::type_name::<T>()
             )
         }
     }
@@ -103,7 +101,7 @@ impl Config {
             cron_ticks: parse(CRON_TICKS_VAR),
             racetime_tick_secs: parse(RACETIME_TICK_SECS),
             guild_id: id_from_env(GUILD_ID_VAR),
-            website_url: env_var(WEBSITE_URL_VAR)
+            website_url: env_var(WEBSITE_URL_VAR),
         }
     }
 }

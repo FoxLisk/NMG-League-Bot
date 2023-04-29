@@ -3,13 +3,14 @@ extern crate rand;
 extern crate serde_json;
 extern crate swiss_pairings;
 
+use crate::config::CONFIG;
 use racetime_api::err::RacetimeError;
 use thiserror::Error;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twitch_api::helix::ClientRequestError;
-use crate::config::CONFIG;
 
+pub mod config;
 pub mod constants;
 pub mod db;
 pub mod models;
@@ -18,7 +19,6 @@ pub mod schema;
 pub mod twitch_client;
 pub mod utils;
 pub mod worker_funcs;
-pub mod config;
 
 pub struct ChannelConfig {
     pub commportunities: Id<ChannelMarker>,
@@ -36,8 +36,7 @@ impl ChannelConfig {
 
         let zsr = CONFIG.zsr_channel_id;
 
-        let commentary_discussion =
-            CONFIG.commentary_discussion_channel_id;
+        let commentary_discussion = CONFIG.commentary_discussion_channel_id;
 
         let match_results = CONFIG.match_results_channel_id;
         Self {

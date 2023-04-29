@@ -4,30 +4,30 @@ use std::sync::Arc;
 use diesel::SqliteConnection;
 use lazy_static::lazy_static;
 use log::{debug, info, warn};
+use nmg_league_bot::config::CONFIG;
 use racetime_api::client::RacetimeClient;
 use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_gateway::{Config, stream};
 use twilight_gateway::stream::ShardEventStream;
+use twilight_gateway::{stream, Config};
 use twilight_http::Client;
 use twilight_model::application::interaction::message_component::MessageComponentInteractionData;
 use twilight_model::application::interaction::modal::{
     ModalInteractionData, ModalInteractionDataActionRow,
 };
 use twilight_model::application::interaction::InteractionData;
-use twilight_model::channel::message::Component;
 use twilight_model::channel::message::component::{ButtonStyle, TextInput, TextInputStyle};
+use twilight_model::channel::message::Component;
 use twilight_model::gateway::event::Event;
 use twilight_model::gateway::payload::incoming::{GuildCreate, InteractionCreate};
 use twilight_model::gateway::Intents;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{MessageMarker};
+use twilight_model::id::marker::MessageMarker;
 use twilight_model::id::Id;
 use twilight_standby::Standby;
 use twilight_util::builder::InteractionResponseDataBuilder;
-use nmg_league_bot::config::CONFIG;
 
 use crate::discord::application_command_definitions::application_command_definitions;
 use crate::discord::components::action_row;
@@ -71,7 +71,11 @@ pub(crate) async fn launch(
         twitch_client_bundle,
     ));
 
-    tokio::spawn(run_bot(CONFIG.discord_token.clone(), state.clone(), shutdown));
+    tokio::spawn(run_bot(
+        CONFIG.discord_token.clone(),
+        state.clone(),
+        shutdown,
+    ));
     state
 }
 
@@ -93,11 +97,10 @@ async fn run_bot(
 
     let cfg = Config::builder(token.clone(), intents).build();
 
-    let mut shards = stream::create_recommended(
-        &state.client,
-        cfg,
-        |_, builder| builder.build()
-    ).await.unwrap().collect::<Vec<_>>();
+    let mut shards = stream::create_recommended(&state.client, cfg, |_, builder| builder.build())
+        .await
+        .unwrap()
+        .collect::<Vec<_>>();
 
     // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
     // convince the compiler that i have an iterator of mutable references in a simpler way

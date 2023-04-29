@@ -6,8 +6,11 @@ use crate::discord::constants::{
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interactions_utils::{autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_response, update_resp_to_plain_content};
-use crate::discord::{ErrorResponse, notify_racer, ScheduleRaceError};
+use crate::discord::interactions_utils::{
+    autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_response,
+    update_resp_to_plain_content,
+};
+use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::race::{NewRace, Race, RaceState};
 use nmg_league_bot::models::race_run::RaceRun;
@@ -16,8 +19,10 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 
 use diesel::result::Error;
 use diesel::SqliteConnection;
+use log::{info, warn};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_races::{
-    BracketRace, BracketRaceState, BracketRaceStateError, get_current_round_race_for_player,
+    get_current_round_race_for_player, BracketRace, BracketRaceState, BracketRaceStateError,
     PlayerResult,
 };
 use nmg_league_bot::models::brackets::{Bracket, BracketType, NewBracket};
@@ -26,15 +31,14 @@ use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
 use nmg_league_bot::utils::{ResultCollapse, ResultErrToString};
-use nmg_league_bot::worker_funcs::{RaceFinishError, RaceFinishOptions, trigger_race_finish};
-use nmg_league_bot::{NMGLeagueBotError, utils};
+use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishError, RaceFinishOptions};
+use nmg_league_bot::{utils, NMGLeagueBotError};
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use log::{info, warn};
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
@@ -43,8 +47,8 @@ use twilight_model::application::interaction::application_command::{
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
-use twilight_model::channel::message::Embed;
 use twilight_model::channel::message::embed::EmbedField;
+use twilight_model::channel::message::Embed;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
@@ -54,7 +58,6 @@ use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_validate::message::MessageValidationError;
 use twitch_api::helix::users::GetUsersRequest;
-use nmg_league_bot::config::CONFIG;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
@@ -1162,7 +1165,6 @@ async fn handle_create_bracket(
     let nb = NewBracket::new(&szn, name, bt);
     nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response("Bracket created!"))
-
 }
 
 async fn handle_finish_bracket(
@@ -1195,13 +1197,17 @@ async fn get_race_finish_opts_from_command_opts(
     let r1 = if p1_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
-        PlayerResult::Finish(utils::parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?)
+        PlayerResult::Finish(
+            utils::parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?,
+        )
     };
 
     let r2 = if p2_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
-        PlayerResult::Finish(utils::parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?)
+        PlayerResult::Finish(
+            utils::parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?,
+        )
     };
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
@@ -1295,8 +1301,7 @@ async fn handle_generate_pairings(
         }
     };
 
-
-    let url = crate::uri!(bracket_detail(season_id=b.season_id, bracket_id=b.id));
+    let url = crate::uri!(bracket_detail(season_id = b.season_id, bracket_id = b.id));
     match b.generate_pairings(cxn.deref_mut()) {
         Ok(()) => Ok(plain_interaction_response(format!(
             "Pairings generated! See them at {}{url}",

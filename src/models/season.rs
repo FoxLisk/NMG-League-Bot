@@ -32,9 +32,7 @@ impl Season {
     pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         use crate::schema::seasons::dsl::*;
         use diesel::prelude::*;
-        seasons
-            .filter(id.eq(id_))
-            .first(conn)
+        seasons.filter(id.eq(id_)).first(conn)
     }
 
     pub fn get_active_season(

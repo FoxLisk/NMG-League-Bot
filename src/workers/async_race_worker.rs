@@ -3,16 +3,16 @@ use crate::discord::{notify_racer, Webhooks};
 use crate::schema::races;
 use crate::shutdown::Shutdown;
 use diesel::prelude::*;
+use log::{info, warn};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::race::{Race, RaceState};
 use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
 use nmg_league_bot::utils::format_hms;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use log::{info, warn};
 use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-use nmg_league_bot::config::CONFIG;
 
 fn format_finisher(run: &RaceRun) -> String {
     match run.state {
@@ -191,7 +191,7 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {
-    let tick_duration =     core::time::Duration::from_secs(CONFIG.cron_ticks);
+    let tick_duration = core::time::Duration::from_secs(CONFIG.cron_ticks);
     info!(
         "Starting async race worker: running every {} seconds",
         tick_duration.as_secs()

@@ -1,10 +1,10 @@
 //! api lol. the idea is just stuff that returns json i guess
 
-use diesel::{ SqliteConnection};
-use diesel::result::Error;
-use rocket::{Build, get, Rocket};
-use rocket::serde::json::Json;
 use crate::web::ConnectionWrapper;
+use diesel::result::Error;
+use diesel::SqliteConnection;
+use rocket::serde::json::Json;
+use rocket::{get, Build, Rocket};
 
 #[derive(diesel::Queryable, serde::Serialize)]
 struct Qualifier {
@@ -25,26 +25,25 @@ impl From<diesel::result::Error> for ApiError {
     }
 }
 
-fn get_qualifiers(id: i32,  db: &mut SqliteConnection) -> Result<Vec<Qualifier>, ApiError> {
+fn get_qualifiers(id: i32, db: &mut SqliteConnection) -> Result<Vec<Qualifier>, ApiError> {
+    use crate::schema::{players, qualifier_submissions as qs};
     use diesel::prelude::*;
-    use crate::schema::{qualifier_submissions as qs, players};
-    Ok(qs::table.inner_join(players::table)
+    Ok(qs::table
+        .inner_join(players::table)
         .filter(qs::season_id.eq(id))
-        .select( (players::name, qs::reported_time, qs::vod_link))
+        .select((players::name, qs::reported_time, qs::vod_link))
         .order_by(qs::reported_time.asc())
         .load(db)?)
-
 }
 
 #[get("/season/<id>/qualifiers")]
-async fn qualifiers(id: i32, mut db: ConnectionWrapper<'_>) -> Json<Result<Vec<Qualifier>, ApiError>> {
+async fn qualifiers(
+    id: i32,
+    mut db: ConnectionWrapper<'_>,
+) -> Json<Result<Vec<Qualifier>, ApiError>> {
     Json(get_qualifiers(id, &mut db))
 }
 
 pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
-    rocket.mount("/api/v1",
-        rocket::routes![
-            qualifiers
-        ]
-    )
+    rocket.mount("/api/v1", rocket::routes![qualifiers])
 }

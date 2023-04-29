@@ -1,27 +1,29 @@
-use crate::discord::constants::{ADMIN_ROLE_NAME};
+use crate::discord::constants::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::{ ResultErrToString};
+use nmg_league_bot::utils::ResultErrToString;
 use nmg_league_bot::ChannelConfig;
 use racetime_api::client::RacetimeClient;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use thiserror::Error;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
 use twilight_http::Client;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::guild::Role;
 use twilight_model::http::interaction::InteractionResponse;
-use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker, UserMarker};
+use twilight_model::id::marker::{
+    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker, UserMarker,
+};
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_standby::Standby;
-use thiserror::Error;
-use nmg_league_bot::config::CONFIG;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
@@ -47,7 +49,7 @@ pub enum DiscordStateError {
     #[error("Role {role_name} not found in guild {guild_id}")]
     RoleNotFound {
         role_name: String,
-        guild_id: Id<GuildMarker>
+        guild_id: Id<GuildMarker>,
     },
 }
 
@@ -122,7 +124,12 @@ impl DiscordState {
         None
     }
 
-    fn has_role(&self, user_id: Id<UserMarker>, guild_id: Id<GuildMarker>, role_id: Id<RoleMarker>) -> Result<bool, DiscordStateError> {
+    fn has_role(
+        &self,
+        user_id: Id<UserMarker>,
+        guild_id: Id<GuildMarker>,
+        role_id: Id<RoleMarker>,
+    ) -> Result<bool, DiscordStateError> {
         let member = self
             .cache
             .member(guild_id, user_id)
@@ -138,10 +145,12 @@ impl DiscordState {
         guild_id: Id<GuildMarker>,
         role_name: &str,
     ) -> Result<bool, DiscordStateError> {
-        let role = self.get_role_by_name(guild_id, role_name).ok_or(DiscordStateError::RoleNotFound {
-            role_name: role_name.to_string(),
-            guild_id,
-        })?;
+        let role =
+            self.get_role_by_name(guild_id, role_name)
+                .ok_or(DiscordStateError::RoleNotFound {
+                    role_name: role_name.to_string(),
+                    guild_id,
+                })?;
         self.has_role(user_id, guild_id, role.id)
     }
 
@@ -155,7 +164,10 @@ impl DiscordState {
     }
 
     // convenience for website which i have negative interest in adding guild info to
-    pub async fn has_nmg_league_admin_role(&self, user_id: Id<UserMarker>) -> Result<bool, DiscordStateError> {
+    pub async fn has_nmg_league_admin_role(
+        &self,
+        user_id: Id<UserMarker>,
+    ) -> Result<bool, DiscordStateError> {
         self.has_admin_role(user_id, self.gid.clone()).await
     }
 

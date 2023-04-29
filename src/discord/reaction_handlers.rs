@@ -1,14 +1,14 @@
 use diesel::ConnectionError;
 use itertools::Itertools;
+use log::{debug, warn};
 use std::ops::DerefMut;
 use std::sync::Arc;
-use log::{debug, warn};
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
-use twilight_model::channel::{Message};
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{AllowedMentions, Embed, MentionType, ReactionType};
+use twilight_model::channel::Message;
 use twilight_model::gateway::payload::incoming::{ReactionAdd, ReactionRemove};
 use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
@@ -460,7 +460,7 @@ async fn handle_restream_request_reaction(
         .allowed_mentions(Some(&AllowedMentions {
             parse: vec![MentionType::Users],
             ..Default::default()
-        } ))
+        }))
         .await
     {
         Ok(rm) => match rm.model().await {

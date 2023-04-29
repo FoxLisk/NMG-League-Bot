@@ -1,8 +1,9 @@
-use nmg_league_bot::constants::{DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL,
-};
 use crate::discord::discord_state::DiscordState;
 use crate::web::session_manager::SessionToken;
 use crate::web::{SessionManager, SESSION_COOKIE_NAME};
+use log::{debug, info, warn};
+use nmg_league_bot::config::CONFIG;
+use nmg_league_bot::constants::{DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL};
 use oauth2::basic::{BasicClient, BasicErrorResponseType, BasicTokenType};
 use oauth2::reqwest::async_http_client;
 use oauth2::url::Url;
@@ -21,9 +22,7 @@ use rocket::{Request, State};
 use rocket_dyn_templates::Template;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use log::{debug, info, warn};
 use tokio::time::Instant;
-use nmg_league_bot::config::CONFIG;
 
 type TokenResponse = StandardTokenResponse<EmptyExtraTokenFields, BasicTokenType>;
 
@@ -124,7 +123,7 @@ impl OauthClient {
     }
 }
 
-pub(in super) struct Admin {}
+pub(super) struct Admin {}
 
 #[rocket::async_trait]
 impl<'r> FromRequest<'r> for Admin {
@@ -242,7 +241,10 @@ pub async fn discord_login(
             let mut sm = session_manager.lock().await;
             sm.log_in_user(
                 user_info.id,
-                Instant::now() + res.expires_in().unwrap_or(tokio::time::Duration::from_secs(60 * 60)),
+                Instant::now()
+                    + res
+                        .expires_in()
+                        .unwrap_or(tokio::time::Duration::from_secs(60 * 60)),
             )
         };
         let cookie = Cookie::build(SESSION_COOKIE_NAME, st.to_string())
