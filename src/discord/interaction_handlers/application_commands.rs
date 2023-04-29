@@ -55,6 +55,7 @@ use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_validate::message::MessageValidationError;
 use twitch_api::helix::users::GetUsersRequest;
+use nmg_league_bot::config::CONFIG;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
 
@@ -1300,7 +1301,8 @@ async fn handle_generate_pairings(
     let url = crate::uri!(bracket_detail(season_id=b.season_id, bracket_id=b.id));
     match b.generate_pairings(cxn.deref_mut()) {
         Ok(()) => Ok(plain_interaction_response(format!(
-            "Pairings generated! See them at {WEBSITE_URL}{url}",
+            "Pairings generated! See them at {}{url}",
+            CONFIG.website_url,
         ))),
         Err(e) => Err(format!("Error generating pairings: {e:?}")),
     }

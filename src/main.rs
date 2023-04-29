@@ -1,5 +1,6 @@
 use std::path::Path;
 use log::{debug, info};
+use once_cell::sync::Lazy;
 use racetime_api::client::RacetimeClient;
 use shutdown::Shutdown;
 use twitch_api::twitch_oauth2::{ClientId, ClientSecret};
@@ -30,6 +31,7 @@ extern crate twilight_util;
 extern crate twilight_validate;
 
 use discord::Webhooks;
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::constants::{TWITCH_CLIENT_ID_VAR, TWITCH_CLIENT_SECRET_VAR};
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::db::run_migrations;
@@ -42,6 +44,9 @@ async fn main() {
     dotenv::dotenv().unwrap();
     let log_config_path = env_var("LOG4RS_CONFIG_FILE");
     log4rs::init_file(Path::new(&log_config_path), Default::default()).expect("Couldn't initialize logging");
+    // Config is lazy-loaded to make it a WORM type, but we need to make sure it loads correctly, so
+    // we force it on startup.
+    Lazy::force(&CONFIG);
     println!("{:?}", generate_invite_link());
 
     let webhooks = Webhooks::new().await.expect("Unable to construct Webhooks");

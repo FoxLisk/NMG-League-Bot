@@ -23,6 +23,7 @@ pub mod schema;
 pub mod twitch_client;
 pub mod utils;
 pub mod worker_funcs;
+pub mod config;
 
 pub struct ChannelConfig {
     pub commportunities: Id<ChannelMarker>,
