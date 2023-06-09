@@ -15,5 +15,7 @@ Previous seasons:
         {{ macros::link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit",
                         text="see the Rain State info here") }}
     </li>
+    <li>Season 3 is {{ macros::link(href="/season/2", text="here") }}.
+    </li>
 </ul>
 {% endblock %}
