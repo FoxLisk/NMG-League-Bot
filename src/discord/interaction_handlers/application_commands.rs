@@ -1142,8 +1142,10 @@ async fn handle_create_season(
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     let format = get_opt!("format", &mut ac.options, String)?;
+    let category = get_opt!("rtgg_category_name", &mut ac.options, String)?;
+    let goal = get_opt!("rtgg_goal_name", &mut ac.options, String)?;
 
-    let ns = NewSeason::new(format);
+    let ns = NewSeason::new(format, category, goal);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let s = ns.save(cxn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response(format!(

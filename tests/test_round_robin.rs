@@ -14,7 +14,7 @@ fn start_db() -> Result<SqliteConnection, anyhow::Error> {
 #[test]
 fn test() -> Result<(), anyhow::Error> {
     let mut db = start_db()?;
-    let season = NewSeason::new("test_round_robin").save(&mut db)?;
+    let season = NewSeason::new("test_round_robin", "alttp", "Any% NMG").save(&mut db)?;
     let mut bracket =
         NewBracket::new(&season, "test_rr_bracket", BracketType::RoundRobin).save(&mut db)?;
     let mut players = vec![];

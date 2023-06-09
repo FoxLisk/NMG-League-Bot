@@ -10,7 +10,7 @@ use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
 use nmg_league_bot::worker_funcs::{
-    get_races_that_should_be_finishing_soon, interesting_race, races_by_player_rtgg,
+    interesting_race, races_by_player_rtgg,
     trigger_race_finish, RaceFinishOptions,
 };
 use racetime_api::client::RacetimeClient;
@@ -23,6 +23,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
+use nmg_league_bot::models::season::Season;
 
 #[derive(Error, Debug)]
 enum ScanError {
@@ -46,6 +47,9 @@ enum ScanError {
 
     #[error("Error updating bracket race state: {0}")]
     BracketRaceStateError(#[from] BracketRaceStateError),
+
+    #[error("No current season to scan for")]
+    NoSeasonError,
 }
 
 async fn scan(
@@ -53,7 +57,8 @@ async fn scan(
     racetime_client: &RacetimeClient,
 ) -> Result<(), ScanError> {
     let mut cxn = state.diesel_cxn().await?;
-    let bracket_races = get_races_that_should_be_finishing_soon(cxn.deref_mut())?;
+    let season = Season::get_active_season(cxn.deref_mut())?.ok_or(ScanError::NoSeasonError)?;
+    let bracket_races = season.get_races_that_should_be_finishing_soon(cxn.deref_mut())?;
 
     // *shrug*
     // it's like 40 rows
@@ -62,13 +67,13 @@ async fn scan(
 
     let recent_races: PastCategoryRaces = PastCategoryRacesBuilder::default()
         .show_entrants(true)
-        .category("alttp")
+        .category(&season.rtgg_category_name)
         .build()?;
 
     let finished_races: Races = recent_races.query(racetime_client).await?;
 
     for race in finished_races.races {
-        if let Err(e) = maybe_do_race_stuff(race, &interesting_rtgg_ids, state).await {
+        if let Err(e) = maybe_do_race_stuff(race, &interesting_rtgg_ids, &season, state).await {
             warn!("Error handling a race: {}", e);
         }
     }
@@ -78,9 +83,10 @@ async fn scan(
 async fn maybe_do_race_stuff(
     mut race: RacetimeRace,
     bracket_races: &HashMap<String, (&BracketRaceInfo, &BracketRace, &Player, &Player)>,
+    season: &Season,
     state: &Arc<DiscordState>,
 ) -> Result<(), ScanError> {
-    if let Some((bri, br, (p1, e1), (p2, e2))) = interesting_race(&mut race, bracket_races) {
+    if let Some((bri, br, (p1, e1), (p2, e2))) = interesting_race(&mut race, bracket_races, season) {
         // this is awful, i hate doing it this way, i'm just tired of thinking about this
         let mutable_br = br.clone();
         let mut mutable_bri = bri.clone();

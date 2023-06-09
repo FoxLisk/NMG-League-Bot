@@ -98,6 +98,20 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::String,
         ..command_option_default()
     })
+    .option(CommandOption {
+        description: "RaceTime Category (e.g. alttp)".to_string(),
+        kind: CommandOptionType::String,
+        name: "rtgg_category_name".to_string(),
+        required: Some(true),
+        ..command_option_default()
+    })
+    .option(CommandOption {
+        description: "RaceTime Goal (e.g. Any% NMG)".to_string(),
+        kind: CommandOptionType::String,
+        name: "rtgg_goal_name".to_string(),
+        required: Some(true),
+        ..command_option_default()
+    })
     .build();
 
     let possible_states = enum_variants_serialized::<SeasonState>()

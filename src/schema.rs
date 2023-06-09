@@ -119,6 +119,8 @@ diesel::table! {
         finished -> Nullable<BigInt>,
         format -> Text,
         state -> Text,
+        rtgg_category_name -> Text,
+        rtgg_goal_name -> Text,
     }
 }
 

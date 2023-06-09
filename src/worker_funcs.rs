@@ -23,22 +23,7 @@ use twilight_model::channel::Message;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
-
-/// races that are not in finished state and that are scheduled to have started recently
-pub fn get_races_that_should_be_finishing_soon(
-    conn: &mut SqliteConnection,
-) -> Result<Vec<(BracketRaceInfo, BracketRace)>, diesel::result::Error> {
-    let now = Utc::now();
-    let start_time = now - Duration::minutes(82);
-    // TODO: pretend to care about this unwrap later maybe
-    let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
-
-    bracket_race_infos::table
-        .inner_join(bracket_races::table)
-        .filter(bracket_race_infos::scheduled_for.lt(start_time.timestamp()))
-        .filter(bracket_races::state.ne(finished_state))
-        .load(conn)
-}
+use crate::models::season::Season;
 
 /// takes a list of all existing players & bracket races, and returns a map of
 /// <one of the player's racetime usernames : a bunch of info about the race>
@@ -86,13 +71,14 @@ pub fn races_by_player_rtgg<'a>(
 pub fn interesting_race<'a>(
     race: &mut RacetimeRace,
     bracket_races: &HashMap<String, (&'a BracketRaceInfo, &'a BracketRace, &'a Player, &'a Player)>,
+    season: &Season,
 ) -> Option<(
     &'a BracketRaceInfo,
     &'a BracketRace,
     (&'a Player, Entrant),
     (&'a Player, Entrant),
 )> {
-    if race.goal.name != "Any% NMG" {
+    if &race.goal.name != &season.rtgg_goal_name {
         return None;
     }
     if race.status.value != "finished" {

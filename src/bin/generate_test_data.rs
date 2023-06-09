@@ -21,7 +21,7 @@ async fn main() {
         return;
     }
 
-    let nsn = NewSeason::new("Test NMG");
+    let nsn = NewSeason::new("Test NMG", "alttp", "Any% NMG");
     let sn = nsn.save(&mut db).unwrap();
 
     generate_bracket(&sn, 1, BracketType::Swiss, &mut db).unwrap();
