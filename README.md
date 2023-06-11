@@ -6,7 +6,7 @@ Ask me (FoxLisk) for access to the bot tokens. There's a discord developer team 
 you can create your own discord application and run it through that if you prefer.
 
 Running the bot should be as simple as `cargo run`. If you don't have rust on your system, use
-[rustup](https://rustup.rs/). This project builds in stable version 1.60.0 at the moment. I don't particularly want
+[rustup](https://rustup.rs/). This project builds in stable version 1.67.0 at the moment. I don't particularly want
 to be on nightly, but I have no qualms against upgrading the stable version aggressively.
 
 You'll need to run this command to get the css compiled if you want to look at the web pages:
