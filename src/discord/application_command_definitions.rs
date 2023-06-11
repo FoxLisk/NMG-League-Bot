@@ -1,6 +1,6 @@
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
-    CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
+    CREATE_PLAYER_CMD, CREATE_ASYNC_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
@@ -37,7 +37,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     }
 
     let create_race = CommandBuilder::new(
-        CREATE_RACE_CMD.to_string(),
+        CREATE_ASYNC_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
         CommandType::ChatInput,
     )
@@ -63,7 +63,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     .build();
 
     let cancel_race = CommandBuilder::new(
-        CANCEL_RACE_CMD.to_string(),
+        CANCEL_ASYNC_CMD.to_string(),
         "Cancel an existing asynchronous race".to_string(),
         CommandType::ChatInput,
     )

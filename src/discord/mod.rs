@@ -69,8 +69,8 @@ mod constants {
     pub const CUSTOM_ID_USER_TIME: &str = "user_time";
     pub const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
 
-    pub const CREATE_RACE_CMD: &str = "create_race";
-    pub const CANCEL_RACE_CMD: &str = "cancel_race";
+    pub const CREATE_ASYNC_CMD: &str = "create_async";
+    pub const CANCEL_ASYNC_CMD: &str = "cancel_async";
     pub const ADMIN_ROLE_NAME: &'static str = "Admin";
 
     pub const CREATE_SEASON_CMD: &str = "create_season";

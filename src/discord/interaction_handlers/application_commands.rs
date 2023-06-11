@@ -1,7 +1,7 @@
 use crate::discord::components::action_row;
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_RACE_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
-    CREATE_PLAYER_CMD, CREATE_RACE_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
+    CREATE_PLAYER_CMD, CREATE_ASYNC_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
@@ -121,7 +121,7 @@ pub async fn handle_application_interaction(
                 .map(|i| Some(i)),
         ),
         // admin commands
-        CREATE_RACE_CMD => {
+        CREATE_ASYNC_CMD => {
             admin_command_wrapper(handle_create_race(ac, state).await.map(Option::from))
         }
         GENERATE_PAIRINGS_CMD => {
@@ -131,7 +131,7 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_reschedule_race(ac, interaction, state).await)
         }
 
-        CANCEL_RACE_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
+        CANCEL_ASYNC_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
         CREATE_SEASON_CMD => {
             admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
@@ -920,7 +920,7 @@ async fn handle_cancel_race(
     if !ac.options.is_empty() {
         return Err(format!(
             "I'm very confused: {} had an unexpected option",
-            CANCEL_RACE_CMD
+            CANCEL_ASYNC_CMD
         ));
     }
 
