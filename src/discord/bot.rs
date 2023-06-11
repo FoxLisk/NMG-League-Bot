@@ -45,7 +45,7 @@ use crate::discord::reaction_handlers::{handle_reaction_add, handle_reaction_rem
 use crate::discord::ErrorResponse;
 use crate::{Shutdown, Webhooks};
 use nmg_league_bot::db::get_diesel_pool;
-use nmg_league_bot::models::race_run::RaceRun;
+use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 
 pub(crate) async fn launch(
@@ -152,7 +152,7 @@ fn run_started_components() -> Vec<Component> {
 }
 
 fn run_started_interaction_response(
-    race_run: &RaceRun,
+    race_run: &AsyncRaceRun,
     preamble: Option<&str>,
 ) -> Result<InteractionResponse, String> {
     let filenames = race_run.filenames()?;
@@ -202,7 +202,7 @@ async fn handle_run_start(
         .diesel_cxn()
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
-    let mut rr = RaceRun::get_by_message_id(mid, &mut conn)
+    let mut rr = AsyncRaceRun::get_by_message_id(mid, &mut conn)
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
     rr.start();
@@ -229,9 +229,9 @@ async fn update_race_run<F>(
     conn: &mut SqliteConnection,
 ) -> Result<(), String>
 where
-    F: FnOnce(&mut RaceRun) -> (),
+    F: FnOnce(&mut AsyncRaceRun) -> (),
 {
-    let rro = match RaceRun::search_by_message_id(message_id.clone(), conn).await {
+    let rro = match AsyncRaceRun::search_by_message_id(message_id.clone(), conn).await {
         Ok(r) => r,
         Err(e) => {
             return Err(e);
@@ -310,7 +310,7 @@ async fn handle_run_forfeit_modal(
             "You have forfeited this match. Please let the admins know if there are any issues.",
         )
     } else {
-        RaceRun::get_by_message_id(mid, &mut conn)
+        AsyncRaceRun::get_by_message_id(mid, &mut conn)
             .await
             .and_then(|race_run| {
                 run_started_interaction_response(&race_run, Some("Forfeit canceled"))

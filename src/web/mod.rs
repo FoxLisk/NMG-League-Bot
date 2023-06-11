@@ -23,8 +23,8 @@ use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;
-use nmg_league_bot::models::race::{Race, RaceState};
-use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
+use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
+use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::utils::format_hms;
 use rocket::request::{FromRequest, Outcome};
@@ -114,7 +114,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
         }
     };
     let query = schema::races::table.inner_join(schema::race_runs::table);
-    let results: Vec<(Race, RaceRun)> = match query.load::<(Race, RaceRun)>(cxn.deref_mut()) {
+    let results: Vec<(AsyncRace, AsyncRaceRun)> = match query.load::<(AsyncRace, AsyncRaceRun)>(cxn.deref_mut()) {
         Ok(r) => r,
         Err(e) => {
             return Template::render("asyncs", Context::error(e.to_string()));
@@ -169,7 +169,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
     }
 
     impl ViewRaceBuilder {
-        fn from_race(r: Race) -> Self {
+        fn from_race(r: AsyncRace) -> Self {
             Self {
                 id: r.id,
                 state: r.state,

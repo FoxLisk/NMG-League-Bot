@@ -12,8 +12,8 @@ use crate::discord::interactions_utils::{
 };
 use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
-use nmg_league_bot::models::race::{NewRace, Race, RaceState};
-use nmg_league_bot::models::race_run::RaceRun;
+use nmg_league_bot::models::asyncs::race::{NewAsyncRace, AsyncRace, RaceState};
+use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
@@ -861,7 +861,7 @@ async fn handle_create_race(
         ));
     }
 
-    let new_race = NewRace::new();
+    let new_race = NewAsyncRace::new();
     let mut cxn = state
         .diesel_cxn()
         .await
@@ -925,7 +925,7 @@ async fn handle_cancel_race(
     }
 
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let race = match Race::get_by_id(race_id as i32, &mut conn) {
+    let race = match AsyncRace::get_by_id(race_id as i32, &mut conn) {
         Ok(r) => r,
         Err(_e) => {
             return Ok(Some(plain_interaction_response(
@@ -941,7 +941,7 @@ async fn handle_cancel_race(
         ))));
     }
 
-    let (r1, r2) = match RaceRun::get_runs(race.id, &mut conn).await {
+    let (r1, r2) = match AsyncRaceRun::get_runs(race.id, &mut conn).await {
         Ok(rs) => rs,
         Err(e) => {
             return Ok(Some(plain_interaction_response(format!(
@@ -967,9 +967,9 @@ async fn handle_cancel_race(
 // interaction cycle and not operating on the original interaction anymore.
 async fn handle_cancel_race_started(
     ac: Box<InteractionCreate>,
-    race: Race,
-    r1: RaceRun,
-    r2: RaceRun,
+    race: AsyncRace,
+    r1: AsyncRaceRun,
+    r2: AsyncRaceRun,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let mut resp =
@@ -1051,9 +1051,9 @@ async fn wait_for_cancel_race_decision(
 }
 
 async fn actually_cancel_race(
-    race: Race,
-    r1: RaceRun,
-    r2: RaceRun,
+    race: AsyncRace,
+    r1: AsyncRaceRun,
+    r2: AsyncRaceRun,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
@@ -1082,7 +1082,7 @@ async fn actually_cancel_race(
 }
 
 async fn update_cancelled_race_message(
-    run: RaceRun,
+    run: AsyncRaceRun,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let mid = run

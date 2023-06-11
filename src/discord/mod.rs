@@ -26,8 +26,8 @@ use crate::discord::constants::CUSTOM_ID_START_RUN;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError};
 use nmg_league_bot::models::player::{MentionOptional, Player};
-use nmg_league_bot::models::race::Race;
-use nmg_league_bot::models::race_run::RaceRun;
+use nmg_league_bot::models::asyncs::race::AsyncRace;
+use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
 
 use nmg_league_bot::config::CONFIG;
@@ -98,8 +98,8 @@ mod constants {
 
 /// DM the player & save the run model if the DM sends successfully
 pub(crate) async fn notify_racer(
-    race_run: &mut RaceRun,
-    race: &Race,
+    race_run: &mut AsyncRaceRun,
+    race: &AsyncRace,
     state: &Arc<DiscordState>,
 ) -> Result<(), String> {
     let uid = race_run.racer_id()?;

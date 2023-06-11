@@ -4,14 +4,11 @@ this shitty module is stuff for workers::* to call so that I can also call it fr
 
 use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_races::{
-    BracketRace, BracketRaceState, BracketRaceStateError, Outcome, PlayerResult,
+    BracketRace, BracketRaceStateError, Outcome, PlayerResult,
 };
 use crate::models::player::Player;
 use crate::racetime_types::{Entrant, RacetimeRace};
-use crate::schema::{bracket_race_infos, bracket_races};
 use crate::{ChannelConfig, NMGLeagueBotError};
-use chrono::{Duration, Utc};
-use diesel::prelude::*;
 use diesel::SqliteConnection;
 use log::{info, warn};
 use std::collections::HashMap;

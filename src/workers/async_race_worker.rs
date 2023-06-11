@@ -5,8 +5,8 @@ use crate::shutdown::Shutdown;
 use diesel::prelude::*;
 use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
-use nmg_league_bot::models::race::{Race, RaceState};
-use nmg_league_bot::models::race_run::{RaceRun, RaceRunState};
+use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
+use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::utils::format_hms;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -14,7 +14,7 @@ use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
 
-fn format_finisher(run: &RaceRun) -> String {
+fn format_finisher(run: &AsyncRaceRun) -> String {
     match run.state {
         RaceRunState::VOD_SUBMITTED => {
             let bot_time = match (run.run_started, run.run_finished) {
@@ -66,7 +66,7 @@ impl<T> Fold<T> for Result<T, T> {
     }
 }
 
-async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webhooks) {
+async fn handle_race(mut race: AsyncRace, state: &Arc<DiscordState>, webhooks: &Webhooks) {
     let mut conn = match state.diesel_cxn().await {
         Ok(c) => c,
         Err(e) => {
@@ -115,9 +115,9 @@ async fn handle_race(mut race: Race, state: &Arc<DiscordState>, webhooks: &Webho
 }
 
 async fn handle_finished_race(
-    race: &mut Race,
-    r1: &RaceRun,
-    r2: &RaceRun,
+    race: &mut AsyncRace,
+    r1: &AsyncRaceRun,
+    r2: &AsyncRaceRun,
     conn: &mut SqliteConnection,
     webhooks: &Webhooks,
 ) {
@@ -169,10 +169,10 @@ async fn handle_finished_race(
 }
 
 async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
-    let active_races: Vec<Race> = match state.diesel_cxn().await.map(|mut cxn| {
+    let active_races: Vec<AsyncRace> = match state.diesel_cxn().await.map(|mut cxn| {
         races::table
             .filter(races::dsl::state.eq(RaceState::CREATED))
-            .load::<Race>(cxn.deref_mut())
+            .load::<AsyncRace>(cxn.deref_mut())
     }) {
         Ok(Ok(rs)) => rs,
         Ok(Err(e)) => {
