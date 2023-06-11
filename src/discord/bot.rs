@@ -222,7 +222,6 @@ async fn handle_run_start(
     }
 }
 
-// TODO: this should take a message id, this method signature is bullshit
 async fn update_race_run<F>(
     message_id: Id<MessageMarker>,
     f: F,
@@ -281,6 +280,7 @@ lazy_static! {
         .unwrap();
 }
 
+// this is the method that handles the last forfeit step, after the player enters 'forfeit' and submits that
 async fn handle_run_forfeit_modal(
     mut interaction_data: ModalInteractionData,
     interaction: Box<InteractionCreate>,
