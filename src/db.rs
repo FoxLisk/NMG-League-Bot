@@ -7,6 +7,8 @@ use diesel_migrations::{MigrationError, MigrationHarness};
 use lazy_static::lazy_static;
 use log::debug;
 use std::error::Error;
+use std::fs;
+use std::path::Path;
 use thiserror::Error;
 use tokio::sync::{Mutex, MutexGuard};
 
@@ -30,8 +32,11 @@ fn munge_path(sqlite_db_path: String) -> String {
 
 pub fn raw_diesel_cxn_from_env() -> diesel::ConnectionResult<SqliteConnection> {
     let sqlite_db_path = env_var("DATABASE_URL");
-    let path = munge_path(sqlite_db_path);
-    SqliteConnection::establish(&path)
+    let path_s = munge_path(sqlite_db_path);
+    let p = Path::new(&path_s);
+    let dir = p.parent().unwrap();
+    fs::create_dir_all(dir).unwrap();
+    SqliteConnection::establish(&path_s)
 }
 
 #[derive(Error, Debug)]
