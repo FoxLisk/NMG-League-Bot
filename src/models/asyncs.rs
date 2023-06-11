@@ -177,6 +177,8 @@ pub mod race_run {
     use std::str::FromStr;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
+    use diesel::AsExpression;
+    use diesel::sql_types::Text;
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
@@ -309,8 +311,9 @@ pub mod race_run {
         }
     }
 
-    #[derive(Debug, Serialize, PartialEq, DieselEnum, Clone)]
+    #[derive(Debug, Serialize, PartialEq, DieselEnum, Clone, AsExpression)]
     #[allow(non_camel_case_types)]
+    #[diesel(sql_type = Text)]
     pub enum RaceRunState {
         /// RaceRun created
         CREATED,

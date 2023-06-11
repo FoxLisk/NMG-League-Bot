@@ -87,6 +87,11 @@ async fn main() {
         state.clone(),
     ));
 
+    tokio::spawn(workers::forfeit_own_races::cron(
+        shutdown_send.subscribe(),
+        state.clone(),
+    ));
+
     drop(state);
     drop(webhooks);
     tokio::signal::ctrl_c().await.ok();
