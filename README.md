@@ -5,6 +5,16 @@ copy `.env-template` to `.env` and input relevant values where the defaults aren
 Ask me (FoxLisk) for access to the bot tokens. There's a discord developer team that I can add you to. Alternatively
 you can create your own discord application and run it through that if you prefer.
 
+## Dependencies
+
+* you'll need node/npm/npx stuff (I forgot how I installed this but it should be easy by following their website)
+* You might run into an issue about needing openssl dev packages. The commands on this post have solved it for at 
+  least one person
+
+  https://ma.ttias.be/could-not-find-directory-of-openssl-installation/
+
+## Running
+
 Running the bot should be as simple as `cargo run`. If you don't have rust on your system, use
 [rustup](https://rustup.rs/). This project builds in stable version 1.67.0 at the moment. I don't particularly want
 to be on nightly, but I have no qualms against upgrading the stable version aggressively.
@@ -13,7 +23,8 @@ You'll need to run this command to get the css compiled if you want to look at t
 
     npx tailwindcss -i ./tailwind_input.css -o ./http/static/css/tailwind.css
 
-which will require npm to be installed, which I forget the steps to bootstrap, sorry, oops.
+There's also scripts in `src/bin` which you can run with `cargo run --bin <script name>`. These aren't, like,
+maximally well maintained and useful, but `generate_test_data` is a decent place to start populating the databases.
 
 # other stuff
 
