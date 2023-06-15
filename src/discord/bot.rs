@@ -45,8 +45,10 @@ use crate::discord::reaction_handlers::{handle_reaction_add, handle_reaction_rem
 use crate::discord::ErrorResponse;
 use crate::{Shutdown, Webhooks};
 use nmg_league_bot::db::get_diesel_pool;
+use nmg_league_bot::models::asyncs::race::AsyncRace;
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
+use nmg_league_bot::utils::ResultErrToString;
 
 pub(crate) async fn launch(
     webhooks: Webhooks,
@@ -152,29 +154,30 @@ fn run_started_components() -> Vec<Component> {
 }
 
 fn run_started_interaction_response(
+    race: &AsyncRace,
     race_run: &AsyncRaceRun,
     preamble: Option<&str>,
 ) -> Result<InteractionResponse, String> {
     let filenames = race_run.filenames()?;
-    let content = if let Some(p) = preamble {
-        format!(
-            "{}
+    let admin_text = if let Some(msg_text) = race.on_start_message.as_ref() {
+        format!("\nThe admin who created this race had the following information for you
 
-Good luck! your filenames are: `{}`
-
-If anything goes wrong, tell an admin there was an issue with run `{}`
-",
-            p, filenames, race_run.uuid
-        )
+> {msg_text}\n")
     } else {
-        format!(
-            "Good luck! your filenames are: `{}`
-
+        "".to_string()
+    };
+    let preamble_content = if let Some(preamble_text) = preamble {
+        format!("{preamble_text}\n\n")
+    } else {
+        "".to_string()
+    };
+    let content = format!("\
+{preamble_content}Good luck! your filenames are: `{filenames}`
+{admin_text}
 If anything goes wrong, tell an admin there was an issue with run `{}`
 ",
-            filenames, race_run.uuid
-        )
-    };
+           race_run.uuid
+        );
     let buttons = run_started_components();
     Ok(InteractionResponse {
         kind: InteractionResponseType::UpdateMessage,
@@ -205,9 +208,12 @@ async fn handle_run_start(
     let mut rr = AsyncRaceRun::get_by_message_id(mid, &mut conn)
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+    let race = rr.get_race(&mut conn).map_err(
+        |e| ErrorResponse::new(USER_FACING_ERROR, e.to_string())
+    )?;
     rr.start();
     match rr.save(&mut conn).await {
-        Ok(_) => Ok(Some(run_started_interaction_response(&rr, None).map_err(
+        Ok(_) => Ok(Some(run_started_interaction_response(&race, &rr, None).map_err(
             |e| {
                 ErrorResponse::new(
                     USER_FACING_ERROR,
@@ -312,9 +318,15 @@ async fn handle_run_forfeit_modal(
     } else {
         AsyncRaceRun::get_by_message_id(mid, &mut conn)
             .await
-            .and_then(|race_run| {
-                run_started_interaction_response(&race_run, Some("Forfeit canceled"))
-            })
+            .and_then(|race_run|
+                race_run.get_race(&mut conn)
+                    .map(|race| (race, race_run))
+                    .map_err_to_string()
+            )
+            .and_then(
+                |(race, race_run)|
+                    run_started_interaction_response(&race, &race_run, Some("Forfeit canceled"))
+            )
             .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?
     };
     Ok(Some(ir))

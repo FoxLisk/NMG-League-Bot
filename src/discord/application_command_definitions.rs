@@ -60,6 +60,13 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::User,
         ..command_option_default()
     })
+        .option(CommandOption {
+            description: "A message (such as a rando permalink) to show the racers when they click Start".to_string(),
+            kind: CommandOptionType::String,
+            name: "on_start_message".to_string(),
+            required: Some(false),
+            ..command_option_default()
+        })
     .build();
 
     let cancel_race = CommandBuilder::new(

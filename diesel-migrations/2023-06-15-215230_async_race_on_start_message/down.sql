@@ -1,0 +1,1 @@
+ALTER TABLE races DROP COLUMN on_start_message;

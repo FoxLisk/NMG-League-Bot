@@ -113,7 +113,7 @@ pub(crate) async fn notify_racer(
     let dm = state.get_private_channel(uid).await?;
     let content = format!(
         "Hello, your asynchronous race is now ready.
-When you're ready to begin your race, click \"Start run\" and you will be given
+When you're ready to begin your race, click \"Start run\" and you will be given \
 filenames to enter.
 
 If anything goes wrong, tell an admin there was an issue with race `{}`",

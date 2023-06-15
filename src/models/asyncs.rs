@@ -27,6 +27,7 @@ pub mod race {
         uuid: String,
         created: i64,
         state: String,
+        on_start_message: Option<String>
     }
 
     #[derive(Queryable, Clone, Identifiable)]
@@ -38,6 +39,7 @@ pub mod race {
         pub created: u32,
         #[diesel(deserialize_as=String)]
         pub state: RaceState,
+        pub on_start_message: Option<String>,
     }
 
     #[derive(Identifiable, AsChangeset)]
@@ -47,6 +49,7 @@ pub mod race {
         uuid: String,
         created: i64,
         state: String,
+        on_start_message: Option<String>,
     }
 
     impl From<AsyncRace> for UpdateRace {
@@ -56,19 +59,19 @@ pub mod race {
                 uuid: r.uuid,
                 created: r.created as i64,
                 state: r.state.into(),
+                on_start_message: r.on_start_message,
             }
         }
     }
 
     // statics
     impl AsyncRace {
-        pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, String> {
+        pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
             use crate::schema::races::dsl::*;
             use diesel::prelude::*;
             races
                 .filter(id.eq(id_))
                 .first(conn)
-                .map_err(|e| e.to_string())
         }
     }
 
@@ -144,16 +147,17 @@ pub mod race {
             &self,
             conn: &mut SqliteConnection,
         ) -> Result<(AsyncRaceRun, AsyncRaceRun), String> {
-            AsyncRaceRun::get_runs(self.id, conn).await
+            AsyncRaceRun::get_runs(&self, conn).await
         }
     }
 
     impl NewAsyncRace {
-        pub fn new() -> Self {
+        pub fn new(on_start_message: Option<String>) -> Self {
             Self {
                 uuid: uuid_string(),
                 created: epoch_timestamp() as i64,
                 state: RaceState::CREATED.into(),
+                on_start_message,
             }
         }
 
@@ -179,6 +183,7 @@ pub mod race_run {
     use twilight_model::id::Id;
     use diesel::AsExpression;
     use diesel::sql_types::Text;
+    use crate::models::asyncs::race::AsyncRace;
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
@@ -362,6 +367,7 @@ pub mod race_run {
         #[diesel(deserialize_as=i64)]
         created: u32,
         #[diesel(deserialize_as=String)]
+        // can we get away with making this private?
         pub state: RaceRunState,
         pub run_started: Option<i64>,
         pub run_finished: Option<i64>,
@@ -412,12 +418,12 @@ pub mod race_run {
     // statics
     impl AsyncRaceRun {
         pub async fn get_runs(
-            race_id_: i32,
+            race: &AsyncRace,
             conn: &mut SqliteConnection,
         ) -> Result<(AsyncRaceRun, AsyncRaceRun), String> {
             use crate::schema::race_runs::dsl::*;
             let mut runs: Vec<AsyncRaceRun> = race_runs
-                .filter(race_id.eq(race_id_))
+                .filter(race_id.eq(race.id))
                 .load(conn)
                 .map_err(|e| e.to_string())?;
             if runs.len() == 2 {
@@ -426,6 +432,28 @@ pub mod race_run {
                 Err("Did not find exactly 2 runs".to_string())
             }
         }
+
+        pub async fn get_by_message_id(
+            message_id: Id<MessageMarker>,
+            conn: &mut SqliteConnection,
+        ) -> Result<Self, String> {
+            Self::search_by_message_id(message_id.clone(), conn)
+                .await
+                .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
+        }
+
+        pub async fn search_by_message_id(
+            message_id_: Id<MessageMarker>,
+            conn: &mut SqliteConnection,
+        ) -> Result<Option<Self>, String> {
+            use crate::schema::race_runs::dsl::*;
+            let mut runs: Vec<Self> = race_runs
+                .filter(message_id.eq(message_id_.to_string()))
+                .load(conn)
+                .map_err(|e| e.to_string())?;
+            Ok(runs.pop())
+        }
+
     }
 
     // instance
@@ -484,6 +512,7 @@ pub mod race_run {
                 .flatten()
         }
 
+        /// Sets the models state to started
         pub fn start(&mut self) {
             self.state = RaceRunState::STARTED;
             self.run_started = Some(epoch_timestamp() as i64);
@@ -525,26 +554,10 @@ pub mod race_run {
             self.message_id = Some(message_id.to_string());
         }
 
-        pub async fn get_by_message_id(
-            message_id: Id<MessageMarker>,
-            conn: &mut SqliteConnection,
-        ) -> Result<Self, String> {
-            Self::search_by_message_id(message_id.clone(), conn)
-                .await
-                .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
+        pub fn get_race(&self, conn: &mut SqliteConnection) -> Result<AsyncRace, diesel::result::Error> {
+            AsyncRace::get_by_id(self.race_id, conn)
         }
 
-        pub async fn search_by_message_id(
-            message_id_: Id<MessageMarker>,
-            conn: &mut SqliteConnection,
-        ) -> Result<Option<Self>, String> {
-            use crate::schema::race_runs::dsl::*;
-            let mut runs: Vec<Self> = race_runs
-                .filter(message_id.eq(message_id_.to_string()))
-                .load(conn)
-                .map_err(|e| e.to_string())?;
-            Ok(runs.pop())
-        }
     }
 
     // It is impossible in Rust to `impl Into<String> for Id<UserMarker>`
