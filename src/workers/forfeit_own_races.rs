@@ -3,7 +3,7 @@ use crate::schema::race_runs;
 use crate::shutdown::Shutdown;
 use bb8::RunError;
 use diesel::prelude::*;
-use log::{info, warn};
+use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use std::ops::DerefMut;
@@ -40,9 +40,11 @@ async fn sweep(state: &Arc<DiscordState>) {
     info!("Forfeiting {} races", active_race_runs.len());
     for mut race in active_race_runs {
         race.forfeit();
-        if let Err(e) =  race.save(cxn.deref_mut()).await {
-            warn!("Error forfeiting own race: {e}");
-        };
+        if let Err(e) = race.save(cxn.deref_mut()).await {
+            warn!("Error forfeiting own race {}: {e}", race.uuid);
+        } else {
+            debug!("Successfully forfeited race {}", race.uuid);
+        }
     }
 }
 
