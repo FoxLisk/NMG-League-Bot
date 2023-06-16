@@ -1,0 +1,1 @@
+ALTER TABLE races ADD COLUMN on_start_message TEXT NULL;

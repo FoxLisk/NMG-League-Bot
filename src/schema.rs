@@ -109,6 +109,7 @@ diesel::table! {
         uuid -> Text,
         created -> BigInt,
         state -> Text,
+        on_start_message -> Nullable<Text>,
     }
 }
 

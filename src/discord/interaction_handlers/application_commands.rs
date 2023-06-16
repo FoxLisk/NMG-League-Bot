@@ -851,9 +851,9 @@ async fn handle_create_race(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    // twilight_model::application::command::CommandOptionValue::
     let p1 = get_opt!("p1", &mut ac.options, User)?;
     let p2 = get_opt!("p2", &mut ac.options, User)?;
+    let on_start_message = get_opt!("on_start_message", &mut ac.options, String).ok();
 
     if p1 == p2 {
         return Ok(plain_interaction_response(
@@ -861,7 +861,7 @@ async fn handle_create_race(
         ));
     }
 
-    let new_race = NewAsyncRace::new();
+    let new_race = NewAsyncRace::new(on_start_message);
     let mut cxn = state
         .diesel_cxn()
         .await
@@ -941,7 +941,7 @@ async fn handle_cancel_race(
         ))));
     }
 
-    let (r1, r2) = match AsyncRaceRun::get_runs(race.id, &mut conn).await {
+    let (r1, r2) = match AsyncRaceRun::get_runs(&race, &mut conn).await {
         Ok(rs) => rs,
         Err(e) => {
             return Ok(Some(plain_interaction_response(format!(
