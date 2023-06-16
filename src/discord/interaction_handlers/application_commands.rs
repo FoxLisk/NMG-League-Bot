@@ -348,6 +348,18 @@ async fn handle_schedule_race(
     }
 }
 
+/// people constantly input `name #1234` instead of `name#1234` so let's try to handle that
+fn normalize_racetime_name(name: &str) -> String {
+    match Regex::new(r"\s+(#\d+)$") {
+        Ok(r) => {
+            r.replace(name, "$1").to_string()
+        }
+        Err(e) => {
+            name.to_string()
+        }
+    }
+}
+
 async fn handle_update_user_info(
     mut ac: Box<CommandData>,
     mut interaction: Box<InteractionCreate>,
@@ -403,14 +415,15 @@ async fn handle_update_user_info(
         }
     }
     if let Some(r) = racetime {
-        match validate_racetime_username(r.clone(), player.twitch_user_login.as_ref(), state).await
+        let normalized = normalize_racetime_name(&r);
+        match validate_racetime_username(&normalized, player.twitch_user_login.as_ref(), state).await
         {
             Ok(Some(e)) => {
                 user_messages.push(e);
             }
             Ok(None) => {
                 user_messages.push("RaceTime name updated.");
-                player.racetime_username = Some(r);
+                player.racetime_username = Some(normalized);
                 save = true;
             }
             Err(e) => {
@@ -514,6 +527,7 @@ fn format_player(content: Option<String>, player: &Player) -> InteractionRespons
 }
 
 /// returns normalized login (i.e. what twitch gives back) if the lookup succeeds, None otherwise
+/// This does an API request to twitch
 async fn validate_twitch_username(
     username: &str,
     state: &Arc<DiscordState>,
@@ -537,18 +551,19 @@ async fn validate_twitch_username(
 
 /// term is an rtgg term of art; it can be like `name` or `#scrim` or `name#scrim`
 /// Returns Ok(None) on success, Ok(reason) on logical error, or a behind the scenes error
+/// This does an API request to racetime
 async fn validate_racetime_username(
-    term: String,
+    term: &str,
     twitch_login: Option<&String>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<&'static str>, NMGLeagueBotError> {
-    let us = UserSearch::from_term(term.clone());
+    let us = UserSearch::from_term(term.to_string());
     let UserSearchResult { results } = us.query(&state.racetime_client).await?;
     // if we found any users, make sure we found an exact match (racetime does not offer
     // exact search)
     if let Some(found) = results
         .into_iter()
-        .find(|u| u.full_name.eq_ignore_ascii_case(&term))
+        .find(|u| u.full_name.eq_ignore_ascii_case(term))
     {
         // if the user we found has a linked twitch channel, *and* they've provided a
         // twitch channel to *us*, we can sanity check
@@ -1315,7 +1330,7 @@ async fn handle_generate_pairings(
 
 #[cfg(test)]
 mod tests {
-    use crate::discord::interaction_handlers::application_commands::datetime_from_options;
+    use crate::discord::interaction_handlers::application_commands::{datetime_from_options, normalize_racetime_name};
     use chrono::{Datelike, Timelike};
 
     #[test]
@@ -1334,5 +1349,20 @@ mod tests {
             other_thing.format("%v %r").to_string(),
             "28-Oct-2022 12:13:00 PM"
         );
+    }
+
+    #[test]
+    fn test_normalize_racetime_name() {
+        let already_good = "foxlisk#1234";
+        assert_eq!(already_good, normalize_racetime_name(already_good));
+
+        let stray_space = "foxlisk #1234";
+        assert_eq!("foxlisk#1234", normalize_racetime_name(stray_space));
+
+        let weird_spaces_already_good = "a b c#1234";
+        assert_eq!(weird_spaces_already_good, normalize_racetime_name(weird_spaces_already_good));
+
+        let weird_spaces_stray_space = "a b c    #1234";
+        assert_eq!("a b c#1234", normalize_racetime_name(weird_spaces_stray_space));
     }
 }

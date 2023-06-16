@@ -181,3 +181,19 @@ impl NewSeason {
     }
     save_fn!(seasons::table, Season);
 }
+
+
+#[cfg(test)]
+impl Season {
+    pub fn new(id: i32, goal: &str) -> Self {
+        Season {
+            id,
+            started: 0,
+            finished: None,
+            format: "".to_string(),
+            state: "".to_string(),
+            rtgg_category_name: "".to_string(),
+            rtgg_goal_name: goal.to_string(),
+        }
+    }
+}
