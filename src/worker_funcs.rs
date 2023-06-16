@@ -362,6 +362,7 @@ mod tests {
     use chrono::{DateTime, TimeZone, Utc};
     use std::collections::HashMap;
     use std::fs::read_to_string;
+    use crate::models::season::Season;
 
     #[test]
     fn test_rfc3339() {
@@ -437,6 +438,7 @@ mod tests {
                 name: "Any% NMG".to_string(),
             },
         };
+        let season = Season::new(1, "Any% NMG");
         let br = BracketRace {
             id: 1,
             bracket_id: 1,
@@ -469,7 +471,7 @@ mod tests {
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p2));
         races.insert(p2.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p2));
-        let whatever = interesting_race(&mut race, &races);
+        let whatever = interesting_race(&mut race, &races, &season);
         assert!(whatever.is_some(), "{:?}", whatever);
         let (_, _, (p1, e1), (p2, e2)) = whatever.unwrap();
         assert_eq!(p1.racetime_username, Some(e1.user.full_name));
@@ -545,7 +547,8 @@ mod tests {
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p3));
         races.insert(p3.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p3));
-        let whatever = interesting_race(&mut race, &races);
+        let season = Season::new(1, "Any% NMG");
+        let whatever = interesting_race(&mut race, &races, &season);
         assert!(whatever.is_none());
     }
 
