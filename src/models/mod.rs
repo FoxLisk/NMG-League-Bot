@@ -28,3 +28,12 @@ macro_rules! update_fn {
         }
     };
 }
+
+#[macro_export]
+macro_rules! delete_fn {
+    ($table:expr) => {
+        pub fn delete(self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
+            diesel::delete($table.find(self.id)).execute(conn)
+        }
+    }
+}

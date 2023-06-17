@@ -3,9 +3,9 @@ use diesel::RunQueryDsl;
 use serde::Serialize;
 
 use crate::models::player::Player;
-use crate::models::season::Season;
+use crate::models::season::{Season, SeasonState};
 use crate::schema::qualifier_submissions;
-use crate::{save_fn, update_fn};
+use crate::{save_fn, update_fn, NMGLeagueBotError, delete_fn};
 
 #[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
 pub struct QualifierSubmission {
@@ -17,7 +17,23 @@ pub struct QualifierSubmission {
 }
 
 impl QualifierSubmission {
+    pub fn get_by_id(
+        id: i32,
+        conn: &mut SqliteConnection,
+    ) -> Result<Self, diesel::result::Error> {
+        qualifier_submissions::table.find(id).first(conn)
+    }
+}
+
+impl QualifierSubmission {
+    /// checks if it's safe to delete this submission (i.e. the season it's part of is in a state
+    /// where deleting qualifiers is reasonable)
+    /// you can use [Season::safe_to_delete_qualifiers] if you have a Season in hand already
+    pub fn safe_to_delete(&self, conn: &mut SqliteConnection) -> Result<bool, NMGLeagueBotError> {
+        Season::get_by_id(self.season_id, conn)?.safe_to_delete_qualifiers()
+    }
     update_fn! {}
+    delete_fn!(qualifier_submissions::table);
 }
 
 #[derive(Insertable)]

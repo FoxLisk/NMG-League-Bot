@@ -56,7 +56,7 @@ impl Season {
         Ok(SeasonState::QualifiersOpen == self.get_state()?)
     }
 
-    fn get_state(&self) -> Result<SeasonState, serde_json::Error> {
+    pub fn get_state(&self) -> Result<SeasonState, serde_json::Error> {
         serde_json::from_str(&self.state)
     }
 
@@ -154,6 +154,12 @@ impl Season {
             .load(conn)
     }
 
+    pub fn safe_to_delete_qualifiers(&self) -> Result<bool, NMGLeagueBotError> {
+        match self.get_state()? {
+            SeasonState::QualifiersOpen | SeasonState::QualifiersClosed => Ok(true),
+            SeasonState::Created | SeasonState::Started | SeasonState::Finished => Ok(false),
+        }
+    }
 
     update_fn! {}
 }

@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::{debug, info, warn};
 use once_cell::sync::Lazy;
 use racetime_api::client::RacetimeClient;
 use shutdown::Shutdown;
@@ -77,7 +77,7 @@ async fn main() {
         state.clone(),
     ));
 
-    tokio::spawn(web::launch_website(
+    let website_jh = tokio::spawn(web::launch_website(
         state.clone(),
         shutdown_send.subscribe(),
     ));
@@ -94,7 +94,15 @@ async fn main() {
 
     drop(state);
     drop(webhooks);
-    tokio::signal::ctrl_c().await.ok();
+    tokio::select! {
+        anything = tokio::signal::ctrl_c() => {
+            info!("Got ^C (ish): {anything:?}");
+        }
+        website = website_jh => {
+            warn!("Website crashed or whatever: {website:?}");
+        }
+    }
+
     let (shutdown_signal_send, mut shutdown_signal_recv) = tokio::sync::mpsc::channel(1);
     // send a copy of an mpsc sender to each watcher of the shutdown thread...
     {

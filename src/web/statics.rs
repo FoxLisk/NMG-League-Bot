@@ -2,8 +2,8 @@ use log::info;
 use rocket::fs::NamedFile;
 use rocket::request::{FromRequest, Outcome};
 use std::path::{Path, PathBuf};
-const STATIC_SUFFIXES: [&str; 8] = [
-    &"js", &"css", &"mp3", &"html", &"jpg", &"ttf", &"otf", &"gif",
+const STATIC_SUFFIXES: [&str; 9] = [
+    &"js", &"css", &"mp3", &"html", &"jpg", &"ttf", &"otf", &"gif", &"png",
 ];
 use rocket::{get, Request};
 
