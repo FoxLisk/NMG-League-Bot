@@ -14,7 +14,7 @@ use oauth2::{
     TokenResponse as OauthTokenResponse, TokenUrl,
 };
 use rocket::get;
-use rocket::http::{Cookie, CookieJar};
+use rocket::http::{Cookie, CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::time::Duration;
@@ -171,6 +171,7 @@ impl<'r> FromRequest<'r> for Admin {
         };
         match role_checker.has_nmg_league_admin_role(uid).await {
             Ok(true) => Outcome::Success(Admin {}),
+            Ok(false) => Outcome::Failure((Status::Forbidden, ())),
             _ => Outcome::Forward(()),
         }
     }
