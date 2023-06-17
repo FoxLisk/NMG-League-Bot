@@ -28,6 +28,8 @@
                 <div class="flex md:w-1/5">
                     {% if base_context.admin %}
                         <a href="/asyncs">asyncs</a>
+                    {% else %}
+                        <a href="/login">login</a>
                     {% endif %}
                 </div>
             </div>

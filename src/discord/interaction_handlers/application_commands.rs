@@ -734,8 +734,7 @@ async fn handle_create_player(
         None => {
             let u = state
                 .get_user(discord_user)
-                .await
-                .map_err(|e| format!("Error finding user??? {}", e))?;
+                .await;
             u.ok_or(format!("User not found"))?.name
         }
     };

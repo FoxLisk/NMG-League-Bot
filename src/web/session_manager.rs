@@ -38,6 +38,14 @@ impl<T: Clone> SessionManager<T> {
         t
     }
 
+    /// logs out the associated user (if any); returns a bool indicating if they were logged in
+    pub(crate) fn log_out_user(&mut self, st: &SessionTokenRef) -> bool {
+        match self.session.remove(st) {
+            None => false,
+            Some(_) => true
+        }
+    }
+
     /// Returns the user associated with the given session token, if any
     pub(crate) fn get_user(&mut self, st: &SessionTokenRef) -> Result<T, UserNotAuthenticated> {
         let (uid, exp_at) = self

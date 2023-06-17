@@ -1,5 +1,11 @@
 {% extends "base" %}
+
+{% import "macros" as macros %}
+
 {% block pagename %}Login{% endblock %}
 {% block body %}
-<a href="{{ url }}">Login here</a>
+{{ macros::link(href=url, text="Login here") }}
+<p>
+    This is for admins only. If you're not an admin the login will fail.
+</p>
 {% endblock %}
