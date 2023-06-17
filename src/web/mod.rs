@@ -156,6 +156,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
     struct ViewRaceBuilder {
         id: i32,
         state: RaceState,
+        on_start_message: Option<String>,
         p1: Option<ViewRaceRun>,
         p2: Option<ViewRaceRun>,
     }
@@ -164,6 +165,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
     struct ViewRace {
         id: i32,
         state: RaceState,
+        on_start_message: Option<String>,
         p1: ViewRaceRun,
         p2: ViewRaceRun,
     }
@@ -173,6 +175,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
             Self {
                 id: r.id,
                 state: r.state,
+                on_start_message: r.on_start_message,
                 p1: None,
                 p2: None,
             }
@@ -199,6 +202,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
                 Ok(ViewRace {
                     id: self.id,
                     state: self.state,
+                    on_start_message: self.on_start_message,
                     p1,
                     p2,
                 })
@@ -206,6 +210,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
                 Ok(ViewRace {
                     id: self.id,
                     state: self.state,
+                    on_start_message: self.on_start_message,
                     p1: p2,
                     p2: p1,
                 })

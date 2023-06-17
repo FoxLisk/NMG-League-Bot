@@ -16,8 +16,8 @@
 
 {% macro run_cells(run) %}
 {{ self::row_cell(data=run.racer_name) }}
-{{ self::row_cell(data=run.filenames) }}
 {{ self::row_cell(data=run.run_state) }}
+{{ self::row_cell(data=run.filenames) }}
 {{ self::row_cell(data=run.vod) }}
 {{ self::row_cell(data=run.started | option_default(default="-")) }}
 {{ self::row_cell(data=run.bot_time_to_finish | option_default(default="-")) }}
@@ -29,11 +29,15 @@
 <table class="border border-slate-500 {{ bg_class }} my-3">
     <thead>
         <tr>
+            {# race fields #}
             {{ self::header(name="Race state") }}
             {{ self::header(name="Race ID") }}
+            {{ self::header(name="Admin Comment") }}
+
+            {# per-run fields #}
             {{ self::header(name="Racer") }}
-            {{ self::header(name="Filenames") }}
             {{ self::header(name="Run state") }}
+            {{ self::header(name="Filenames") }}
             {{ self::header(name="VoD Link") }}
             {{ self::header(name="Run started") }}
             {{ self::header(name="Observed time") }}
@@ -49,6 +53,9 @@
             </th>
             <th rowspan=2 class="border-x border-slate-500">
                 {{ race.id }}
+            </th>
+            <th rowspan=2 class="border-x border-slate-500 w-44 text-xs font-normal">
+                {{ race.on_start_message }}
             </th>
             {{ self::run_cells(run=race.p1) }}
         </tr>
