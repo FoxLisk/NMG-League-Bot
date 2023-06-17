@@ -97,7 +97,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     let qualifiers = await get_qualifiers(season_id).then(async qualifiers => {
         var obsolete_hidden = true;
         function rebuild() {
-            console.log("rebuild(): qualifiers.length = " + qualifiers.length.toString());
             tbody.innerHTML = "";
             let rows = build_rows(qualifiers);
             let button = document.querySelector('button#toggle-obsolete');
@@ -134,9 +133,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             trashcan.classList.add('hidden');
             spinner.classList.remove('hidden');
             let id = parseInt(delete_.dataset['target_id'], 10);
-            console.log("Deleting " + id);
             await do_delete(id).then(async () => {
-                console.log("do_delete succeeded");
                 // we could have delete_qualifier return an updated list of all qualifiers
                 // and rebuild based on that, but i'm choosing to just do all client-side stuff here
                 // because adding a returned list to the endpoint seems kind of weird just for this one use case.
