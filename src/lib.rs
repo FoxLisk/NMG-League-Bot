@@ -49,6 +49,16 @@ impl ChannelConfig {
     }
 }
 
+
+// N.B. this should probably live in web::api, but that's currently not included in the lib
+// so that's a huge mess
+#[derive(Debug, Error)]
+pub enum ApiError {
+    #[error("Cannot delete qualifiers that are already closed.")]
+    CannotDeletePastQualifiers,
+}
+
+
 #[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
@@ -68,4 +78,8 @@ pub enum NMGLeagueBotError {
 
     #[error("Twitch API error: {0}")]
     TwitchError(#[from] ClientRequestError<reqwest::Error>),
+
+    #[error("API Error: {0}")]
+    ApiError(#[from] ApiError)
 }
+

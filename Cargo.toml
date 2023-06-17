@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 
 [features]
+# this feature gives you admin status at all times
 no_auth_website = []
 
 [dependencies]

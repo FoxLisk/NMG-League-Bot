@@ -1,37 +1,41 @@
 //! api lol. the idea is just stuff that returns json i guess
 
+use crate::web::auth::Admin;
 use crate::web::ConnectionWrapper;
 use diesel::result::Error;
 use diesel::SqliteConnection;
+use nmg_league_bot::models::qualifer_submission::QualifierSubmission;
 use rocket::serde::json::Json;
-use rocket::{get, Build, Rocket};
+use rocket::{delete, get, Build, Rocket, Request};
+use rocket::response::Responder;
+use serde::Serialize;
+use nmg_league_bot::NMGLeagueBotError;
+use nmg_league_bot::ApiError;
+use nmg_league_bot::utils::ResultErrToString;
+
+struct ApiResponse<T, E>(Result<T, E>);
+
+impl<'r, 'o: 'r, T: Serialize, E: std::error::Error> Responder<'r, 'o> for ApiResponse<T, E> {
+    fn respond_to(self, request: &'r Request<'_>) -> rocket::response::Result<'o> {
+        Json(self.0.map_err_to_string()).respond_to(request)
+    }
+}
 
 #[derive(diesel::Queryable, serde::Serialize)]
 struct Qualifier {
+    id: i32,
     player_name: String,
     time: i32,
     vod: String,
 }
 
-#[derive(serde::Serialize, thiserror::Error, Debug)]
-enum ApiError {
-    #[error("Internal error communicating with database")]
-    DatabaseError,
-}
-
-impl From<diesel::result::Error> for ApiError {
-    fn from(_value: Error) -> Self {
-        Self::DatabaseError
-    }
-}
-
-fn get_qualifiers(id: i32, db: &mut SqliteConnection) -> Result<Vec<Qualifier>, ApiError> {
+fn get_qualifiers(id: i32, db: &mut SqliteConnection) -> Result<Vec<Qualifier>, NMGLeagueBotError> {
     use crate::schema::{players, qualifier_submissions as qs};
     use diesel::prelude::*;
     Ok(qs::table
         .inner_join(players::table)
         .filter(qs::season_id.eq(id))
-        .select((players::name, qs::reported_time, qs::vod_link))
+        .select((qs::id, players::name, qs::reported_time, qs::vod_link))
         .order_by(qs::reported_time.asc())
         .load(db)?)
 }
@@ -40,10 +44,30 @@ fn get_qualifiers(id: i32, db: &mut SqliteConnection) -> Result<Vec<Qualifier>, 
 async fn qualifiers(
     id: i32,
     mut db: ConnectionWrapper<'_>,
-) -> Json<Result<Vec<Qualifier>, ApiError>> {
-    Json(get_qualifiers(id, &mut db))
+) -> ApiResponse<Vec<Qualifier>, NMGLeagueBotError> {
+    ApiResponse(get_qualifiers(id, &mut db))
+}
+
+#[delete("/qualifiers/<id>")]
+async fn delete_qualifier(
+    id: i32,
+    _admin: Admin,
+    mut db: ConnectionWrapper<'_>,
+) -> ApiResponse<(), NMGLeagueBotError> {
+    let mut _delete_qualifier = || -> Result<(), NMGLeagueBotError> {
+        let q = QualifierSubmission::get_by_id(id, &mut db)?;
+        if q.safe_to_delete(&mut db)? {
+            q.delete(&mut db)?;
+        } else {
+            // its weird that you put the `.into`() inside here!
+            // Err(...).map_err(Into::into) works too
+            return Err(ApiError::CannotDeletePastQualifiers.into());
+        }
+        Ok(())
+    };
+    ApiResponse(_delete_qualifier())
 }
 
 pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
-    rocket.mount("/api/v1", rocket::routes![qualifiers])
+    rocket.mount("/api/v1", rocket::routes![qualifiers, delete_qualifier])
 }

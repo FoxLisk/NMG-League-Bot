@@ -156,6 +156,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
     struct ViewRaceBuilder {
         id: i32,
         state: RaceState,
+        on_start_message: Option<String>,
         p1: Option<ViewRaceRun>,
         p2: Option<ViewRaceRun>,
     }
@@ -164,6 +165,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
     struct ViewRace {
         id: i32,
         state: RaceState,
+        on_start_message: Option<String>,
         p1: ViewRaceRun,
         p2: ViewRaceRun,
     }
@@ -173,6 +175,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
             Self {
                 id: r.id,
                 state: r.state,
+                on_start_message: r.on_start_message,
                 p1: None,
                 p2: None,
             }
@@ -199,6 +202,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
                 Ok(ViewRace {
                     id: self.id,
                     state: self.state,
+                    on_start_message: self.on_start_message,
                     p1,
                     p2,
                 })
@@ -206,6 +210,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
                 Ok(ViewRace {
                     id: self.id,
                     state: self.state,
+                    on_start_message: self.on_start_message,
                     p1: p2,
                     p2: p1,
                 })
@@ -716,7 +721,7 @@ fn option_default(
 pub(crate) async fn launch_website(
     state: Arc<DiscordState>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
-) {
+) -> Result<(), rocket::error::Error>{
     let oauth_client = OauthClient::new();
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
@@ -750,20 +755,19 @@ pub(crate) async fn launch_website(
         .manage(db);
     let rocket = api::build_rocket(rocket);
 
-    let ignited = rocket.ignite().await.unwrap();
+    let ignited = rocket.ignite().await?;
     info!("Rocket config: {:?}", ignited.config());
     let s = ignited.shutdown();
     let jh = tokio::spawn(ignited.launch());
 
-    tokio::spawn(async move {
-        // if you don't assign this .recv() value to anything, it get dropped immediately
-        // i am pretty sure it gets dropped at the end of `recv()`?
-        let _x = shutdown.recv().await;
-        s.notify();
-        if let Err(_) = tokio::time::timeout(Duration::from_secs(5), jh).await {
-            info!("Rocket didn't shutdown in a timely manner, dropping anyway");
-        } else {
-            info!("Rocket shut down promptly");
-        }
-    });
+    // if you don't assign this .recv() value to anything, it get dropped immediately
+    // i am pretty sure it gets dropped at the end of `recv()`?
+    let _x = shutdown.recv().await;
+    s.notify();
+    if let Err(_) = tokio::time::timeout(Duration::from_secs(5), jh).await {
+        info!("Rocket didn't shutdown in a timely manner, dropping anyway");
+    } else {
+        info!("Rocket shut down promptly");
+    }
+    Ok(())
 }

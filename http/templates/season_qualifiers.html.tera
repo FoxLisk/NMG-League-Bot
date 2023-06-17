@@ -13,6 +13,21 @@
         <td class="player px-4">{{ macros::link(href="", text="") }}</td>
         <td class="time px-4"></td>
         <td class="vod pl-4">{{ macros::link(href="", text="link") }}</td>
+        {% if base_context.admin %}
+        <td class="delete-qualifier">
+            <img src="/static/images/trash-can-regular.png" width="16" height="16">
+            <div class="
+            spinner
+            w-5 h-5 rounded-full border border-2 border-red-600 relative hidden
+
+            after:box-border after:absolute after:left-0.25 after:top-0.25
+            after:border-2 after:border-solid after:border-sky-600
+            after:w-2 after:h-2 after:rounded-full
+
+            animate-spin
+"></div>
+        </td>
+        {% endif %}
     </tr>
 </template>
 {% endblock %}
@@ -31,6 +46,9 @@
                 <td class="px-4">Player</td>
                 <td class="px-4">Time</td>
                 <td class="pl-4">VoD</td>
+                {% if base_context.admin %}
+                <td class="">Delete</td>
+                {% endif %}
             </tr>
         </thead>
         <tbody>
