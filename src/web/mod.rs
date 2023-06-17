@@ -227,9 +227,6 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
         let username = match run.racer_id() {
             Ok(uid) => discord_state
                 .get_user(uid)
-                .await
-                .ok()
-                .flatten()
                 .map(|u| u.name)
                 .unwrap_or("Unknown".to_string()),
             Err(e) => {

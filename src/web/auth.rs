@@ -141,6 +141,7 @@ impl<'r> FromRequest<'r> for Admin {
                 return Outcome::Forward(());
             }
         };
+        let st = SessionToken::new(cookie.to_string());
         let sm_lock = match request
             .guard::<&State<Arc<tokio::sync::Mutex<SessionManager>>>>()
             .await
@@ -152,26 +153,36 @@ impl<'r> FromRequest<'r> for Admin {
         };
         let uid = {
             let mut sm = sm_lock.lock().await;
-            let st = SessionToken::new(cookie.to_string());
             match sm.get_user(&st) {
                 Ok(u) => u,
                 Err(e) => {
                     info!("User not found for session token {}: {:?}", st, e);
-                    // TODO: clear the cookie
+                    request.cookies().remove(Cookie::named(SESSION_COOKIE_NAME));
                     return Outcome::Forward(());
                 }
             }
         };
 
-        let role_checker = match request.guard::<&State<Arc<DiscordState>>>().await {
+        let state = match request.guard::<&State<Arc<DiscordState>>>().await {
             Outcome::Success(s) => s,
             _ => {
                 return Outcome::Forward(());
             }
         };
-        match role_checker.has_nmg_league_admin_role(uid).await {
+        match state.has_nmg_league_admin_role(uid).await {
             Ok(true) => Outcome::Success(Admin {}),
-            Ok(false) => Outcome::Failure((Status::Forbidden, ())),
+            Ok(false) => {
+                // N.B. would it be better to just get this lock once?
+                let mut sm = sm_lock.lock().await;
+                let un = state
+                    .get_user(uid)
+                    .map(|u| u.name)
+                    .unwrap_or("Unknown username".to_string());
+                debug!("Logging out {un} because they no longer have admin status");
+                sm.log_out_user(&st);
+                request.cookies().remove(Cookie::named(SESSION_COOKIE_NAME));
+                Outcome::Failure((Status::Forbidden, ()))
+            }
             _ => Outcome::Forward(()),
         }
     }
