@@ -176,7 +176,6 @@ impl<'r> FromRequest<'r> for Admin {
                 let mut sm = sm_lock.lock().await;
                 let un = state
                     .get_user(uid)
-                    .await
                     .map(|u| u.name)
                     .unwrap_or("Unknown username".to_string());
                 debug!("Logging out {un} because they no longer have admin status");

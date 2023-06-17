@@ -172,7 +172,7 @@ impl DiscordState {
     }
 
     /// convenience method for getting a user's info from the twilight cache
-    pub async fn get_user(&self, user_id: Id<UserMarker>) -> Option<User> {
+    pub fn get_user(&self, user_id: Id<UserMarker>) -> Option<User> {
         self.cache.user(user_id).map(|u| u.value().clone())
     }
 
