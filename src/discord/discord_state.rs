@@ -27,7 +27,7 @@ use twilight_standby::Standby;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
-    pub client: Client,
+    pub client: Arc<Client>,
     diesel_pool: Pool<DieselConnectionManager>,
     pub webhooks: Webhooks,
     pub standby: Arc<Standby>,
@@ -56,7 +56,7 @@ pub enum DiscordStateError {
 impl DiscordState {
     pub fn new(
         cache: InMemoryCache,
-        client: Client,
+        client: Arc<Client>,
         aid: Id<ApplicationMarker>,
         diesel_pool: Pool<DieselConnectionManager>,
         webhooks: Webhooks,

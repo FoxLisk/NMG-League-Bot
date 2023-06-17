@@ -51,6 +51,7 @@ use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::ResultErrToString;
 
 pub(crate) async fn launch(
+    client: Arc<Client>,
     webhooks: Webhooks,
     racetime_client: RacetimeClient,
     twitch_client_bundle: TwitchClientBundle,
@@ -58,13 +59,12 @@ pub(crate) async fn launch(
 ) -> Arc<DiscordState> {
     let aid = CONFIG.discord_application_id;
 
-    let http = Client::new(CONFIG.discord_token.clone());
     let cache = InMemoryCache::builder().build();
     let standby = Arc::new(Standby::new());
     let diesel_pool = get_diesel_pool().await;
     let state = Arc::new(DiscordState::new(
         cache,
-        http,
+        client,
         aid,
         diesel_pool,
         webhooks,

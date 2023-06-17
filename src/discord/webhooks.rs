@@ -49,9 +49,7 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
 }
 
 impl Webhooks {
-    pub async fn new() -> Result<Self, String> {
-        let client = Arc::new(Client::new(CONFIG.discord_token.clone()));
-
+    pub async fn new(client: Arc<Client>) -> Result<Self, String> {
         let async_channel = get_webhook_by_url(&client, CONFIG.async_webhook.clone()).await?;
         let admin_channel = get_webhook_by_url(&client, CONFIG.admin_webhook.clone()).await?;
 
