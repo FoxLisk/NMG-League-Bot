@@ -61,25 +61,25 @@ function build_row(template, qual_row, seen) {
     return row;
 }
 
-function do_delete(id) {
+/// deletes the qualifier with this id
+/// returns an error if something went wrong, otherwise void
+async function do_delete(id) {
     let url = '/api/v1/qualifiers/' + id.toString();
-    return new Promise((res, rej) => {
-        fetch(url, {
+    try {
+        let resp = await fetch(url, {
             'method': 'DELETE'
-        }).then(resp => {
-            if (resp.ok) {
-                resp.json().then(parsed => {
-                    if (parsed.Ok !== undefined) {
-                        res();
-                    } else {
-                        rej(parsed.Err || "Unknown or missing error");
-                    }
-                });
-            } else {
-                rej("Bad HTTP status: " + resp.status);
-            }
-        })
-    });
+        });
+        if (!resp.ok) {
+            return 'Error: invalid status: ' + resp.status.toString();
+        }
+        let res = await resp.json();
+        if (res.Err) {
+            return res.Err
+        }
+    } catch (err) {
+        console.log("do_delete request error", err);
+        return 'Request error: ' + err.toString();
+    }
 }
 
 function build_rows(qualifiers) {
@@ -136,7 +136,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             trashcan.classList.add('hidden');
             spinner.classList.remove('hidden');
             let id = parseInt(delete_.dataset['target_id'], 10);
-            await do_delete(id).then(async () => {
+            let res = await do_delete(id);
+            spinner.classList.add('hidden');
+            trashcan.classList.remove('hidden');
+            if (res) {
+                alert(res);
+            } else {
                 // we could have delete_qualifier return an updated list of all qualifiers
                 // and rebuild based on that, but i'm choosing to just do all client-side stuff here
                 // because adding a returned list to the endpoint seems kind of weird just for this one use case.
@@ -148,11 +153,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // either it's a big enough stack that it's irrelevant or the async scheduler thingy just solves
                 // the problem for us
                 rebuild();
-            }).catch(e => {
-                alert("Error deleting qualifier: " + e.toString());
-            });
-            spinner.classList.add('hidden');
-            trashcan.classList.remove('hidden');
+            }
+
         });
         rebuild();
 
