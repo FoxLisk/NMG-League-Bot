@@ -94,32 +94,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     let table = document.getElementById('qualifiers_table')
     let season_id = container.dataset['seasonId'];
     let tbody = document.querySelector('#qualifiers_table tbody');
-    let qualifiers = await get_qualifiers(season_id).then(async qualifiers => {
+    let button = document.querySelector('button#toggle-obsolete');
+
+    let qualifiers = await get_qualifiers(season_id);
+    try {
         var obsolete_hidden = true;
         function rebuild() {
             tbody.innerHTML = "";
             let rows = build_rows(qualifiers);
-            let button = document.querySelector('button#toggle-obsolete');
             rows.map(r => tbody.appendChild(r));
             let obsolete_rows = document.querySelectorAll('tr.obsolete');
             button.classList.remove("hidden");
             table.classList.remove('hidden');
             function effect_obsolete_hidden() {
                 if (obsolete_hidden) {
-                    // show things
-                    obsolete_rows.forEach(r => { r.classList.remove('hidden'); });
-                    button.textContent = 'Hide obsolete';
-                } else {
                     // hide things
                     obsolete_rows.forEach(r => { r.classList.add('hidden'); });
                     button.textContent = 'Show obsolete';
+                } else {
+                    // show things
+                    obsolete_rows.forEach(r => { r.classList.remove('hidden'); });
+                    button.textContent = 'Hide obsolete';
                 }
             }
             effect_obsolete_hidden();
             button.addEventListener('click', e => {
                 e.preventDefault();
-                effect_obsolete_hidden();
                 obsolete_hidden = ! obsolete_hidden;
+                effect_obsolete_hidden();
             });
         }
         tbody.addEventListener('click', async e => {
@@ -157,11 +159,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         });
         rebuild();
-
-    }).catch(e => {
+    } catch (e) {
         let error = document.getElementById('error');
         error.textContent = e;
-    });
+    };
 
 
 });
