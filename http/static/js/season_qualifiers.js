@@ -127,7 +127,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!delete_) {
                 return;
             }
-
+            let whatever = confirm("Really delete?");
+            if (!whatever) {
+                return;
+            }
             let trashcan = delete_.querySelector('img');
             let spinner = delete_.querySelector('.spinner');
             trashcan.classList.add('hidden');
