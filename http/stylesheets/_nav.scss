@@ -1,0 +1,40 @@
+nav#top-nav {
+  background-color: #1f2937;
+  color: white;
+  display: flex;
+  align-items: stretch;
+
+  .nav-item {
+    display: inline-block;
+    padding-top: 0.85rem;
+    padding-bottom: 0.7rem;
+    border-bottom: 4px solid transparent;
+
+    transition-property: background-color, border-color;
+    transition-timing-function: linear;
+    transition-duration: 150ms;
+  }
+
+  .nav-item:hover {
+    border-color: #10b981;
+    background-color: black;
+  }
+
+  .nav-main-logo {
+    font-size: 1.25rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .nav-generic-item {
+    padding-left: 1rem;
+    padding-right: 1rem;
+
+    span {
+      vertical-align: sub;
+
+      // Vertical align fix for firefox
+      vertical-align: -moz-middle-with-baseline;
+    }
+  }
+}
