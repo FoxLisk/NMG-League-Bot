@@ -1,0 +1,37 @@
+div#season-container {
+  width: 90%;
+  margin: 3.5rem auto;
+  box-shadow: 1px 1px 6px black;
+
+  #season-banner {
+    background-color: #374151;
+    padding: 0 3rem;
+
+    #season-title {
+      display: inline-block;
+      width: 100%;
+      margin: 1rem 0;
+      font-size: 2.5rem;
+    }
+
+    nav#season-nav {
+      display: flex;
+
+      .nav-item {
+        display: inline-block;
+        padding: 1rem 1.5rem 0.9rem;
+        border-bottom: 4px solid transparent;
+        transition: border-color linear 100ms;
+      }
+
+      .nav-item:hover {
+        border-color: #10b98177;
+      }
+    }
+  }
+
+  #season-sub-page {
+    background-color: #272a33;
+    padding: 2rem 3rem;
+  }
+}

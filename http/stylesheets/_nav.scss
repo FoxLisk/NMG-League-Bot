@@ -1,6 +1,5 @@
 nav#top-nav {
   background-color: #1f2937;
-  color: white;
   display: flex;
   align-items: stretch;
 
@@ -12,11 +11,11 @@ nav#top-nav {
 
     transition-property: background-color, border-color;
     transition-timing-function: linear;
-    transition-duration: 150ms;
+    transition-duration: 100ms;
   }
 
   .nav-item:hover {
-    border-color: #10b981;
+    border-color: #10b981bb;
     background-color: black;
   }
 

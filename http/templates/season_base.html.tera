@@ -1,29 +1,18 @@
 {% extends "base" %}
 
 {% block body %}
-<div class="bg-sky-600 h-7 mb-2 border-t">
-    <div class="flex text-indigo-900">
-        <div class="flex w-32">
-        </div>
-        <div class="flex flex-auto text-black" title="Season #{{season.id}}">
-            {{ season.format }}
-        </div>
-        <div class="flex flex-auto">
-            <a href="/season/{{season.id}}/brackets">Brackets</a>
-        </div>
-        <div class="flex flex-auto">
-            <a href="/season/{{season.id}}/standings">Standings</a>
-        </div>
-        <div class="flex flex-auto">
-            <a href="/season/{{season.id}}/qualifiers">Qualifiers</a>
-        </div>
-        <div class="flex md:w-1/5">
-        </div>
+<div id="season-container">
+    <div id="season-banner">
+        <div id="season-title">Season {{base_context.current_season.id}} - {{ season.format }}</div>
+        <nav id="season-nav">
+            <a class="nav-item" href="/season/{{season.id}}/brackets">Brackets</a>
+            <a class="nav-item" href="/season/{{season.id}}/standings">Standings</a>
+            <a class="nav-item" href="/season/{{season.id}}/qualifiers">Qualifiers</a>
+        </nav>
     </div>
-    {# header #}
+    <div id="season-sub-page">
+        {% block season_body %}{% endblock %}
+    </div>
 </div>
-<div class="p-2 text-2xl md:text-xl lg:text-base m-4">
-    {% block season_body %}
-    {% endblock %}
-</div>
+
 {% endblock body %}
