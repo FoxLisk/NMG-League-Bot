@@ -355,6 +355,8 @@ fn normalize_racetime_name(name: &str) -> String {
             r.replace(name, "$1").to_string()
         }
         Err(e) => {
+            // N.B. the regex should be constructed once, on startup
+            info!("Error constructing racetime name regex: {e}");
             name.to_string()
         }
     }
