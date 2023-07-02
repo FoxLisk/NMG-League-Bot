@@ -1,11 +1,11 @@
-$text-color: #e5e7eb;
+@use 'common/colors';
 
 body {
-  background-color: #465876;
-  color: $text-color;
+  background-color: colors.$body-bg-color;
+  color: colors.$text-color;
 }
 
 nav a {
-  color: $text-color;
+  color: colors.$text-color;
   text-decoration: none;
 }

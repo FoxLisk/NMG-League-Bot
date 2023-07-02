@@ -1,0 +1,28 @@
+/* A common file for all the colors used throughout the site for better readability and easy reuse */
+
+// Common
+$text-color: #e5e7eb;
+$body-bg-color: #465876;
+
+// Top Nav
+$nav-bg-color: #1f2937;
+$nav_hover-bg-color: black;
+$nav_hover-underline-color: #10b981bb;
+
+/* Current Season */
+// Current season banner
+$season-banner-bg-color: #374151;
+$season-banner-nav_hover-underline-color: #10b98177;
+// Season sub page
+$season-sub-page-bg-color: #272a33;
+$season-sub-page-separator-color: #2f3442;
+// Season table
+$season-table-header-color: #15171b;
+$season-table-column-border-color: #23262e;
+$season-table-odd-row-color: #363c48;
+$season-table-even-row-color: #3d4351;
+
+// Bracket Details
+$winner-cell-bg-color: #34d39933;
+$loser-cell-bg-color: #f8717133;
+

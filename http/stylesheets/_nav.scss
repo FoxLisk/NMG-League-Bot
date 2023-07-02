@@ -1,5 +1,7 @@
+@use 'common/colors';
+
 nav#top-nav {
-  background-color: #1f2937;
+  background-color: colors.$nav-bg-color;
   display: flex;
   align-items: stretch;
 
@@ -14,8 +16,8 @@ nav#top-nav {
   }
 
   .nav-item:hover {
-    border-color: #10b981bb;
-    background-color: black;
+    border-color: colors.$nav_hover-underline-color;
+    background-color: colors.$nav_hover-bg-color;
   }
 
   .nav-main-logo {

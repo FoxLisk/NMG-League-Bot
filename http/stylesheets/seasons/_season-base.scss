@@ -1,10 +1,12 @@
+@use '../common/colors';
+
 div#season-container {
   width: 90%;
   margin: 3.5rem auto;
   box-shadow: 1px 1px 6px black;
 
   #season-banner {
-    background-color: #374151;
+    background-color: colors.$season-banner-bg-color;
     padding: 0 3rem;
 
     #season-title {
@@ -23,32 +25,30 @@ div#season-container {
       }
 
       .nav-item:hover {
-        border-color: #10b98177;
+        border-color: colors.$season-banner-nav_hover-underline-color;
       }
     }
   }
 
   #season-sub-page {
-    background-color: #272a33;
+    background-color: colors.$season-sub-page-bg-color;
     padding: 1px 3rem;
 
     table {
-      $header-color: #15171b;
-
       width: 100%;
-      border: 1px solid $header-color;
+      border: 1px solid colors.$season-table-header-color;
       border-collapse: collapse;
       box-shadow: 1px 1px 5px #00000055;
 
       thead {
-        background: $header-color;
+        background: colors.$season-table-header-color;
       }
 
       tr {
         td {
           text-align: center;
           padding: 0.5rem 1.5rem;
-          border-right: 1px solid #23262e;
+          border-right: 1px solid colors.$season-table-column-border-color;
         }
 
         td:last-of-type {
@@ -56,13 +56,12 @@ div#season-container {
         }
       }
 
-
       tbody {
-        border: 1px solid #23262e;
-        background: #363c48;
+        border: 1px solid colors.$season-table-column-border-color;
+        background: colors.$season-table-odd-row-color;
 
         tr:nth-child(even) {
-          background: #3d4351;
+          background: colors.$season-table-even-row-color;
         }
       }
     }
@@ -73,7 +72,7 @@ div#season-container {
 
     hr.template-item-separator {
       margin: 2rem 0 1.5rem;
-      background-color: #2F3442;
+      background-color: colors.$season-sub-page-separator-color;
     }
 
     hr.template-item-separator:last-of-type {
