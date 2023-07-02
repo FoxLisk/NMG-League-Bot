@@ -58,7 +58,7 @@ div#season-container {
 
       tbody {
         border: 1px solid colors.$season-table-column-border-color;
-        background: colors.$season-table-odd-row-color;
+        background: colors.$season-table-bg-color;
 
         tr:nth-child(even) {
           background: colors.$season-table-even-row-color;
