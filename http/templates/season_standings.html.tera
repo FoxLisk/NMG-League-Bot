@@ -45,7 +45,7 @@
                 </tbody>
             </table>
         </div>
-        <hr />
+        <hr class="template-item-separator" />
     {% endfor %}
 </div>
 {% endblock %}

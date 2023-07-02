@@ -1,6 +1,36 @@
 div#season-sub-page {
+  // Bracket list page
   ul {
     margin: 1rem 0;
     padding: 0 1rem;
+  }
+
+  // Bracket detail page
+  #bracket-detail-page {
+    #bracket-title {
+      font-size: 1.8rem;
+      margin: 1rem 0;
+    }
+
+    hr#bracket-title-separator {
+      background-color: #15171b;
+    }
+
+    .bracket-round-container {
+      margin: 1rem 0 2rem;
+
+      .bracket-round-number {
+        font-size: 1.4rem;
+        margin: 1rem 0;
+      }
+
+      td.winner-cell {
+        background-color: #34d39933;
+      }
+
+      td.loser-cell {
+        background-color: #f8717133;
+      }
+    }
   }
 }
