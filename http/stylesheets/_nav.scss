@@ -4,6 +4,7 @@ nav#top-nav {
   background-color: colors.$nav-bg-color;
   display: flex;
   align-items: stretch;
+  box-shadow: 0 0 5px colors.$faint-black-box-shadow-color;
 
   .nav-item {
     padding-top: 0.85rem;

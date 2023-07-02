@@ -38,7 +38,7 @@ div#season-container {
       width: 100%;
       border: 1px solid colors.$season-table-header-color;
       border-collapse: collapse;
-      box-shadow: 1px 1px 5px #00000055;
+      box-shadow: 1px 1px 5px colors.$faint-black-box-shadow-color;
 
       thead {
         background: colors.$season-table-header-color;
