@@ -3,7 +3,7 @@
 {% block body %}
 <div id="season-container">
     <div id="season-banner">
-        <div id="season-title">Season {{base_context.current_season.id}} - {{ season.format }}</div>
+        <div id="season-title">{{ season.format }}</div>
         <nav id="season-nav">
             <a class="nav-item" href="/season/{{season.id}}/brackets">Brackets</a>
             <a class="nav-item" href="/season/{{season.id}}/standings">Standings</a>
