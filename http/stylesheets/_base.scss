@@ -9,3 +9,8 @@ nav a {
   color: colors.$text-color;
   text-decoration: none;
 }
+
+hr {
+  height: 1px;
+  background-color: colors.$hr-color;
+}

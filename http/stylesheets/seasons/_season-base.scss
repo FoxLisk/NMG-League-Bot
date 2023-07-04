@@ -66,13 +66,8 @@ div#season-container {
       }
     }
 
-    hr {
-      height: 1px;
-    }
-
     hr.template-item-separator {
       margin: 2rem 0 1.5rem;
-      background-color: colors.$season-sub-page-separator-color;
     }
 
     hr.template-item-separator:last-of-type {
