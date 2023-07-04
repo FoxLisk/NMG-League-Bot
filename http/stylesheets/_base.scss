@@ -5,6 +5,11 @@ body {
   color: colors.$text-color;
 }
 
+a {
+  color: colors.$highlight-color;
+  text-decoration: underline;
+}
+
 nav a {
   color: colors.$text-color;
   text-decoration: none;

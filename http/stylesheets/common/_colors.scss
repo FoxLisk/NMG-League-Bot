@@ -6,15 +6,14 @@ $body-bg-color: #465876;
 $faint-black-box-shadow-color: #00000055;
 $page-content-container-bg-color: #374151;
 $hr-color: #2f3442;
+$highlight-color: #10b981;
 
 // Top Nav
 $nav-bg-color: #1f2937;
 $nav_hover-bg-color: black;
-$nav_hover-underline-color: #10b981bb;
+$nav_hover-highlight-color: #{$highlight-color}bb;
 
 /* Current Season */
-// Current season banner
-$season-banner-nav_hover-underline-color: #10b98177;
 // Season sub page
 $season-sub-page-bg-color: #272a33;
 // Season table
@@ -24,7 +23,7 @@ $season-table-bg-color: #363c48;
 $season-table-even-row-color: #3d4351;
 
 // Bracket Details
-$winner-cell-bg-color: #34d39933;
+$winner-cell-bg-color: #22d3ee33;
 $loser-cell-bg-color: #f8717133;
 
 // Qualifiers
