@@ -143,6 +143,7 @@ impl Season {
         use schema::brackets;
 
         let now = Utc::now();
+        // TODO: this should be configurable or we should stop caring about it, maybe
         let start_time = now - Duration::minutes(70);
         // TODO: pretend to care about this unwrap later maybe
         let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
