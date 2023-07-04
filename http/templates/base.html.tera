@@ -19,7 +19,7 @@
                 </a>
             {% endif %}
             <a class="nav-item nav-generic-item" href="/seasons">
-                <span>Past Seasons</span>
+                <span>Previous Seasons</span>
             </a>
             {% if base_context.admin %}
                 <a class="nav-item nav-generic-item" href="/asyncs">
