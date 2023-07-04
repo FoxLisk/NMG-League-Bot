@@ -73,6 +73,7 @@ async fn scan(
     let finished_races: Races = recent_races.query(racetime_client).await?;
 
     for race in finished_races.races {
+        info!("Inspecting finished race: {race:?}");
         if let Err(e) = maybe_do_race_stuff(race, &interesting_rtgg_ids, &season, state).await {
             warn!("Error handling a race: {}", e);
         }

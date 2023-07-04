@@ -140,17 +140,20 @@ impl Season {
     ) -> Result<Vec<(BracketRaceInfo, BracketRace)>, diesel::result::Error> {
         use schema::bracket_race_infos;
         use schema::bracket_races;
+        use schema::brackets;
 
         let now = Utc::now();
-        let start_time = now - Duration::minutes(82);
+        let start_time = now - Duration::minutes(70);
         // TODO: pretend to care about this unwrap later maybe
         let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
 
+
         bracket_race_infos::table
-            .inner_join(bracket_races::table)
+            .inner_join(bracket_races::table.inner_join(brackets::table))
+            .select((bracket_race_infos::all_columns, bracket_races::all_columns))
             .filter(bracket_race_infos::scheduled_for.lt(start_time.timestamp()))
             .filter(bracket_races::state.ne(finished_state))
-            .filter(bracket_races::id.eq(self.id))
+            .filter(brackets::season_id.eq(self.id))
             .load(conn)
     }
 

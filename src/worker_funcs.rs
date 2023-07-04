@@ -76,9 +76,11 @@ pub fn interesting_race<'a>(
     (&'a Player, Entrant),
 )> {
     if &race.goal.name != &season.rtgg_goal_name {
+        info!("Race goal name is {} (expecting {})", race.goal.name, season.rtgg_goal_name);
         return None;
     }
     if race.status.value != "finished" {
+        info!("Race isn't finished...?");
         return None;
     }
     let started = match race.started_at() {
@@ -98,6 +100,8 @@ pub fn interesting_race<'a>(
         .collect::<HashMap<_, _>>();
 
     let ids = { entrant_ids.keys().cloned().collect::<Vec<_>>() };
+    info!("All ids from this race: {ids:?}");
+    info!("what the fuck is the contents of bracket_races??? {bracket_races:?}");
     for id in ids {
         // if *any* entrant is in one of the races we're looking for, let's check if they all are
         if let Some((bri, br, p1, p2)) = bracket_races.get(&id) {
@@ -119,18 +123,21 @@ pub fn interesting_race<'a>(
             let p1rt = match &p1.racetime_username {
                 Some(s) => s,
                 None => {
+                    info!("p1.racetime_username is null?!?");
                     continue;
                 }
             };
             let p2rt = match &p2.racetime_username {
                 Some(s) => s,
                 None => {
+                    info!("p2.racetime_username is null?!?");
                     continue;
                 }
             };
 
             let e1o = entrant_ids.remove(p1rt);
             let e2o = entrant_ids.remove(p2rt);
+            info!("e1o: {e1o:?} e2o: {e2o:?}");
             if let (Some(e1), Some(e2)) = (e1o, e2o) {
                 return Some((bri, br, (p1, e1), (p2, e2)));
             }
