@@ -19,13 +19,13 @@ div#season-container {
       display: flex;
 
       .nav-item {
-        padding: 1rem 1.5rem 0.9rem;
-        border-bottom: 4px solid transparent;
-        transition: border-color linear 100ms;
+        padding: 1rem 1.5rem;
+        box-shadow: inset 0 -0.25rem transparent;
+        transition: box-shadow linear 100ms;
       }
 
       .nav-item:hover {
-        border-color: colors.$season-banner-nav_hover-underline-color;
+        box-shadow: inset 0 -0.25rem colors.$season-banner-nav_hover-underline-color;
       }
     }
   }

@@ -13,7 +13,7 @@ div#season-sub-page {
       margin: 1rem 0;
       background-color: colors.$page-content-container-bg-color;
       box-shadow: 1px 1px 5px colors.$faint-black-box-shadow-color;
-      transition: box-shadow linear 150ms;
+      transition: box-shadow linear 100ms;
     }
 
     #toggle-obsolete-button:hover {

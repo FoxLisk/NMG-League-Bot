@@ -7,18 +7,17 @@ nav#top-nav {
   box-shadow: 0 0 5px colors.$faint-black-box-shadow-color;
 
   .nav-item {
-    padding-top: 0.85rem;
-    padding-bottom: 0.7rem;
-    border-bottom: 4px solid transparent;
+    padding: 0.85rem 0;
+    box-shadow: inset 0 -0.25rem transparent;
 
-    transition-property: background-color, border-color;
+    transition-property: background-color, box-shadow;
     transition-timing-function: linear;
     transition-duration: 100ms;
   }
 
   .nav-item:hover {
-    border-color: colors.$nav_hover-underline-color;
     background-color: colors.$nav_hover-bg-color;
+    box-shadow: inset 0 -0.25rem colors.$nav_hover-underline-color;
   }
 
   .nav-main-logo {
