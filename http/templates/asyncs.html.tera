@@ -9,9 +9,20 @@
             An error occurred: {{ error }}
         </div>
     {% endif %}
-    {{ macros::async_table(state="Created",   races=created,   bg_class="bg-slate-200") }}
-    {{ macros::async_table(state="Finished",  races=finished,  bg_class="bg-emerald-400") }}
-    {{ macros::async_table(state="Abandoned", races=abandoned, bg_class="bg-red-300") }}
-    {{ macros::async_table(state="Cancelled", races=cancelled, bg_class="bg-slate-600") }}
+    <div class="pt-2 text-2xl">Created:</div>
+    {{ macros::async_table(state="Created",   races=created,   bg_class="bg-transparent") }}
+    <hr class="h-px bg-slate-700 my-6" />
+
+    <div class="text-2xl">Finished:</div>
+    {{ macros::async_table(state="Finished",  races=finished,  bg_class="bg-emerald-800") }}
+    <hr class="h-px bg-slate-700 my-6" />
+
+    <div class="text-2xl">Abandoned:</div>
+    {{ macros::async_table(state="Abandoned", races=abandoned, bg_class="bg-rose-800") }}
+    <hr class="h-px bg-slate-700 my-6" />
+
+    <div class="text-2xl">Cancelled:</div>
+    {{ macros::async_table(state="Cancelled", races=cancelled, bg_class="bg-slate-700") }}
+
 </div>
 {% endblock %}

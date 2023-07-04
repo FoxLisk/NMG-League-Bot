@@ -1,7 +1,7 @@
 /target
 .env
 db/*
-http/static/css/tailwind.css.bak
+http/static/css/*
 *.db3
-http/static/css/tailwind.css
 logs/*
+node_modules

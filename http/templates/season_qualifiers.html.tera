@@ -8,25 +8,25 @@
 
 {% block templates %}
 <template id="qualifier_submission">
-    <tr class="border-t border-sky-300">
-        <td class="place px-2"></td>
-        <td class="player px-4">{{ macros::link(href="", text="") }}</td>
-        <td class="time px-4"></td>
-        <td class="vod pl-4">{{ macros::link(href="", text="link") }}</td>
+    <tr>
+        <td class="place"></td>
+        <td class="player">{{ macros::link(href="", text="") }}</td>
+        <td class="time"></td>
+        <td class="vod">{{ macros::link(href="", text="link") }}</td>
         {% if base_context.admin %}
-        <td class="delete-qualifier">
-            <img src="/static/images/trash-can-regular.png" width="16" height="16">
-            <div class="
-            spinner
-            w-5 h-5 rounded-full border border-2 border-red-600 relative hidden
+            <td class="delete-qualifier">
+                <img src="/static/images/trash-can-regular.png" width="16" height="16">
+                <div class="
+                    spinner
+                    w-5 h-5 rounded-full border border-2 border-red-600 relative hidden
 
-            after:box-border after:absolute after:left-0.25 after:top-0.25
-            after:border-2 after:border-solid after:border-sky-600
-            after:w-2 after:h-2 after:rounded-full
+                    after:box-border after:absolute after:left-0.25 after:top-0.25
+                    after:border-2 after:border-solid after:border-sky-600
+                    after:w-2 after:h-2 after:rounded-full
 
-            animate-spin
-"></div>
-        </td>
+                    animate-spin
+                "></div>
+            </td>
         {% endif %}
     </tr>
 </template>
@@ -34,20 +34,18 @@
 
 {% block season_body %}
 <div id="qualifiers" data-season-id="{{ season.id }}">
-    <div class="mb-4">
-        <p>Qualifiers</p>
-        <p id="error"></p>
-        <button type="button" id="toggle-obsolete" class="hidden rounded-full px-1.5 bg-slate-400">Show obsolete</button>
-    </div>
-    <table class="hidden table-auto border-t border-black" id="qualifiers_table">
+    <h2 id="qualifiers-title">Qualifiers</h2>
+    <button type="button" id="toggle-obsolete-button" class="hidden">Show obsolete</button>
+
+    <table id="qualifiers_table" class="hidden">
         <thead>
             <tr>
-                <td class="px-2"></td>
-                <td class="px-4">Player</td>
-                <td class="px-4">Time</td>
-                <td class="pl-4">VoD</td>
+                <td>Rank</td>
+                <td>Player</td>
+                <td>Time</td>
+                <td>VoD</td>
                 {% if base_context.admin %}
-                <td class="">Delete</td>
+                    <td>Delete</td>
                 {% endif %}
             </tr>
         </thead>

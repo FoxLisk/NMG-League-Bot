@@ -2,40 +2,36 @@
 {% block templates %}
 {% endblock %}
 <html lang="en">
-	<head>
-	    <title>{% block pagename %}{% endblock %} | NMG League</title>
-		<link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
-		<link rel="icon" href="/favicon.ico" sizes="any">
-	    {% block scripts %}
-	    {% endblock %}
-	</head>
-	<body class="bg-sky-400">
-        <div class="bg-sky-600 h-7">
-            <div class="flex text-indigo-900">
-                <div class="flex md:w-1/5">
-                </div>
-                <div class="flex flex-auto">
-                    <a href="/">home</a>
-                </div>
-                {% if base_context.current_season %}
-                <div class="flex flex-auto">
-                    <a href="/season/{{base_context.current_season.id}}">Current season</a>
-                </div>
-                {% endif %}
-                <div class="flex flex-auto">
-                    <a href="/seasons">history</a>
-                </div>
-                <div class="flex md:w-1/5">
-                    {% if base_context.admin %}
-                        <a href="/asyncs">asyncs</a>
-                    {% else %}
-                        <a href="/login">login</a>
-                    {% endif %}
-                </div>
-            </div>
-            {# header #}
-        </div>
+    <head>
+        <title>{% block pagename %}{% endblock %} | NMG League</title>
+        <link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
+        <link rel="stylesheet" type="text/css" href="/static/css/index.css">
+        <link rel="icon" href="/favicon.ico" sizes="any">
+        {% block scripts %}
+        {% endblock %}
+    </head>
+    <body>
+        <nav id="top-nav">
+            <a class="nav-item nav-main-logo" href="/">NMG League</a>
+            {% if base_context.current_season %}
+                <a class="nav-item nav-generic-item" href="/season/{{base_context.current_season.id}}">
+                    <span>Current Season</span>
+                </a>
+            {% endif %}
+            <a class="nav-item nav-generic-item" href="/seasons">
+                <span>Past Seasons</span>
+            </a>
+            {% if base_context.admin %}
+                <a class="nav-item nav-generic-item" href="/asyncs">
+                    <span>Asyncs</span>
+                </a>
+            {% else %}
+                <a class="nav-item nav-generic-item" href="/login">
+                    <span>Login</span>
+                </a>
+            {% endif %}
+        </nav>
         {% block body %}
         {% endblock %}
-	</body>
+    </body>
 </html>

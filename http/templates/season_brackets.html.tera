@@ -7,7 +7,7 @@
 <ul class="list-disc" >
 {% for bracket in brackets %}
   <li title="Bracket id#{{ bracket.id }}">
-      {{ macros::link(href=bracket.url, text=bracket.name) }}
+    {{ macros::link(href=bracket.url, text=bracket.name) }}
   </li>
 {% endfor %}
 </ul>

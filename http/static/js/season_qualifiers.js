@@ -42,7 +42,8 @@ function build_row(template, qual_row, seen) {
     let [place, player, time, vod, delete_] = cols;
     let name = qual_row.player_name;
     if (seen.players[name]) {
-        row.classList.add("hidden", "obsolete", "bg-red-200");
+        row.classList.add("hidden", "obsolete-qualifier-times");
+        place.textContent = "(obsolete)";
     } else {
         place.textContent = seen.place;
         seen.place += 1;
@@ -94,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     let table = document.getElementById('qualifiers_table')
     let season_id = container.dataset['seasonId'];
     let tbody = document.querySelector('#qualifiers_table tbody');
-    let button = document.querySelector('button#toggle-obsolete');
+    let button = document.querySelector('button#toggle-obsolete-button');
 
     let qualifiers = await get_qualifiers(season_id);
     try {
@@ -103,7 +104,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             tbody.innerHTML = "";
             let rows = build_rows(qualifiers);
             rows.map(r => tbody.appendChild(r));
-            let obsolete_rows = document.querySelectorAll('tr.obsolete');
+            let obsolete_rows = document.querySelectorAll('tr.obsolete-qualifier-times');
             button.classList.remove("hidden");
             table.classList.remove('hidden');
             function effect_obsolete_hidden() {
@@ -160,9 +161,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         rebuild();
     } catch (e) {
-        let error = document.getElementById('error');
-        error.textContent = e;
-    };
-
-
+        alert(e);
+    }
 });

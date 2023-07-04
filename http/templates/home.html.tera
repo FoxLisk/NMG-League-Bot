@@ -4,10 +4,21 @@
 
 {% block pagename %} Home {% endblock %}
 {% block body %}
-<p>Hello!</p>
-{% if base_context.current_season %}
-    {% set url = "/season/<id>" | replace(from="<id>", to=base_context.current_season.id|as_str) %}
-    <p>You are likely looking for {{ macros::link(href=url, text="current brackets") }}.</p>
-{% endif %}
-<p>You might want to {{ macros::link(href="https://discord.gg/exrgFbna7d", text="join the discord") }}.</p>
+<div id="home-page">
+    <h1 id="title">LttP NMG League</h1>
+    <div class="px-8">
+        <div id="text-container">
+            <div>Welcome! This site hosts the brackets, standings and qualifier info {% if base_context.current_season %} for the current season and {% endif %} for all the past seasons of the Link to the Past NMG League.</div>
+            <div>
+                {% if base_context.current_season %}
+                    {% set url = "/season/<id>" | replace(from="<id>", to=base_context.current_season.id|as_str) %}
+                    To see details for the ongoing season, {{ macros::link(href=url, text="click here") }}.
+                {% endif %}
+                To view seasonal history, {{ macros::link(href="/seasons", text="click here") }}.
+                To participate in league races, signup for commentary, or get updates for upcoming races, be sure to {{ macros::link(href="https://discord.gg/exrgFbna7d", text="join our discord") }}.
+                It's almost league!!!
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}

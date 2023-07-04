@@ -1,0 +1,35 @@
+@use 'common/colors';
+
+#previous-seasons-page {
+  width: 80%;
+  margin: 3.5rem auto;
+  box-shadow: 1px 1px 6px black;
+
+  #title-banner {
+    background-color: colors.$page-content-container-bg-color;
+    padding: 0 2.5rem;
+
+    #title {
+      display: inline-block;
+      margin: 1rem 0;
+      font-size: 2.75rem;
+    }
+  }
+
+  #previous-seasons-list {
+    background-color: colors.$season-sub-page-bg-color;
+    padding: 0.25rem 2.5rem;
+
+    .season-title {
+      font-size: 1.5rem;
+    }
+
+    .previous-season-item {
+      margin: 1rem;
+    }
+  }
+
+  hr.season-separator {
+    margin: 1rem 0;
+  }
+}

@@ -1,0 +1,77 @@
+@use '../common/colors';
+
+div#season-container {
+  width: 90%;
+  margin: 3.5rem auto;
+  box-shadow: 1px 1px 6px black;
+
+  #season-banner {
+    background-color: colors.$page-content-container-bg-color;
+    padding: 0 3rem;
+
+    #season-title {
+      display: inline-block;
+      margin: 1rem 0;
+      font-size: 2.75rem;
+    }
+
+    nav#season-nav {
+      display: flex;
+
+      .nav-item {
+        padding: 1rem 1.5rem;
+        box-shadow: inset 0 -0.25rem transparent;
+        transition: box-shadow linear 100ms;
+      }
+
+      .nav-item:hover {
+        box-shadow: inset 0 -0.25rem colors.$nav_hover-highlight-color;
+      }
+    }
+  }
+
+  #season-sub-page {
+    background-color: colors.$season-sub-page-bg-color;
+    padding: 1px 3rem;
+
+    table {
+      width: 100%;
+      border: 1px solid colors.$season-table-header-color;
+      border-collapse: collapse;
+      box-shadow: 1px 1px 5px colors.$faint-black-box-shadow-color;
+
+      thead {
+        background: colors.$season-table-header-color;
+      }
+
+      tr {
+        td {
+          text-align: center;
+          padding: 0.5rem 1.5rem;
+          border-right: 1px solid colors.$season-table-column-border-color;
+        }
+
+        td:last-of-type {
+          border-right: none;
+        }
+      }
+
+      tbody {
+        border: 1px solid colors.$season-table-column-border-color;
+        background: colors.$season-table-bg-color;
+
+        tr:nth-child(even) {
+          background: colors.$season-table-even-row-color;
+        }
+      }
+    }
+
+    hr.template-item-separator {
+      margin: 2rem 0 1.5rem;
+    }
+
+    hr.template-item-separator:last-of-type {
+      display: none;
+    }
+  }
+}

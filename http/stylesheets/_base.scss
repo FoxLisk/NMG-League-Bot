@@ -1,0 +1,21 @@
+@use 'common/colors';
+
+body {
+  background-color: colors.$body-bg-color;
+  color: colors.$text-color;
+}
+
+a {
+  color: colors.$highlight-color;
+  text-decoration: underline;
+}
+
+nav a {
+  color: colors.$text-color;
+  text-decoration: none;
+}
+
+hr {
+  height: 1px;
+  background-color: colors.$hr-color;
+}

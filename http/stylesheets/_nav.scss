@@ -1,0 +1,40 @@
+@use 'common/colors';
+
+nav#top-nav {
+  background-color: colors.$nav-bg-color;
+  display: flex;
+  align-items: stretch;
+  box-shadow: 0 0 5px colors.$faint-black-box-shadow-color;
+
+  .nav-item {
+    padding: 0.85rem 0;
+    box-shadow: inset 0 -0.25rem transparent;
+
+    transition-property: background-color, box-shadow;
+    transition-timing-function: linear;
+    transition-duration: 100ms;
+  }
+
+  .nav-item:hover {
+    background-color: colors.$nav_hover-bg-color;
+    box-shadow: inset 0 -0.25rem colors.$nav_hover-highlight-color;
+  }
+
+  .nav-main-logo {
+    font-size: 1.25rem;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .nav-generic-item {
+    padding-left: 1rem;
+    padding-right: 1rem;
+
+    span {
+      vertical-align: sub;
+
+      // Vertical align fix for firefox
+      vertical-align: -moz-middle-with-baseline;
+    }
+  }
+}
