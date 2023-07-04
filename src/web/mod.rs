@@ -729,8 +729,6 @@ pub(crate) async fn launch_website(
         .mount(
             "/",
             rocket::routes![
-                auth::login_page,
-                auth::discord_login,
                 statics::favicon,
                 async_view,
                 season_standings,
@@ -751,6 +749,7 @@ pub(crate) async fn launch_website(
         .manage(oauth_client)
         .manage(db);
     let rocket = api::build_rocket(rocket);
+    let rocket = auth::build_rocket(rocket);
 
     let ignited = rocket.ignite().await?;
     info!("Rocket config: {:?}", ignited.config());

@@ -1,6 +1,6 @@
 use crate::discord::discord_state::DiscordState;
 use crate::web::session_manager::SessionToken;
-use crate::web::{SessionManager, SESSION_COOKIE_NAME};
+use crate::web::{BaseContext, ConnectionWrapper, SessionManager, SESSION_COOKIE_NAME};
 use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::constants::{DISCORD_AUTHORIZE_URL, DISCORD_TOKEN_URL};
@@ -13,13 +13,13 @@ use oauth2::{
     StandardRevocableToken, StandardTokenIntrospectionResponse, StandardTokenResponse,
     TokenResponse as OauthTokenResponse, TokenUrl,
 };
-use rocket::get;
+use rocket::{Build, get, Rocket};
 use rocket::http::{Cookie, CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::time::Duration;
 use rocket::{Request, State};
-use rocket_dyn_templates::Template;
+use rocket_dyn_templates::{context, Template};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::time::Instant;
@@ -188,16 +188,21 @@ impl<'r> FromRequest<'r> for Admin {
     }
 }
 
+// this has a "bug" where it doesn't check if you're logged in or not. this should probably
+// have a redirect if you have an Admin guard. but i don't feel like thinking about it right now.
 #[get("/login")]
-pub async fn login_page(client: &State<OauthClient>) -> Template {
+async fn login_page(client: &State<OauthClient>, mut db: ConnectionWrapper<'_>) -> Template {
     let url = client.auth_url();
-    let mut ctx: HashMap<String, String> = Default::default();
-    ctx.insert("url".to_string(), url.to_string());
+    let bc = BaseContext::new(&mut db, &None);
+    let ctx = context! {
+        url: url.to_string(),
+        base_context: bc,
+    };
     Template::render("login", ctx)
 }
 
 #[get("/discord_login?<code>&<state>&<error_description>")]
-pub async fn discord_login(
+async fn discord_login(
     code: Option<String>,
     state: String,
     #[allow(unused_variables)] error_description: Option<String>,
@@ -272,4 +277,9 @@ pub async fn discord_login(
         info!("Non-admin user");
         Err(redirect)
     }
+}
+
+
+pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
+    rocket.mount("/", rocket::routes![login_page, discord_login])
 }
