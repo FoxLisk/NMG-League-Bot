@@ -43,7 +43,7 @@
         <thead>
             <tr>
                 <td>Rank</td>
-                <td>Player</td>
+                <td>Player Name</td>
                 <td>Time</td>
                 <td>VoD</td>
                 {% if base_context.admin %}

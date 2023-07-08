@@ -12,7 +12,10 @@
                 <thead>
                     <tr>
                         <td>
-                            Player
+                            Rank
+                        </td>
+                        <td>
+                            Player Name
                         </td>
                         <td>
                             Points
@@ -28,6 +31,9 @@
                 <tbody>
                     {% for player in bracket.players %}
                         <tr>
+                            <td>
+                                {{ loop.index }}
+                            </td>
                             <td>
                                 {{ macros::link(href=player.player_detail_url, text=player.name) }}
                             </td>
