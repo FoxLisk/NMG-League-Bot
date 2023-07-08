@@ -38,7 +38,7 @@
                                 {{ player.opponent_points }}
                             </td>
                             <td>
-                                {{ player.average_time }}
+                                {{ macros::get_text_or_placeholder(text = player.average_time) }}
                             </td>
                         </tr>
                     {% endfor %}
