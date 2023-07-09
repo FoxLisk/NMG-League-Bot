@@ -60,6 +60,10 @@ async fn scan(
     let season = Season::get_active_season(cxn.deref_mut())?.ok_or(ScanError::NoSeasonError)?;
     let bracket_races = season.get_races_that_should_be_finishing_soon(cxn.deref_mut())?;
     debug!("Looking for status on {} races", bracket_races.len());
+    if bracket_races.is_empty() {
+        // don't do all the racetime scanning stuff if there's nothing to look for
+        return Ok(());
+    }
 
     // *shrug*
     // it's like 40 rows
@@ -67,6 +71,11 @@ async fn scan(
     let interesting_rtgg_ids = races_by_player_rtgg(&all_players, &bracket_races);
     let rtgg_ids_str = interesting_rtgg_ids.keys().join(", ");
     debug!("Interesting rtgg ids that we're looking for: {rtgg_ids_str}");
+    if interesting_rtgg_ids.is_empty() {
+        // there's no guarantee that everyone has their racetime username set. they *should* but that's an "invariant"
+        // managed by me hopefully noticing and sending discord messages, so we can be in this state.
+        return Ok(());
+    }
     let recent_races: PastCategoryRaces = PastCategoryRacesBuilder::default()
         .show_entrants(true)
         .category(&season.rtgg_category_name)
