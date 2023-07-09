@@ -20,12 +20,6 @@ div#season-container {
 
       .nav-item {
         padding: 1rem 1.5rem;
-        box-shadow: inset 0 -0.25rem transparent;
-        transition: box-shadow linear 100ms;
-      }
-
-      .nav-item:hover {
-        box-shadow: inset 0 -0.25rem colors.$nav_hover-highlight-color;
       }
     }
   }

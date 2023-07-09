@@ -8,10 +8,11 @@ $page-content-container-bg-color: #374151;
 $hr-color: #2f3442;
 $highlight-color: #10b981;
 
-// Top Nav
+// Nav
 $nav-bg-color: #1f2937;
-$nav_hover-bg-color: black;
-$nav_hover-highlight-color: #{$highlight-color}bb;
+$nav_hover-bg-color: #000000cc;
+$nav_hover-highlight-color: #{$highlight-color}77;
+$nav_active-color: #{$highlight-color}cc;
 
 /* Current Season */
 // Season sub page

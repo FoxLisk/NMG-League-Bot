@@ -5,9 +5,9 @@
     <div id="season-banner">
         <div id="season-title">{{ season.format }}</div>
         <nav id="season-nav">
-            <a class="nav-item" href="/season/{{season.id}}/brackets">Brackets</a>
-            <a class="nav-item" href="/season/{{season.id}}/standings">Standings</a>
-            <a class="nav-item" href="/season/{{season.id}}/qualifiers">Qualifiers</a>
+            <a id="current-season-brackets-link" class="nav-item" href="/season/{{season.id}}/brackets">Brackets</a>
+            <a id="current-season-standings-link" class="nav-item" href="/season/{{season.id}}/standings">Standings</a>
+            <a id="current-season-qualifiers-link" class="nav-item" href="/season/{{season.id}}/qualifiers">Qualifiers</a>
         </nav>
     </div>
     <div id="season-sub-page">
