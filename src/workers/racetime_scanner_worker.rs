@@ -3,15 +3,16 @@ use crate::schema::players;
 use crate::Shutdown;
 use bb8::RunError;
 use diesel::prelude::*;
+use itertools::Itertools;
 use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
+use nmg_league_bot::models::season::Season;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
 use nmg_league_bot::worker_funcs::{
-    interesting_race, races_by_player_rtgg,
-    trigger_race_finish, RaceFinishOptions,
+    interesting_race, races_by_player_rtgg, trigger_race_finish, RaceFinishOptions,
 };
 use racetime_api::client::RacetimeClient;
 use racetime_api::endpoint::Query;
@@ -23,7 +24,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
-use nmg_league_bot::models::season::Season;
 
 #[derive(Error, Debug)]
 enum ScanError {
@@ -59,12 +59,14 @@ async fn scan(
     let mut cxn = state.diesel_cxn().await?;
     let season = Season::get_active_season(cxn.deref_mut())?.ok_or(ScanError::NoSeasonError)?;
     let bracket_races = season.get_races_that_should_be_finishing_soon(cxn.deref_mut())?;
+    debug!("Looking for status on {} races", bracket_races.len());
 
     // *shrug*
     // it's like 40 rows
     let all_players: Vec<Player> = players::table.load(cxn.deref_mut())?;
     let interesting_rtgg_ids = races_by_player_rtgg(&all_players, &bracket_races);
-
+    let rtgg_ids_str = interesting_rtgg_ids.keys().join(", ");
+    debug!("Interesting rtgg ids that we're looking for: {rtgg_ids_str}");
     let recent_races: PastCategoryRaces = PastCategoryRacesBuilder::default()
         .show_entrants(true)
         .category(&season.rtgg_category_name)
@@ -73,6 +75,7 @@ async fn scan(
     let finished_races: Races = recent_races.query(racetime_client).await?;
 
     for race in finished_races.races {
+        debug!("Checking race {race:?}");
         if let Err(e) = maybe_do_race_stuff(race, &interesting_rtgg_ids, &season, state).await {
             warn!("Error handling a race: {}", e);
         }
@@ -86,7 +89,8 @@ async fn maybe_do_race_stuff(
     season: &Season,
     state: &Arc<DiscordState>,
 ) -> Result<(), ScanError> {
-    if let Some((bri, br, (p1, e1), (p2, e2))) = interesting_race(&mut race, bracket_races, season) {
+    if let Some((bri, br, (p1, e1), (p2, e2))) = interesting_race(&mut race, bracket_races, season)
+    {
         // this is awful, i hate doing it this way, i'm just tired of thinking about this
         let mutable_br = br.clone();
         let mut mutable_bri = bri.clone();

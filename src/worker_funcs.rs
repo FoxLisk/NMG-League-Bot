@@ -3,14 +3,13 @@ this shitty module is stuff for workers::* to call so that I can also call it fr
  */
 
 use crate::models::bracket_race_infos::BracketRaceInfo;
-use crate::models::bracket_races::{
-    BracketRace, BracketRaceStateError, Outcome, PlayerResult,
-};
+use crate::models::bracket_races::{BracketRace, BracketRaceStateError, Outcome, PlayerResult};
 use crate::models::player::Player;
+use crate::models::season::Season;
 use crate::racetime_types::{Entrant, RacetimeRace};
 use crate::{ChannelConfig, NMGLeagueBotError};
 use diesel::SqliteConnection;
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::collections::HashMap;
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
@@ -20,7 +19,6 @@ use twilight_model::channel::Message;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
-use crate::models::season::Season;
 
 /// takes a list of all existing players & bracket races, and returns a map of
 /// <one of the player's racetime usernames : a bunch of info about the race>
@@ -76,9 +74,14 @@ pub fn interesting_race<'a>(
     (&'a Player, Entrant),
 )> {
     if &race.goal.name != &season.rtgg_goal_name {
+        debug!("Skipping because invalid goal name {}", race.goal.name);
         return None;
     }
     if race.status.value != "finished" {
+        debug!(
+            "Skipping because race isn't finished yet (status {})",
+            race.status.value
+        );
         return None;
     }
     let started = match race.started_at() {
@@ -101,6 +104,7 @@ pub fn interesting_race<'a>(
     for id in ids {
         // if *any* entrant is in one of the races we're looking for, let's check if they all are
         if let Some((bri, br, p1, p2)) = bracket_races.get(&id) {
+            debug!("Found interesting rtgg id {id}, looking closer");
             // but, okay, let's not pick up a weekly from 2 months ago, lmao
             let scheduled = match bri.scheduled() {
                 Some(dt) => dt,
@@ -128,9 +132,11 @@ pub fn interesting_race<'a>(
                     continue;
                 }
             };
+            debug!("Found rt usernames for both players: {p1rt} vs {p2rt}");
 
             let e1o = entrant_ids.remove(p1rt);
             let e2o = entrant_ids.remove(p2rt);
+            debug!("Found these entrants: {e1o:?}, {e2o:?}");
             if let (Some(e1), Some(e2)) = (e1o, e2o) {
                 return Some((bri, br, (p1, e1), (p2, e2)));
             }
@@ -355,6 +361,7 @@ mod tests {
     use crate::models::bracket_race_infos::BracketRaceInfo;
     use crate::models::bracket_races::BracketRace;
     use crate::models::player::Player;
+    use crate::models::season::Season;
     use crate::racetime_types::{
         Entrant, EntrantStatus, Goal, RaceStatus, Races, RacetimeRace, User,
     };
@@ -362,7 +369,6 @@ mod tests {
     use chrono::{DateTime, TimeZone, Utc};
     use std::collections::HashMap;
     use std::fs::read_to_string;
-    use crate::models::season::Season;
 
     #[test]
     fn test_rfc3339() {
