@@ -13,8 +13,8 @@ Ask me _(FoxLisk)_ for access to the bot tokens. There's a discord developer tea
 ## Running
 Running the bot should be as simple as running `cargo run`.
 
-To view the web pages, run `npm install` to install dependencies and then `npm run compile` to compile the `sass` stylesheets and `typescript` files.
-To actively develop on the frontend, run `npm run compile:watch` to have stylesheets and ts files recompile automatically on change.
+To view the web pages, run `npm install` to install dependencies and then `npm run build` to compile the `sass` stylesheets and `typescript` files.
+To actively develop on the frontend, run `npm run build:watch` to have stylesheets and ts files recompile automatically on change.
 
 The site also has a couple admin only features and pages like the asyncs page and extra columns on the quals page. To see these, start the server with `cargo run --features no_auth_website`.
 

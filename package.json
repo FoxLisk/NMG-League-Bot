@@ -1,7 +1,7 @@
 {
   "scripts": {
-    "compile": "npm run compile:ts && npm run compile:sass && npm run compile:tailwindcss",
-    "compile:watch": "concurrently --kill-others \"npm run compile:sass -- --watch\" \"npm run compile:tailwindcss -- --watch\" \"npm run compile:ts -- -w\"",
+    "build": "npm run compile:ts && npm run compile:sass && npm run compile:tailwindcss",
+    "build:watch": "concurrently --kill-others \"npm run compile:sass -- --watch\" \"npm run compile:tailwindcss -- --watch\" \"npm run compile:ts -- -w\"",
     "compile:ts": "tsc",
     "compile:sass": "sass http/stylesheets/:http/static/css/",
     "compile:tailwindcss": "tailwindcss -i ./tailwind_input.css -o ./http/static/css/tailwind.css"
