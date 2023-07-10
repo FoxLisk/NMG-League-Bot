@@ -2,7 +2,7 @@
 
 {% import "macros" as macros %}
 
-{% block pagename %}Season {{ season.id + 1 }} Standings{% endblock %}
+{% block pagename %}{{season.format}} Standings{% endblock %}
 {% block season_body %}
 <div id="standings-page-container">
     {% for bracket in brackets %}
