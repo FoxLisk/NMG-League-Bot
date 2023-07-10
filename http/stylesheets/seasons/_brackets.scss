@@ -33,6 +33,19 @@ div#season-sub-page {
       td.loser-cell {
         background-color: colors.$loser-cell-bg-color;
       }
+
+      span.race-not-scheduled-text {
+        font-size: 0.95rem;
+        font-style: italic;
+        color: colors.$race-not-scheduled-text-color;
+      }
+
+      span.race-complete-text {
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: bold;
+        color: colors.$race-complete-text-color;
+      }
     }
   }
 }

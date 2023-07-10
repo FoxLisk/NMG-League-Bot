@@ -22,7 +22,7 @@
                             Player 2
                         </td>
                         <td>
-                            Scheduled Race Date
+                            Race Status
                         </td>
                         <td>
                             Scheduled Race Link
@@ -39,7 +39,13 @@
                         {{ macros::link(href=race.player_2.player_detail_url, text=race.player_2.name_and_status) }}
                     </td>
                     <td>
-                        {{ macros::get_text_or_placeholder(text = race.scheduled) }}
+                        {% if race.scheduled %}
+                            Scheduled for {{ race.scheduled }}
+                        {% elif race.player_1.winner or race.player_2.winner %}
+                            <span class="race-complete-text">Complete</span>
+                        {% else %}
+                            <span class="race-not-scheduled-text">Not yet scheduled</span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if race.channel %}
