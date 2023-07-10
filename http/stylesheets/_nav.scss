@@ -3,17 +3,16 @@
 // Common Nav properties across the site
 nav {
   .nav-item {
-    margin: 0 1px;
+    text-align: center;
     box-shadow: none;
     transition: box-shadow linear 100ms;
+
+    // Fix to prevent a 1px box shadow from showing up on the left or right sized when resizing the page
+    clip-path: inset(0px 2px 0px 2px);
   }
 
   .nav-item:first-of-type {
-    margin-left: 0;
-  }
-
-  .nav-item:last-of-type {
-    margin-right: 0;
+    margin-left: -2px;
   }
 
   .nav-item:hover {
