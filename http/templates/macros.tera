@@ -8,6 +8,14 @@
 </th>
 {% endmacro %}
 
+{% macro get_text_or_placeholder(text) %}
+    {% if text %}
+        {{ text }}
+    {% else %}
+        -
+    {% endif %}
+{% endmacro %}
+
 {% macro row_cell(data) %}
 <td class="border-x border-slate-500 px-1">
     {{ data }}

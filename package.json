@@ -1,13 +1,15 @@
 {
   "scripts": {
-    "compile": "npm run compile:sass && npm run compile:tailwindcss",
-    "compile:watch": "concurrently --kill-others \"npm run compile:sass -- --watch\" \"npm run compile:tailwindcss -- --watch\"",
+    "build": "npm run compile:ts && npm run compile:sass && npm run compile:tailwindcss",
+    "build:watch": "concurrently --kill-others \"npm run compile:sass -- --watch\" \"npm run compile:tailwindcss -- --watch\" \"npm run compile:ts -- -w\"",
+    "compile:ts": "tsc",
     "compile:sass": "sass http/stylesheets/:http/static/css/",
     "compile:tailwindcss": "tailwindcss -i ./tailwind_input.css -o ./http/static/css/tailwind.css"
   },
   "devDependencies": {
     "concurrently": "^8.2.0",
     "sass": "^1.63.4",
-    "tailwindcss": "^3.3.2"
+    "tailwindcss": "^3.3.2",
+    "typescript": "^5.1.6"
   }
 }

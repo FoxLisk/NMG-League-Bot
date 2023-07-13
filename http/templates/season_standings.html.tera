@@ -2,7 +2,7 @@
 
 {% import "macros" as macros %}
 
-{% block pagename %}Season {{ season.id + 1 }} Standings{% endblock %}
+{% block pagename %}{{season.format}} Standings{% endblock %}
 {% block season_body %}
 <div id="standings-page-container">
     {% for bracket in brackets %}
@@ -12,7 +12,10 @@
                 <thead>
                     <tr>
                         <td>
-                            Player
+                            Rank
+                        </td>
+                        <td>
+                            Player Name
                         </td>
                         <td>
                             Points
@@ -29,6 +32,9 @@
                     {% for player in bracket.players %}
                         <tr>
                             <td>
+                                {{ loop.index }}
+                            </td>
+                            <td>
                                 {{ macros::link(href=player.player_detail_url, text=player.name) }}
                             </td>
                             <td>
@@ -38,7 +44,7 @@
                                 {{ player.opponent_points }}
                             </td>
                             <td>
-                                {{ player.average_time }}
+                                {{ macros::get_text_or_placeholder(text = player.average_time) }}
                             </td>
                         </tr>
                     {% endfor %}

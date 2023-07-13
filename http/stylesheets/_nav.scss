@@ -1,5 +1,29 @@
 @use 'common/colors';
 
+// Common Nav properties across the site
+nav {
+  .nav-item {
+    text-align: center;
+    box-shadow: none;
+    transition: box-shadow linear 100ms;
+
+    // Fix to prevent a 1px box shadow from showing up on the left or right sized when resizing the page
+    clip-path: inset(0px 2px 0px 2px);
+  }
+
+  .nav-item:first-of-type {
+    margin-left: -2px;
+  }
+
+  .nav-item:hover {
+    box-shadow: inset 0 -0.25rem colors.$nav_hover-highlight-color;
+  }
+
+  .nav-item.nav-item-active {
+    box-shadow: inset 0 -0.25rem colors.$nav_active-color;
+  }
+}
+
 nav#top-nav {
   background-color: colors.$nav-bg-color;
   display: flex;
@@ -8,16 +32,11 @@ nav#top-nav {
 
   .nav-item {
     padding: 0.85rem 0;
-    box-shadow: inset 0 -0.25rem transparent;
-
     transition-property: background-color, box-shadow;
-    transition-timing-function: linear;
-    transition-duration: 100ms;
   }
 
   .nav-item:hover {
     background-color: colors.$nav_hover-bg-color;
-    box-shadow: inset 0 -0.25rem colors.$nav_hover-highlight-color;
   }
 
   .nav-main-logo {

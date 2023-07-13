@@ -2,6 +2,7 @@
 .env
 db/*
 http/static/css/*
+http/static/js/compiled
 *.db3
 logs/*
 node_modules

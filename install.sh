@@ -6,7 +6,7 @@ TIMESTAMP=$(date +%s)
 cp -a db "db.$TIMESTAMP"
 cargo build
 npm install
-npm run compile
+npm run build
 sudo cp "conf_files/lib/systemd/system/$SERVICE_NAME.service" $SERVICE_PATH
 if [ -f $NGINX_TARGET_PATH ]; then
   echo "$NGINX_TARGET_PATH already exists; not overwriting"

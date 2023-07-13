@@ -1,6 +1,6 @@
 @use '../common/colors';
 
-div#season-sub-page {
+#season-sub-page {
   // Bracket list page
   ul {
     margin: 1rem 0;
@@ -11,7 +11,7 @@ div#season-sub-page {
   #bracket-detail-page {
     #bracket-title {
       font-size: 1.8rem;
-      margin: 1rem 0;
+      margin: 1rem 0.5rem;
     }
 
     hr#bracket-title-separator {
@@ -23,7 +23,7 @@ div#season-sub-page {
 
       .bracket-round-number {
         font-size: 1.4rem;
-        margin: 1rem 0;
+        margin: 1rem 0.5rem;
       }
 
       td.winner-cell {
@@ -32,6 +32,19 @@ div#season-sub-page {
 
       td.loser-cell {
         background-color: colors.$loser-cell-bg-color;
+      }
+
+      span.race-not-scheduled-text {
+        font-size: 0.95rem;
+        font-style: italic;
+        color: colors.$race-not-scheduled-text-color;
+      }
+
+      span.race-complete-text {
+        font-size: 0.95rem;
+        font-style: italic;
+        font-weight: bold;
+        color: colors.$race-complete-text-color;
       }
     }
   }
