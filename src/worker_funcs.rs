@@ -97,7 +97,7 @@ pub fn interesting_race<'a>(
 
     let mut entrant_ids = std::mem::take(&mut race.entrants)
         .into_iter()
-        .map(|e| (e.user.full_name.clone(), e))
+        .map(|e| (e.user.full_name.to_lowercase(), e))
         .collect::<HashMap<_, _>>();
 
     let ids = { entrant_ids.keys().cloned().collect::<Vec<_>>() };
@@ -551,8 +551,14 @@ mod tests {
             restreams_ok: 1,
         };
         let mut races = HashMap::new();
-        races.insert(p1.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p3));
-        races.insert(p3.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p3));
+        races.insert(
+            p1.racetime_username.clone().unwrap().to_lowercase(),
+            (&bri, &br, &p1, &p3),
+        );
+        races.insert(
+            p3.racetime_username.clone().unwrap().to_lowercase(),
+            (&bri, &br, &p1, &p3),
+        );
         let season = Season::new(1, "Any% NMG");
         let whatever = interesting_race(&mut race, &races, &season);
         assert!(whatever.is_none());
