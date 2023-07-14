@@ -22,6 +22,7 @@ use twilight_validate::message::MessageValidationError;
 
 /// takes a list of all existing players & bracket races, and returns a map of
 /// <one of the player's racetime usernames : a bunch of info about the race>
+/// the username in question is lowercased
 ///
 /// this is sort of insane, right?
 pub fn races_by_player_rtgg<'a>(
@@ -50,7 +51,7 @@ pub fn races_by_player_rtgg<'a>(
         };
         match (&p1.racetime_username, &p2.racetime_username) {
             (Some(rtu), Some(_)) => {
-                interesting_rtgg_ids.insert(rtu.clone(), (bri, br, p1, p2));
+                interesting_rtgg_ids.insert(rtu.to_lowercase(), (bri, br, p1, p2));
             }
             _ => {
                 // we need to know both players' rtgg usernames to find out that a race contains
@@ -134,8 +135,8 @@ pub fn interesting_race<'a>(
             };
             debug!("Found rt usernames for both players: {p1rt} vs {p2rt}");
 
-            let e1o = entrant_ids.remove(p1rt);
-            let e2o = entrant_ids.remove(p2rt);
+            let e1o = entrant_ids.remove(&p1rt.to_lowercase());
+            let e2o = entrant_ids.remove(&p2rt.to_lowercase());
             debug!("Found these entrants: {e1o:?}, {e2o:?}");
             if let (Some(e1), Some(e2)) = (e1o, e2o) {
                 return Some((bri, br, (p1, e1), (p2, e2)));
