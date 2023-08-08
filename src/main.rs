@@ -32,7 +32,7 @@ extern crate twilight_validate;
 
 use crate::discord::generate_invite_link;
 use discord::Webhooks;
-use nmg_league_bot::config::{CONFIG, Config};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::db::run_migrations;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
@@ -51,7 +51,9 @@ async fn main() {
 
     // N.B. it's probably more correct to pass around a &Client but that seems like more work
     let client = Arc::new(twilight_http::Client::new(CONFIG.discord_token.clone()));
-    let webhooks = Webhooks::new(client.clone()).await.expect("Unable to construct Webhooks");
+    let webhooks = Webhooks::new(client.clone())
+        .await
+        .expect("Unable to construct Webhooks");
     let (shutdown_send, _) = tokio::sync::broadcast::channel::<Shutdown>(1);
     let racetime_client = RacetimeClient::new().expect("Unable to construct RacetimeClient");
 

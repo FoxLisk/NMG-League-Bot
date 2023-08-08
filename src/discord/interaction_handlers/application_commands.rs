@@ -1,7 +1,7 @@
 use crate::discord::components::action_row;
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
-    CREATE_PLAYER_CMD, CREATE_ASYNC_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_ASYNC_CMD,
+    CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
 };
@@ -12,8 +12,9 @@ use crate::discord::interactions_utils::{
 };
 use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
-use nmg_league_bot::models::asyncs::race::{NewAsyncRace, AsyncRace, RaceState};
+use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
+use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
 
@@ -39,6 +40,7 @@ use racetime_api::types::UserSearchResult;
 use regex::Regex;
 use std::ops::DerefMut;
 use std::sync::Arc;
+use twilight_http::request::application::interaction::UpdateResponse;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
@@ -48,7 +50,7 @@ use twilight_model::application::interaction::application_command::{
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
 use twilight_model::channel::message::embed::EmbedField;
-use twilight_model::channel::message::Embed;
+use twilight_model::channel::message::{Component, Embed};
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
@@ -73,6 +75,111 @@ fn admin_command_wrapper(
     out
 }
 
+#[derive(Debug, Default)]
+struct UpdateResponseBag {
+    components: Option<Vec<Component>>,
+    content: Option<String>,
+}
+
+impl UpdateResponseBag {
+    fn new(components: Option<Vec<Component>>, content: Option<String>) -> Self {
+        Self {
+            components,
+            content,
+        }
+    }
+    /// constructs a new UpdateResponseBag with only the `content` field
+    fn new_content<S: Into<String>>(content: S) -> Self {
+        Self {
+            content: Some(content.into()),
+            ..Default::default()
+        }
+    }
+
+    fn hydrate<'a>(
+        &'a self,
+        mut ur: UpdateResponse<'a>,
+    ) -> Result<UpdateResponse, MessageValidationError> {
+        if let Some(c) = self.components.as_ref() {
+            ur = ur.components(Some(c))?;
+        }
+        if let Some(s) = self.content.as_ref() {
+            ur = ur.content(Some(s))?;
+        }
+        Ok(ur)
+    }
+}
+
+fn long_command_wrapper<F, Fut>(
+    func: F,
+) -> impl FnOnce(
+    Box<CommandData>,
+    Box<InteractionCreate>,
+    Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse>
+       + Sized
+where
+    F: FnOnce(Box<CommandData>, Box<InteractionCreate>, Arc<DiscordState>) -> Fut + Send + 'static,
+    Fut: Future<Output = Result<UpdateResponseBag, ErrorResponse>> + Send + 'static,
+{
+    |ac: Box<CommandData>,
+     ic: Box<InteractionCreate>,
+     state: Arc<DiscordState>|
+     -> Result<Option<InteractionResponse>, ErrorResponse> {
+        tokio::spawn(async move {
+            // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
+            let token = ic.token.clone();
+            let client = state.interaction_client();
+            let r = func(ac, ic, state.clone()).await;
+            // god DAMN all this error handling is a nightmare
+            match r {
+                Ok(urb) => {
+                    let ur = client.update_response(&token);
+                    match urb.hydrate(ur) {
+                        Ok(hydrated_ur) => {
+                            if let Err(e) = hydrated_ur.await {
+                                state.submit_error(e).await;
+                            }
+                        }
+                        Err(e) => {
+                            let mut internal_error =
+                                format!("Error occurred constructing an UpdateResponse: {e}");
+                            if let Some(more_error) = match client.update_response(&token).content(
+                                Some("An error occurred trying to respond to this request."),
+                            ) {
+                                Ok(ur) => ur.await.map_err_to_string().err(),
+                                Err(e) => Some(e.to_string()),
+                            } {
+                                internal_error = format!("{internal_error}. Additional error occurred expressing this ot the user: {more_error}");
+                            }
+                            state.submit_error(internal_error).await;
+                        }
+                    }
+                }
+                Err(ErrorResponse {
+                    user_facing_error,
+                    mut internal_error,
+                }) => {
+                    if let Some(more_intl_errors) = match client
+                        .update_response(&token)
+                        .content(Some(&user_facing_error))
+                    {
+                        Ok(ur) => ur.await.map_err_to_string().err(),
+                        Err(e) => Some(e.to_string()),
+                    } {
+                        internal_error = format!("{internal_error} - also an error occurred trying to communicate this: {more_intl_errors}");
+                    }
+                    state.submit_error(internal_error).await;
+                }
+            }
+        });
+        return Ok(Some(InteractionResponse {
+            kind: InteractionResponseType::DeferredChannelMessageWithSource,
+            data: None,
+        }));
+    }
+}
+
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
 pub async fn handle_application_interaction(
     ac: Box<CommandData>,
@@ -82,7 +189,20 @@ pub async fn handle_application_interaction(
     // general (non-admin) commands
     match ac.name.as_str() {
         SCHEDULE_RACE_CMD => {
-            return handle_schedule_race(ac, interaction, state).await;
+            return match interaction.kind {
+                InteractionType::ApplicationCommand => {
+                    long_command_wrapper(_handle_schedule_race_cmd)(ac, interaction, state.clone())
+                }
+                InteractionType::ApplicationCommandAutocomplete => {
+                    handle_schedule_race_autocomplete(ac, interaction, &state)
+                        .map(|i| Some(i))
+                        .map_err(|e| ErrorResponse::new("Unexpected error thinking about days.", e))
+                }
+                _ => Err(ErrorResponse::new(
+                    "Weird internal error, sorry",
+                    format!("Unexpected InteractionType for {}", SCHEDULE_RACE_CMD),
+                )),
+            };
         }
         SUBMIT_QUALIFIER_CMD => {
             return handle_submit_qualifier(ac, interaction, state).await;
@@ -244,8 +364,8 @@ fn get_datetime_from_scheduling_cmd(
 async fn _handle_schedule_race_cmd(
     mut ac: Box<CommandData>,
     mut interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    state: Arc<DiscordState>,
+) -> Result<UpdateResponseBag, ErrorResponse> {
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
     let member = std::mem::take(&mut interaction.member).ok_or(ErrorResponse::new(
         BLAND_USER_FACING_ERROR,
@@ -259,7 +379,7 @@ async fn _handle_schedule_race_cmd(
     let dt: DateTime<_> = match get_datetime_from_scheduling_cmd(&mut ac.options) {
         Ok(dt) => dt,
         Err(e) => {
-            return Ok(Some(plain_interaction_response(e)));
+            return Ok(UpdateResponseBag::new_content(e.to_string()));
         }
     };
 
@@ -276,9 +396,9 @@ async fn _handle_schedule_race_cmd(
         })? {
             Some(p) => p,
             None => {
-                return Ok(Some(plain_interaction_response(
+                return Ok(UpdateResponseBag::new_content(
                     "You do not seem to be registered.",
-                )));
+                ));
             }
         };
 
@@ -291,17 +411,17 @@ async fn _handle_schedule_race_cmd(
     let the_race = match race_opt {
         Some(r) => r,
         None => {
-            return Ok(Some(plain_interaction_response(
+            return Ok(UpdateResponseBag::new_content(
                 "You do not have an active race.",
-            )));
+            ));
         }
     };
 
-    match discord::schedule_race(the_race, dt, state).await {
-        Ok(s) => Ok(Some(plain_interaction_response(s))),
-        Err(ScheduleRaceError::RaceFinished) => Ok(Some(plain_interaction_response(
+    match discord::schedule_race(the_race, dt, &state).await {
+        Ok(s) => Ok(UpdateResponseBag::new_content(s)),
+        Err(ScheduleRaceError::RaceFinished) => Ok(UpdateResponseBag::new_content(
             "Your race for this round is already finished.",
-        ))),
+        )),
         Err(e) => Err(ErrorResponse::new(BLAND_USER_FACING_ERROR, e)),
     }
 }
@@ -327,33 +447,10 @@ fn handle_schedule_race_autocomplete(
     Ok(autocomplete_result(options))
 }
 
-async fn handle_schedule_race(
-    ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    match interaction.kind {
-        InteractionType::ApplicationCommand => {
-            _handle_schedule_race_cmd(ac, interaction, state).await
-        }
-        InteractionType::ApplicationCommandAutocomplete => {
-            handle_schedule_race_autocomplete(ac, interaction, state)
-                .map(|i| Some(i))
-                .map_err(|e| ErrorResponse::new("Unexpected error thinking about days.", e))
-        }
-        _ => Err(ErrorResponse::new(
-            "Weird internal error, sorry",
-            format!("Unexpected InteractionType for {}", SCHEDULE_RACE_CMD),
-        )),
-    }
-}
-
 /// people constantly input `name #1234` instead of `name#1234` so let's try to handle that
 fn normalize_racetime_name(name: &str) -> String {
     match Regex::new(r"\s+(#\d+)$") {
-        Ok(r) => {
-            r.replace(name, "$1").to_string()
-        }
+        Ok(r) => r.replace(name, "$1").to_string(),
         Err(e) => {
             // N.B. the regex should be constructed once, on startup
             info!("Error constructing racetime name regex: {e}");
@@ -418,7 +515,8 @@ async fn handle_update_user_info(
     }
     if let Some(r) = racetime {
         let normalized = normalize_racetime_name(&r);
-        match validate_racetime_username(&normalized, player.twitch_user_login.as_ref(), state).await
+        match validate_racetime_username(&normalized, player.twitch_user_login.as_ref(), state)
+            .await
         {
             Ok(Some(e)) => {
                 user_messages.push(e);
@@ -734,8 +832,7 @@ async fn handle_create_player(
     let name = match name_override {
         Some(name) => name,
         None => {
-            let u = state
-                .get_user(discord_user);
+            let u = state.get_user(discord_user);
             u.ok_or(format!("User not found"))?.name
         }
     };
@@ -1330,7 +1427,9 @@ async fn handle_generate_pairings(
 
 #[cfg(test)]
 mod tests {
-    use crate::discord::interaction_handlers::application_commands::{datetime_from_options, normalize_racetime_name};
+    use crate::discord::interaction_handlers::application_commands::{
+        datetime_from_options, normalize_racetime_name,
+    };
     use chrono::{Datelike, Timelike};
 
     #[test]
@@ -1360,9 +1459,15 @@ mod tests {
         assert_eq!("foxlisk#1234", normalize_racetime_name(stray_space));
 
         let weird_spaces_already_good = "a b c#1234";
-        assert_eq!(weird_spaces_already_good, normalize_racetime_name(weird_spaces_already_good));
+        assert_eq!(
+            weird_spaces_already_good,
+            normalize_racetime_name(weird_spaces_already_good)
+        );
 
         let weird_spaces_stray_space = "a b c    #1234";
-        assert_eq!("a b c#1234", normalize_racetime_name(weird_spaces_stray_space));
+        assert_eq!(
+            "a b c#1234",
+            normalize_racetime_name(weird_spaces_stray_space)
+        );
     }
 }

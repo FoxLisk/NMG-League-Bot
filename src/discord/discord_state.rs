@@ -3,12 +3,14 @@ use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
+use log::warn;
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::ResultErrToString;
 use nmg_league_bot::ChannelConfig;
 use racetime_api::client::RacetimeClient;
+use std::fmt::Display;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
@@ -78,6 +80,13 @@ impl DiscordState {
             channel_config,
             racetime_client,
             twitch_client_bundle,
+        }
+    }
+
+    pub async fn submit_error<S: Display>(&self, error: S) {
+        let msg = format!("{error}");
+        if let Err(e) = self.webhooks.message_error(&msg).await {
+            warn!("Error sending message {msg} to error channel: {e}");
         }
     }
 

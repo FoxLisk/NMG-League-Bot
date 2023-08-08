@@ -1,7 +1,6 @@
 use crate::discord::discord_state::DiscordState;
 use crate::schema::race_runs;
 use crate::shutdown::Shutdown;
-use bb8::RunError;
 use diesel::prelude::*;
 use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;

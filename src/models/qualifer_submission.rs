@@ -3,9 +3,9 @@ use diesel::RunQueryDsl;
 use serde::Serialize;
 
 use crate::models::player::Player;
-use crate::models::season::{Season, SeasonState};
+use crate::models::season::Season;
 use crate::schema::qualifier_submissions;
-use crate::{save_fn, update_fn, NMGLeagueBotError, delete_fn};
+use crate::{delete_fn, save_fn, update_fn, NMGLeagueBotError};
 
 #[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
 pub struct QualifierSubmission {
@@ -17,10 +17,7 @@ pub struct QualifierSubmission {
 }
 
 impl QualifierSubmission {
-    pub fn get_by_id(
-        id: i32,
-        conn: &mut SqliteConnection,
-    ) -> Result<Self, diesel::result::Error> {
+    pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         qualifier_submissions::table.find(id).first(conn)
     }
 }

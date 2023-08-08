@@ -2,16 +2,15 @@
 
 use crate::web::auth::Admin;
 use crate::web::ConnectionWrapper;
-use diesel::result::Error;
 use diesel::SqliteConnection;
 use nmg_league_bot::models::qualifer_submission::QualifierSubmission;
-use rocket::serde::json::Json;
-use rocket::{delete, get, Build, Rocket, Request};
-use rocket::response::Responder;
-use serde::Serialize;
-use nmg_league_bot::NMGLeagueBotError;
-use nmg_league_bot::ApiError;
 use nmg_league_bot::utils::ResultErrToString;
+use nmg_league_bot::ApiError;
+use nmg_league_bot::NMGLeagueBotError;
+use rocket::response::Responder;
+use rocket::serde::json::Json;
+use rocket::{delete, get, Build, Request, Rocket};
+use serde::Serialize;
 
 struct ApiResponse<T, E>(Result<T, E>);
 
