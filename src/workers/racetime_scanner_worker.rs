@@ -47,9 +47,6 @@ enum ScanError {
 
     #[error("Error updating bracket race state: {0}")]
     BracketRaceStateError(#[from] BracketRaceStateError),
-
-    #[error("No current season to scan for")]
-    NoSeasonError,
 }
 
 async fn scan(
@@ -57,7 +54,13 @@ async fn scan(
     racetime_client: &RacetimeClient,
 ) -> Result<(), ScanError> {
     let mut cxn = state.diesel_cxn().await?;
-    let season = Season::get_active_season(cxn.deref_mut())?.ok_or(ScanError::NoSeasonError)?;
+    let season = match Season::get_active_season(cxn.deref_mut())? {
+        Some(s) => s,
+        None => {
+            debug!("No active season.");
+            return Ok(());
+        }
+    };
     let bracket_races = season.get_races_that_should_be_finishing_soon(cxn.deref_mut())?;
     debug!("Looking for status on {} races", bracket_races.len());
     if bracket_races.is_empty() {
