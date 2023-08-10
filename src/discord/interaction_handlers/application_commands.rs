@@ -109,74 +109,68 @@ impl UpdateResponseBag {
 /// response" workflow.
 fn long_command_wrapper<F, Fut>(
     func: F,
-) -> impl FnOnce(
-    Box<CommandData>,
-    Box<InteractionCreate>,
-    Arc<DiscordState>,
+    ac: Box<CommandData>,
+    ic: Box<InteractionCreate>,
+    state: Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse>
-       + Sized
 where
     F: FnOnce(Box<CommandData>, Box<InteractionCreate>, Arc<DiscordState>) -> Fut + Send + 'static,
     Fut: Future<Output = Result<UpdateResponseBag, ErrorResponse>> + Send + 'static,
 {
-    |ac: Box<CommandData>,
-     ic: Box<InteractionCreate>,
-     state: Arc<DiscordState>|
-     -> Result<Option<InteractionResponse>, ErrorResponse> {
-        /// first we spawn off the long-running job
-        tokio::spawn(async move {
-            // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
-            let token = ic.token.clone();
-            let client = state.interaction_client();
-            let r = func(ac, ic, state.clone()).await;
-            // god DAMN all this error handling is a nightmare
-            match r {
-                Ok(urb) => {
-                    let ur = client.update_response(&token);
-                    match urb.hydrate(ur) {
-                        Ok(hydrated_ur) => {
-                            if let Err(e) = hydrated_ur.await {
-                                state.submit_error(e).await;
-                            }
-                        }
-                        Err(e) => {
-                            let mut internal_error =
-                                format!("Error occurred constructing an UpdateResponse: {e}");
-                            if let Some(more_error) = match client.update_response(&token).content(
-                                Some("An error occurred trying to respond to this request."),
-                            ) {
-                                Ok(ur) => ur.await.map_err_to_string().err(),
-                                Err(e) => Some(e.to_string()),
-                            } {
-                                internal_error = format!("{internal_error}. Additional error occurred expressing this ot the user: {more_error}");
-                            }
-                            state.submit_error(internal_error).await;
+    /// first we spawn off the long-running job
+    tokio::spawn(async move {
+        // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
+        let token = ic.token.clone();
+        let client = state.interaction_client();
+        let r = func(ac, ic, state.clone()).await;
+        // god DAMN all this error handling is a nightmare
+        match r {
+            Ok(urb) => {
+                let ur = client.update_response(&token);
+                match urb.hydrate(ur) {
+                    Ok(hydrated_ur) => {
+                        if let Err(e) = hydrated_ur.await {
+                            state.submit_error(e).await;
                         }
                     }
-                }
-                Err(ErrorResponse {
-                    user_facing_error,
-                    mut internal_error,
-                }) => {
-                    if let Some(more_intl_errors) = match client
-                        .update_response(&token)
-                        .content(Some(&user_facing_error))
-                    {
-                        Ok(ur) => ur.await.map_err_to_string().err(),
-                        Err(e) => Some(e.to_string()),
-                    } {
-                        internal_error = format!("{internal_error} - also an error occurred trying to communicate this: {more_intl_errors}");
+                    Err(e) => {
+                        let mut internal_error =
+                            format!("Error occurred constructing an UpdateResponse: {e}");
+                        if let Some(more_error) = match client
+                            .update_response(&token)
+                            .content(Some("An error occurred trying to respond to this request."))
+                        {
+                            Ok(ur) => ur.await.map_err_to_string().err(),
+                            Err(e) => Some(e.to_string()),
+                        } {
+                            internal_error = format!("{internal_error}. Additional error occurred expressing this ot the user: {more_error}");
+                        }
+                        state.submit_error(internal_error).await;
                     }
-                    state.submit_error(internal_error).await;
                 }
             }
-        });
-        /// then we immediately return so discord knows we're thinking about it
-        return Ok(Some(InteractionResponse {
-            kind: InteractionResponseType::DeferredChannelMessageWithSource,
-            data: None,
-        }));
-    }
+            Err(ErrorResponse {
+                user_facing_error,
+                mut internal_error,
+            }) => {
+                if let Some(more_intl_errors) = match client
+                    .update_response(&token)
+                    .content(Some(&user_facing_error))
+                {
+                    Ok(ur) => ur.await.map_err_to_string().err(),
+                    Err(e) => Some(e.to_string()),
+                } {
+                    internal_error = format!("{internal_error} - also an error occurred trying to communicate this: {more_intl_errors}");
+                }
+                state.submit_error(internal_error).await;
+            }
+        }
+    });
+    /// then we immediately return so discord knows we're thinking about it
+    return Ok(Some(InteractionResponse {
+        kind: InteractionResponseType::DeferredChannelMessageWithSource,
+        data: None,
+    }));
 }
 
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
@@ -190,7 +184,7 @@ pub async fn handle_application_interaction(
         SCHEDULE_RACE_CMD => {
             return match interaction.kind {
                 InteractionType::ApplicationCommand => {
-                    long_command_wrapper(_handle_schedule_race_cmd)(ac, interaction, state.clone())
+                    long_command_wrapper(_handle_schedule_race_cmd, ac, interaction, state.clone())
                 }
                 InteractionType::ApplicationCommandAutocomplete => {
                     handle_schedule_race_autocomplete(ac, interaction, &state)
@@ -249,7 +243,7 @@ pub async fn handle_application_interaction(
         RESCHEDULE_RACE_CMD => {
             match interaction.kind {
                 InteractionType::ApplicationCommand => {
-                    long_command_wrapper(handle_reschedule_race_cmd)(ac, interaction, state.clone())
+                    long_command_wrapper(handle_reschedule_race_cmd, ac, interaction, state.clone())
                 }
                 InteractionType::ApplicationCommandAutocomplete => {
                     // N.B. this will have to change if/when i add race id autocompletion
