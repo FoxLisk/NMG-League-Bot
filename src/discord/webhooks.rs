@@ -14,7 +14,7 @@ use twilight_util::link::webhook::parse;
 pub struct Webhooks {
     http_client: Arc<Client>,
     async_channel: WebhookInfo,
-    admin_channel: WebhookInfo,
+    error_channel: WebhookInfo,
 }
 
 #[derive(Clone)]
@@ -51,30 +51,13 @@ async fn get_webhook_by_url(client: &Arc<Client>, url: String) -> Result<Webhook
 impl Webhooks {
     pub async fn new(client: Arc<Client>) -> Result<Self, String> {
         let async_channel = get_webhook_by_url(&client, CONFIG.async_webhook.clone()).await?;
-        let admin_channel = get_webhook_by_url(&client, CONFIG.admin_webhook.clone()).await?;
+        let error_channel = get_webhook_by_url(&client, CONFIG.error_webhook.clone()).await?;
 
         Ok(Self {
             http_client: client,
             async_channel,
-            admin_channel,
+            error_channel,
         })
-    }
-
-    async fn execute_webhook_with_content(
-        &self,
-        content: &str,
-        ew: ExecuteWebhook<'_>,
-    ) -> Result<(), String> {
-        let resp: Response<EmptyBody> = ew
-            .content(content)
-            .map_err(|e| e.to_string())?
-            .await
-            .map_err(|e| e.to_string())?;
-        if !resp.status().is_success() {
-            Err(format!("Error executing webhook: {:?}", resp.text().await))
-        } else {
-            Ok(())
-        }
     }
 
     pub async fn execute_webhook(&self, ew: ExecuteWebhook<'_>) -> Result<(), String> {
@@ -94,13 +77,18 @@ impl Webhooks {
         self._execute_webhook(&self.async_channel)
     }
 
-    pub fn prepare_execute_admin(&self) -> ExecuteWebhook {
-        self._execute_webhook(&self.admin_channel)
-    }
-
     pub async fn message_async(&self, content: &str) -> Result<(), String> {
         self.execute_webhook(
             self.prepare_execute_async()
+                .content(content)
+                .map_err(|e| e.to_string())?,
+        )
+        .await
+    }
+
+    pub async fn message_error(&self, content: &str) -> Result<(), String> {
+        self.execute_webhook(
+            self._execute_webhook(&self.error_channel)
                 .content(content)
                 .map_err(|e| e.to_string())?,
         )

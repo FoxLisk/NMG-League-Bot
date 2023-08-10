@@ -11,7 +11,7 @@ const TWITCH_CLIENT_ID_VAR: &str = "TWITCH_CLIENT_ID";
 const TWITCH_CLIENT_SECRET_VAR: &str = "TWITCH_CLIENT_SECRET";
 
 const ASYNC_WEBHOOK_VAR: &str = "ASYNC_WEBHOOK_URL";
-const ADMIN_WEBHOOK_VAR: &str = "ADMIN_WEBHOOK_URL";
+const ERROR_WEBHOOK_VAR: &str = "ERROR_WEBHOOK_URL";
 
 const COMMPORTUNITIES_CHANNEL_ID_VAR: &str = "COMMPORTUNITIES_CHANNEL_ID";
 const SIRIUS_INBOX_CHANNEL_ID_VAR: &str = "SIRIUS_INBOX_CHANNEL_ID";
@@ -42,7 +42,7 @@ pub struct Config {
     pub discord_application_id: Id<ApplicationMarker>,
 
     pub async_webhook: String,
-    pub admin_webhook: String,
+    pub error_webhook: String,
 
     pub commportunities_channel_id: Id<ChannelMarker>,
     pub sirius_inbox_channel_id: Id<ChannelMarker>,
@@ -88,7 +88,7 @@ impl Config {
             twitch_client_id: ClientId::new(env_var(TWITCH_CLIENT_ID_VAR)),
             twitch_client_secret: ClientSecret::new(env_var(TWITCH_CLIENT_SECRET_VAR)),
             async_webhook: env_var(ASYNC_WEBHOOK_VAR),
-            admin_webhook: env_var(ADMIN_WEBHOOK_VAR),
+            error_webhook: env_var(ERROR_WEBHOOK_VAR),
             commportunities_channel_id: id_from_env(COMMPORTUNITIES_CHANNEL_ID_VAR),
             sirius_inbox_channel_id: id_from_env(SIRIUS_INBOX_CHANNEL_ID_VAR),
             zsr_channel_id: id_from_env(ZSR_CHANNEL_ID_VAR),

@@ -160,9 +160,11 @@ fn run_started_interaction_response(
 ) -> Result<InteractionResponse, String> {
     let filenames = race_run.filenames()?;
     let admin_text = if let Some(msg_text) = race.on_start_message.as_ref() {
-        format!("\nThe admin who created this race had the following information for you
+        format!(
+            "\nThe admin who created this race had the following information for you
 
-> {msg_text}\n")
+> {msg_text}\n"
+        )
     } else {
         "".to_string()
     };
@@ -171,13 +173,14 @@ fn run_started_interaction_response(
     } else {
         "".to_string()
     };
-    let content = format!("\
+    let content = format!(
+        "\
 {preamble_content}Good luck! your filenames are: `{filenames}`
 {admin_text}
 If anything goes wrong, tell an admin there was an issue with run `{}`
 ",
-           race_run.uuid
-        );
+        race_run.uuid
+    );
     let buttons = run_started_components();
     Ok(InteractionResponse {
         kind: InteractionResponseType::UpdateMessage,
@@ -208,19 +211,19 @@ async fn handle_run_start(
     let mut rr = AsyncRaceRun::get_by_message_id(mid, &mut conn)
         .await
         .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
-    let race = rr.get_race(&mut conn).map_err(
-        |e| ErrorResponse::new(USER_FACING_ERROR, e.to_string())
-    )?;
+    let race = rr
+        .get_race(&mut conn)
+        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e.to_string()))?;
     rr.start();
     match rr.save(&mut conn).await {
-        Ok(_) => Ok(Some(run_started_interaction_response(&race, &rr, None).map_err(
-            |e| {
+        Ok(_) => Ok(Some(
+            run_started_interaction_response(&race, &rr, None).map_err(|e| {
                 ErrorResponse::new(
                     USER_FACING_ERROR,
                     format!("Error sending the /run started/ interaction response {}", e),
                 )
-            },
-        )?)),
+            })?,
+        )),
         Err(e) => Err(ErrorResponse::new(
             USER_FACING_ERROR,
             format!("Error updating race run: {}", e),
@@ -318,15 +321,15 @@ async fn handle_run_forfeit_modal(
     } else {
         AsyncRaceRun::get_by_message_id(mid, &mut conn)
             .await
-            .and_then(|race_run|
-                race_run.get_race(&mut conn)
+            .and_then(|race_run| {
+                race_run
+                    .get_race(&mut conn)
                     .map(|race| (race, race_run))
                     .map_err_to_string()
-            )
-            .and_then(
-                |(race, race_run)|
-                    run_started_interaction_response(&race, &race_run, Some("Forfeit canceled"))
-            )
+            })
+            .and_then(|(race, race_run)| {
+                run_started_interaction_response(&race, &race_run, Some("Forfeit canceled"))
+            })
             .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?
     };
     Ok(Some(ir))
@@ -606,10 +609,7 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
 
     if !final_message.is_empty() {
         warn!("{}", final_message);
-        if let Err(e) = state.webhooks.message_async(&final_message).await {
-            // at some point you just have to give up
-            warn!("Error reporting internal error: {}", e);
-        }
+        state.submit_error(final_message).await;
     }
 }
 
