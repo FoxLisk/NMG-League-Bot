@@ -6,8 +6,11 @@ extern crate swiss_pairings;
 use crate::config::CONFIG;
 use racetime_api::err::RacetimeError;
 use thiserror::Error;
+use twilight_http::response::DeserializeBodyError;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
+use twilight_model::util::datetime::TimestampParseError;
+use twilight_validate::request::ValidationError;
 use twitch_api::helix::ClientRequestError;
 
 pub mod config;
@@ -49,7 +52,6 @@ impl ChannelConfig {
     }
 }
 
-
 // N.B. this should probably live in web::api, but that's currently not included in the lib
 // so that's a huge mess
 #[derive(Debug, Error)]
@@ -57,7 +59,6 @@ pub enum ApiError {
     #[error("Cannot delete qualifiers that are already closed.")]
     CannotDeletePastQualifiers,
 }
-
 
 #[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
@@ -80,6 +81,17 @@ pub enum NMGLeagueBotError {
     TwitchError(#[from] ClientRequestError<reqwest::Error>),
 
     #[error("API Error: {0}")]
-    ApiError(#[from] ApiError)
-}
+    ApiError(#[from] ApiError),
 
+    #[error("No timestamp on new bracket race info")]
+    MissingTimestamp,
+
+    #[error("{0}")]
+    TimestampParseError(#[from] TimestampParseError),
+
+    #[error("{0}")]
+    DeserializeBodyError(#[from] DeserializeBodyError),
+
+    #[error("{0}")]
+    ValidationError(#[from] ValidationError),
+}

@@ -7,11 +7,11 @@ use std::ops::DerefMut;
 use std::sync::Arc;
 
 use bb8::RunError;
-use chrono::{DateTime, Duration, TimeZone};
+use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::ConnectionError;
 use log::{info, warn};
 use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_http::Client;
+use twilight_http::{Client, Error};
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;
@@ -23,17 +23,18 @@ use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 
 use crate::discord::constants::CUSTOM_ID_START_RUN;
+use nmg_league_bot::models::asyncs::race::AsyncRace;
+use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError};
 use nmg_league_bot::models::player::{MentionOptional, Player};
-use nmg_league_bot::models::asyncs::race::AsyncRace;
-use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
 
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::worker_funcs::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
+use nmg_league_bot::NMGLeagueBotError;
 use thiserror::Error;
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::channel::message::{Component, Embed};
@@ -281,6 +282,7 @@ async fn schedule_race<Tz: TimeZone>(
             .unwrap_or("".to_string());
         match create_or_update_event(
             bracket_name,
+            &old_info,
             &new_info,
             &p1,
             &p2,
@@ -404,20 +406,32 @@ async fn create_commportunities_post(
 
 async fn create_or_update_event(
     bracket_name: String,
+    old_info: &BracketRaceInfo,
     info: &BracketRaceInfo,
     p1: &Player,
     p2: &Player,
     gid: Id<GuildMarker>,
     client: &Client,
-) -> Result<GuildScheduledEvent, String> {
+) -> Result<GuildScheduledEvent, NMGLeagueBotError> {
+    // this relies on the database being in sync with discord correctly. if you have
+    // a race that's `scheduled()` for the future, but with a scheduled event ID that is
+    // in the past, this function won't work correctly.
+
+    // i'm not worried enough about it to add the extra complexity & web requests to check
+    // discord's state every time
+    let is_past = if let Some(was) = old_info.scheduled() {
+        let now = Utc::now();
+        was < now
+    } else {
+        false
+    };
     let when = info
         .scheduled()
-        .ok_or("Error: No timestamp on new bracket race info".to_string())?;
-    let start = ModelTimestamp::from_secs(when.timestamp()).map_err(|e| e.to_string())?;
-    let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())
-        .map_err(|e| e.to_string())?;
+        .ok_or(NMGLeagueBotError::MissingTimestamp)?;
+    let start = ModelTimestamp::from_secs(when.timestamp())?;
+    let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())?;
 
-    let resp = if let Some(existing_id) = info.get_scheduled_event_id() {
+    let resp = if let (false, Some(existing_id)) = (is_past, info.get_scheduled_event_id()) {
         client
             .update_guild_scheduled_event(gid, existing_id)
             .scheduled_start_time(&start)
@@ -431,17 +445,10 @@ async fn create_or_update_event(
                 &multistream_link(p1, p2),
                 &start,
                 &end,
-            )
-            .map_err(|e| e.to_string())?
+            )?
             .await
     };
-    let resp = resp.map_err(|e| e.to_string())?;
-    resp.model().await.map_err(|e| {
-        format!(
-            "Error setting event id on race: couldn't deserialize body?! {}",
-            e
-        )
-    })
+    resp?.model().await.map_err(From::from)
 }
 
 fn multistream_link(p1: &Player, p2: &Player) -> String {
