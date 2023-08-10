@@ -14,6 +14,7 @@ use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
+use std::convert::Infallible;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -248,7 +249,21 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_generate_pairings(ac, state).await.map(Option::from))
         }
         RESCHEDULE_RACE_CMD => {
-            admin_command_wrapper(handle_reschedule_race(ac, interaction, state).await)
+            match interaction.kind {
+                InteractionType::ApplicationCommand => {
+                    long_command_wrapper(handle_reschedule_race_cmd)(ac, interaction, state.clone())
+                }
+                InteractionType::ApplicationCommandAutocomplete => {
+                    // N.B. this will have to change if/when i add race id autocompletion
+                    admin_command_wrapper(
+                        handle_schedule_race_autocomplete(ac, interaction, state).map(|i| Some(i)),
+                    )
+                }
+                _ => Ok(Some(plain_interaction_response(format!(
+                    "Unexpected InteractionType for {}",
+                    RESCHEDULE_RACE_CMD
+                )))),
+            }
         }
 
         CANCEL_ASYNC_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
@@ -779,11 +794,21 @@ fn active_season_with_quals_open(
     }
 }
 
+async fn handle_reschedule_race_cmd(
+    ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: Arc<DiscordState>,
+) -> Result<UpdateResponseBag, ErrorResponse> {
+    Ok(match _handle_reschedule_race_cmd(ac, state).await {
+        Ok(u) => u,
+        Err(e) => UpdateResponseBag::new_content(e),
+    })
+}
+
 async fn _handle_reschedule_race_cmd(
     mut ac: Box<CommandData>,
-    mut _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, String> {
+    state: Arc<DiscordState>,
+) -> Result<UpdateResponseBag, String> {
     let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
@@ -791,33 +816,15 @@ async fn _handle_reschedule_race_cmd(
         Err(Error::NotFound) => {
             return Err(format!("Race #{race_id} not found."));
         }
-        Err(e) => return Err(e.to_string()),
+        Err(e) => {
+            return Err(format!("{e}"));
+        }
     };
     let when = get_datetime_from_scheduling_cmd(&mut ac.options).map_err_to_string()?;
-    discord::schedule_race(race, when, state)
+    discord::schedule_race(race, when, &state)
         .await
-        .map(|s| Some(plain_interaction_response(s)))
+        .map(|s| UpdateResponseBag::new_content(s))
         .map_err_to_string()
-}
-
-async fn handle_reschedule_race(
-    ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-) -> Result<Option<InteractionResponse>, String> {
-    match interaction.kind {
-        InteractionType::ApplicationCommand => {
-            _handle_reschedule_race_cmd(ac, interaction, state).await
-        }
-        InteractionType::ApplicationCommandAutocomplete => {
-            // N.B. this will have to change if/when i add race id autocompletion
-            handle_schedule_race_autocomplete(ac, interaction, state).map(|i| Some(i))
-        }
-        _ => Err(format!(
-            "Unexpected InteractionType for {}",
-            RESCHEDULE_RACE_CMD
-        )),
-    }
 }
 
 async fn handle_create_player(
