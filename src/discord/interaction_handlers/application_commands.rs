@@ -76,20 +76,16 @@ fn admin_command_wrapper(
     out
 }
 
+/// Parameters to pass to an UpdateResponse
+// currently this is only content but i wanted an abstraction layer for it. well, I wanted the
+// abstraction layer cause I thought I would need components already. but I decided I didn't.
+// Oh well.
 #[derive(Debug, Default)]
 struct UpdateResponseBag {
-    components: Option<Vec<Component>>,
     content: Option<String>,
 }
 
 impl UpdateResponseBag {
-    fn new(components: Option<Vec<Component>>, content: Option<String>) -> Self {
-        Self {
-            components,
-            content,
-        }
-    }
-    /// constructs a new UpdateResponseBag with only the `content` field
     fn new_content<S: Into<String>>(content: S) -> Self {
         Self {
             content: Some(content.into()),
@@ -101,9 +97,6 @@ impl UpdateResponseBag {
         &'a self,
         mut ur: UpdateResponse<'a>,
     ) -> Result<UpdateResponse, MessageValidationError> {
-        if let Some(c) = self.components.as_ref() {
-            ur = ur.components(Some(c))?;
-        }
         if let Some(s) = self.content.as_ref() {
             ur = ur.content(Some(s))?;
         }
@@ -111,6 +104,9 @@ impl UpdateResponseBag {
     }
 }
 
+/// Discord requires you to respond to interactions within 3 seconds. This function is to handle the
+/// "Send a DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE response, then do the slow work, then update the
+/// response" workflow.
 fn long_command_wrapper<F, Fut>(
     func: F,
 ) -> impl FnOnce(
@@ -127,6 +123,7 @@ where
      ic: Box<InteractionCreate>,
      state: Arc<DiscordState>|
      -> Result<Option<InteractionResponse>, ErrorResponse> {
+        /// first we spawn off the long-running job
         tokio::spawn(async move {
             // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
             let token = ic.token.clone();
@@ -174,6 +171,7 @@ where
                 }
             }
         });
+        /// then we immediately return so discord knows we're thinking about it
         return Ok(Some(InteractionResponse {
             kind: InteractionResponseType::DeferredChannelMessageWithSource,
             data: None,
