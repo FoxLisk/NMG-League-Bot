@@ -14,7 +14,6 @@ use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
-use std::convert::Infallible;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -51,7 +50,7 @@ use twilight_model::application::interaction::application_command::{
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
 use twilight_model::channel::message::embed::EmbedField;
-use twilight_model::channel::message::{Component, Embed};
+use twilight_model::channel::message::Embed;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
@@ -117,7 +116,7 @@ where
     F: FnOnce(Box<CommandData>, Box<InteractionCreate>, Arc<DiscordState>) -> Fut + Send + 'static,
     Fut: Future<Output = Result<UpdateResponseBag, ErrorResponse>> + Send + 'static,
 {
-    /// first we spawn off the long-running job
+    // first we spawn off the long-running job
     tokio::spawn(async move {
         // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
         let token = ic.token.clone();
@@ -166,7 +165,7 @@ where
             }
         }
     });
-    /// then we immediately return so discord knows we're thinking about it
+    // then we immediately return so discord knows we're thinking about it
     return Ok(Some(InteractionResponse {
         kind: InteractionResponseType::DeferredChannelMessageWithSource,
         data: None,
