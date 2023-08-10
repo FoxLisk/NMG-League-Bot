@@ -166,10 +166,10 @@ where
         }
     });
     // then we immediately return so discord knows we're thinking about it
-    return Ok(Some(InteractionResponse {
+    Ok(Some(InteractionResponse {
         kind: InteractionResponseType::DeferredChannelMessageWithSource,
         data: None,
-    }));
+    }))
 }
 
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
