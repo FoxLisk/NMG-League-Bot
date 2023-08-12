@@ -15,7 +15,7 @@ async fn main() {
     run_migrations(&mut db).unwrap();
     let mut players = vec![];
     for i in 0..4 {
-        let p = NewPlayer::new(format!("rr_p{i}"), format!("rr_{i}"), None, None, true)
+        let p = NewPlayer::new(format!("rr_p{i}"), format!("rr_{i}"), None, None)
             .save(&mut db)
             .unwrap();
         players.push(p);

@@ -840,7 +840,6 @@ async fn handle_create_player(
         discord_user.to_string(),
         Some(rt_un),
         Some(twitch_name),
-        true,
     );
 
     match np.save(cxn.deref_mut()) {

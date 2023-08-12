@@ -1,6 +1,17 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    _sqlx_migrations (version) {
+        version -> Nullable<BigInt>,
+        description -> Text,
+        installed_on -> Timestamp,
+        success -> Bool,
+        checksum -> Binary,
+        execution_time -> BigInt,
+    }
+}
+
+diesel::table! {
     bracket_race_infos (id) {
         id -> Integer,
         bracket_race_id -> Integer,
@@ -71,7 +82,6 @@ diesel::table! {
         discord_id -> Text,
         racetime_username -> Nullable<Text>,
         twitch_user_login -> Nullable<Text>,
-        restreams_ok -> Integer,
     }
 }
 
@@ -139,6 +149,7 @@ diesel::joinable!(qualifier_submissions -> seasons (season_id));
 diesel::joinable!(race_runs -> races (race_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    _sqlx_migrations,
     bracket_race_infos,
     bracket_races,
     bracket_rounds,

@@ -1,0 +1,1 @@
+ALTER TABLE players ADD COLUMN restreams_ok INTEGER NOT NULL DEFAULT true;

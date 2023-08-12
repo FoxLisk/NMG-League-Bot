@@ -11,7 +11,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::ConnectionError;
 use log::{info, warn};
 use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_http::{Client, Error};
+use twilight_http::Client;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;

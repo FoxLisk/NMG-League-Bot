@@ -54,13 +54,7 @@ fn get_players(start: i32, add_me: bool) -> Vec<NewPlayer> {
         let discord_id = format!("{i}");
         let racetime_username = format!("player_{i}#{i}");
         let twitch_id = format!("player_{i}_ttv");
-        let np = NewPlayer::new(
-            name,
-            discord_id,
-            Some(racetime_username),
-            Some(twitch_id),
-            true,
-        );
+        let np = NewPlayer::new(name, discord_id, Some(racetime_username), Some(twitch_id));
         players.push(np);
     }
 
@@ -70,14 +64,12 @@ fn get_players(start: i32, add_me: bool) -> Vec<NewPlayer> {
             "255676979460702210",
             Some("FoxLisk#8582"),
             Some("foxlisk"),
-            true,
         );
         let me_alt = NewPlayer::new(
             "Me Test",
             "1031811909223206912",
             Some("NA#1234"),
             Some("foxtest69"),
-            true,
         );
         players.push(me);
         players.push(me_alt);

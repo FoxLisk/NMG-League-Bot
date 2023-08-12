@@ -22,17 +22,12 @@ pub struct Player {
     pub discord_id: String,
     pub racetime_username: Option<String>,
     pub twitch_user_login: Option<String>,
-    pub restreams_ok: i32,
 }
 
 impl Player {
     /// this should never fail but i'm scared of assuming that
     pub fn discord_id(&self) -> Result<Id<UserMarker>, ParseIntError> {
         Id::<UserMarker>::from_str(&self.discord_id)
-    }
-
-    pub fn restreams_ok(&self) -> bool {
-        self.restreams_ok == 1
     }
 
     pub fn get_by_discord_id(
@@ -53,7 +48,7 @@ impl Player {
         if let Some(u) = Self::get_by_discord_id(&user.id.to_string(), conn)? {
             Ok((u, false))
         } else {
-            let np = NewPlayer::new(user.name, user.id.to_string(), None, None, true);
+            let np = NewPlayer::new(user.name, user.id.to_string(), None, None);
             let saved = np.save(conn)?;
             Ok((saved, true))
         }
@@ -104,7 +99,6 @@ pub struct NewPlayer {
     pub discord_id: String,
     pub racetime_username: Option<String>,
     pub twitch_user_login: Option<String>,
-    pub restreams_ok: i32,
 }
 
 impl NewPlayer {
@@ -113,14 +107,12 @@ impl NewPlayer {
         discord_id: S,
         racetime_username: Option<S>,
         twitch_user_login: Option<S>,
-        restreams_ok: bool,
     ) -> Self {
         Self {
             name: name.into(),
             discord_id: discord_id.into(),
             racetime_username: racetime_username.map(Into::into),
             twitch_user_login: twitch_user_login.map(Into::into),
-            restreams_ok: if restreams_ok { 1 } else { 0 },
         }
     }
     save_fn!(players::table, Player);
