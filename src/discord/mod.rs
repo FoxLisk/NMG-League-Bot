@@ -413,6 +413,7 @@ async fn create_or_update_event(
     gid: Id<GuildMarker>,
     client: &Client,
 ) -> Result<GuildScheduledEvent, NMGLeagueBotError> {
+    let event_name = format!("{bracket_name}: {} vs {}", p1.name, p2.name);
     // this relies on the database being in sync with discord correctly. if you have
     // a race that's `scheduled()` for the future, but with a scheduled event ID that is
     // in the past, this function won't work correctly.
@@ -421,7 +422,11 @@ async fn create_or_update_event(
     // discord's state every time
     let is_past = if let Some(was) = old_info.scheduled() {
         let now = Utc::now();
-        was < now
+        let is_past = was < now;
+        if is_past {
+            info!("I believe that race {event_name} is in the past, so I will not be updating its event");
+        }
+        is_past
     } else {
         false
     };
@@ -440,12 +445,7 @@ async fn create_or_update_event(
     } else {
         client
             .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
-            .external(
-                &format!("{bracket_name}: {} vs {}", p1.name, p2.name),
-                &multistream_link(p1, p2),
-                &start,
-                &end,
-            )?
+            .external(&event_name, &multistream_link(p1, p2), &start, &end)?
             .await
     };
     resp?.model().await.map_err(From::from)

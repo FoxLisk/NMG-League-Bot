@@ -124,6 +124,7 @@ async fn maybe_do_race_stuff(
             opts,
             conn.deref_mut(),
             Some(&state.client),
+            Some(state.guild_id()),
             &state.channel_config,
         )
         .await

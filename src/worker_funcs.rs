@@ -16,7 +16,8 @@ use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_model::channel::message::embed::{Embed, EmbedField};
 use twilight_model::channel::Message;
-use twilight_model::id::marker::ChannelMarker;
+use twilight_model::guild::scheduled_event::Status;
+use twilight_model::id::marker::{ChannelMarker, GuildMarker};
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
@@ -191,10 +192,13 @@ This function does these things:
 2. saves that race
 3. if a [Client] is supplied, posts a message in #match-results
 */
+// N.B. this doesn't take a DiscordState because that's part of the `discord` module, which isn't
+// compiled into the `lib`
 pub async fn trigger_race_finish(
     mut options: RaceFinishOptions,
     conn: &mut SqliteConnection,
     client: Option<&Client>,
+    gid: Option<Id<GuildMarker>>,
     channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
     options.bracket_race.add_results(
@@ -217,6 +221,21 @@ pub async fn trigger_race_finish(
                 options.bracket_race.id
             );
         }
+        if let Some(gid_) = gid {
+            if let Some(eid) = options.info.get_scheduled_event_id() {
+                if let Err(e) = c
+                    .update_guild_scheduled_event(gid_, eid)
+                    .status(Status::Completed)
+                    .await
+                {
+                    warn!(
+                        "Error ending scheduled event for race {}: {e}",
+                        options.bracket_race.id
+                    );
+                }
+            }
+        }
+
         // TODO: maybe clear other messages? under some circumstances?
     }
 

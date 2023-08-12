@@ -78,7 +78,7 @@ async fn run_bracket(
                 force_update: false,
                 channel_id: chans.match_results,
             };
-            trigger_race_finish(opts, conn, None, &ChannelConfig::new_from_env())
+            trigger_race_finish(opts, conn, None, None, &ChannelConfig::new_from_env())
                 .await
                 .unwrap();
         } else {
