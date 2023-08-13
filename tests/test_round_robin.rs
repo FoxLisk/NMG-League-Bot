@@ -19,8 +19,8 @@ fn test() -> Result<(), anyhow::Error> {
         NewBracket::new(&season, "test_rr_bracket", BracketType::RoundRobin).save(&mut db)?;
     let mut players = vec![];
     for i in 0..4 {
-        let player = NewPlayer::new(format!("player_{i}"), format!("{i}"), None, None, true)
-            .save(&mut db)?;
+        let player =
+            NewPlayer::new(format!("player_{i}"), format!("{i}"), None, None).save(&mut db)?;
         NewPlayerBracketEntry::new(&bracket, &player).save(&mut db)?;
         players.push(player);
     }
