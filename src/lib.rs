@@ -6,6 +6,7 @@ extern crate swiss_pairings;
 use crate::config::CONFIG;
 use bb8::RunError;
 use diesel::ConnectionError;
+#[cfg(feature = "racetime_bot")]
 use racetime::Error;
 use racetime_api::err::RacetimeError;
 use thiserror::Error;
@@ -126,6 +127,7 @@ pub enum NMGLeagueBotError {
     RaceTimeBotError(#[from] RaceTimeBotError),
 }
 
+#[cfg(feature = "racetime_bot")]
 impl Into<racetime::Error> for NMGLeagueBotError {
     fn into(self) -> Error {
         Error::Custom(Box::new(self))
