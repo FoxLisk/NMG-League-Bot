@@ -18,13 +18,13 @@ use bb8::{Pool, PooledConnection};
 use diesel::prelude::*;
 use log::{info, warn};
 use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
+use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
+use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;
-use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
-use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::utils::format_hms;
 use rocket::request::{FromRequest, Outcome};
@@ -32,11 +32,13 @@ use rocket::response::Redirect;
 use rocket_dyn_templates::tera::{to_value, try_get_value, Value};
 use serde::Serialize;
 use std::ops::{Deref, DerefMut};
+use tokio::sync::mpsc::Sender;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 
 mod api;
 mod auth;
+mod internal_api;
 mod session_manager;
 mod statics;
 
@@ -114,12 +116,13 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
         }
     };
     let query = schema::races::table.inner_join(schema::race_runs::table);
-    let results: Vec<(AsyncRace, AsyncRaceRun)> = match query.load::<(AsyncRace, AsyncRaceRun)>(cxn.deref_mut()) {
-        Ok(r) => r,
-        Err(e) => {
-            return Template::render("asyncs", Context::error(e.to_string()));
-        }
-    };
+    let results: Vec<(AsyncRace, AsyncRaceRun)> =
+        match query.load::<(AsyncRace, AsyncRaceRun)>(cxn.deref_mut()) {
+            Ok(r) => r,
+            Err(e) => {
+                return Template::render("asyncs", Context::error(e.to_string()));
+            }
+        };
 
     #[derive(Serialize, Default)]
     struct Context {
@@ -717,8 +720,9 @@ fn option_default(
 
 pub(crate) async fn launch_website(
     state: Arc<DiscordState>,
+    bri_sender: Sender<BracketRaceInfo>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
-) -> Result<(), rocket::error::Error>{
+) -> Result<(), rocket::error::Error> {
     let oauth_client = OauthClient::new();
     let session_manager: Arc<AsyncMutex<SessionManager>> =
         Arc::new(AsyncMutex::new(SessionManager::new()));
@@ -750,6 +754,7 @@ pub(crate) async fn launch_website(
         .manage(db);
     let rocket = api::build_rocket(rocket);
     let rocket = auth::build_rocket(rocket);
+    let rocket = internal_api::build_rocket(rocket, bri_sender);
 
     let ignited = rocket.ignite().await?;
     info!("Rocket config: {:?}", ignited.config());

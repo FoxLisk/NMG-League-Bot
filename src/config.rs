@@ -1,5 +1,6 @@
 use crate::utils::env_var;
 use once_cell::sync::Lazy;
+use std::num::NonZeroU16;
 use std::str::FromStr;
 use twilight_model::id::marker::{ApplicationMarker, ChannelMarker, GuildMarker};
 use twilight_model::id::Id;
@@ -12,6 +13,9 @@ const TWITCH_CLIENT_SECRET_VAR: &str = "TWITCH_CLIENT_SECRET";
 
 const ASYNC_WEBHOOK_VAR: &str = "ASYNC_WEBHOOK_URL";
 const ERROR_WEBHOOK_VAR: &str = "ERROR_WEBHOOK_URL";
+
+const DISCORD_ADMIN_ROLE_NAME_VAR: &str = "DISCORD_ADMIN_ROLE_NAME";
+const DISCORD_ZSR_ROLE_NAME_VAR: &str = "DISCORD_ZSR_ROLE_NAME";
 
 const COMMPORTUNITIES_CHANNEL_ID_VAR: &str = "COMMPORTUNITIES_CHANNEL_ID";
 const SIRIUS_INBOX_CHANNEL_ID_VAR: &str = "SIRIUS_INBOX_CHANNEL_ID";
@@ -33,6 +37,24 @@ pub const LOG4RS_CONF_FILE_VAR: &str = "LOG4RS_CONFIG_FILE";
 
 const WEBSITE_URL_VAR: &'static str = "WEBSITE_URL";
 
+const INTERNAL_API_SECRET_VAR: &'static str = "INTERNAL_API_SECRET";
+
+#[cfg(feature = "racetime_bot")]
+mod racetime {
+    pub(super) const RACETIME_CLIENT_ID_VAR: &'static str = "RACETIME_CLIENT_ID";
+    pub(super) const RACETIME_CLIENT_SECRET_VAR: &'static str = "RACETIME_CLIENT_SECRET";
+    pub(super) const RACETIME_CATEGORY_VAR: &'static str = "RACETIME_CATEGORY";
+    pub(super) const RACETIME_ROOM_POSTING_CHANNEL_ID_VAR: &'static str =
+        "RACETIME_ROOM_POSTING_CHANNEL_ID";
+}
+
+pub(super) const RACETIME_HOST_VAR: &'static str = "RACETIME_HOST";
+pub(super) const RACETIME_PORT_VAR: &'static str = "RACETIME_PORT";
+pub(super) const RACETIME_SECURE_VAR: &'static str = "RACETIME_SECURE";
+
+#[cfg(feature = "racetime_bot")]
+use crate::config::racetime::*;
+
 pub static CONFIG: Lazy<Config> = Lazy::new(|| Config::new_from_env());
 
 pub struct Config {
@@ -43,6 +65,9 @@ pub struct Config {
 
     pub async_webhook: String,
     pub error_webhook: String,
+
+    pub discord_admin_role_name: String,
+    pub discord_zsr_role_name: String,
 
     pub commportunities_channel_id: Id<ChannelMarker>,
     pub sirius_inbox_channel_id: Id<ChannelMarker>,
@@ -62,6 +87,22 @@ pub struct Config {
     pub guild_id: Id<GuildMarker>,
 
     pub website_url: String,
+
+    pub internal_api_secret: String,
+
+    // we want these for local testing even without running the bot
+    pub racetime_host: String,
+    pub racetime_port: NonZeroU16,
+    pub racetime_secure: bool,
+
+    #[cfg(feature = "racetime_bot")]
+    pub racetime_client_id: String,
+    #[cfg(feature = "racetime_bot")]
+    pub racetime_client_secret: String,
+    #[cfg(feature = "racetime_bot")]
+    pub racetime_category: String,
+    #[cfg(feature = "racetime_bot")]
+    pub racetime_room_posting_channel_id: Id<ChannelMarker>,
 }
 
 fn id_from_env<T>(k: &str) -> Id<T> {
@@ -89,6 +130,8 @@ impl Config {
             twitch_client_secret: ClientSecret::new(env_var(TWITCH_CLIENT_SECRET_VAR)),
             async_webhook: env_var(ASYNC_WEBHOOK_VAR),
             error_webhook: env_var(ERROR_WEBHOOK_VAR),
+            discord_admin_role_name: env_var(DISCORD_ADMIN_ROLE_NAME_VAR),
+            discord_zsr_role_name: env_var(DISCORD_ZSR_ROLE_NAME_VAR),
             commportunities_channel_id: id_from_env(COMMPORTUNITIES_CHANNEL_ID_VAR),
             sirius_inbox_channel_id: id_from_env(SIRIUS_INBOX_CHANNEL_ID_VAR),
             zsr_channel_id: id_from_env(ZSR_CHANNEL_ID_VAR),
@@ -102,6 +145,19 @@ impl Config {
             racetime_tick_secs: parse(RACETIME_TICK_SECS),
             guild_id: id_from_env(GUILD_ID_VAR),
             website_url: env_var(WEBSITE_URL_VAR),
+            internal_api_secret: env_var(INTERNAL_API_SECRET_VAR),
+            racetime_host: env_var(RACETIME_HOST_VAR),
+            racetime_port: parse(RACETIME_PORT_VAR),
+            racetime_secure: parse(RACETIME_SECURE_VAR),
+
+            #[cfg(feature = "racetime_bot")]
+            racetime_client_id: env_var(RACETIME_CLIENT_ID_VAR),
+            #[cfg(feature = "racetime_bot")]
+            racetime_client_secret: env_var(RACETIME_CLIENT_SECRET_VAR),
+            #[cfg(feature = "racetime_bot")]
+            racetime_category: parse(RACETIME_CATEGORY_VAR),
+            #[cfg(feature = "racetime_bot")]
+            racetime_room_posting_channel_id: parse(RACETIME_ROOM_POSTING_CHANNEL_ID_VAR),
         }
     }
 }

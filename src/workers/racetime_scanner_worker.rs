@@ -110,6 +110,9 @@ async fn maybe_do_race_stuff(
         let p1r = e1.result()?;
         let p2r = e2.result()?;
         let mut conn = state.diesel_cxn().await?;
+        if let Err(e) = mutable_bri.update(conn.deref_mut()) {
+            warn!("Error updating BRI with racetimeurl: {e} - BRI {mutable_bri:?}");
+        }
         let opts = RaceFinishOptions {
             bracket_race: mutable_br,
             info: mutable_bri,
@@ -124,7 +127,7 @@ async fn maybe_do_race_stuff(
             opts,
             conn.deref_mut(),
             Some(&state.client),
-            Some(state.guild_id()),
+            Some(CONFIG.guild_id),
             &state.channel_config,
         )
         .await

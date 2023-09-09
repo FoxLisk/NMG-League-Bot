@@ -4,12 +4,16 @@ extern crate serde_json;
 extern crate swiss_pairings;
 
 use crate::config::CONFIG;
+use bb8::RunError;
+use diesel::ConnectionError;
+use racetime::Error;
 use racetime_api::err::RacetimeError;
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twilight_model::util::datetime::TimestampParseError;
+use twilight_validate::message::MessageValidationError;
 use twilight_validate::request::ValidationError;
 use twitch_api::helix::ClientRequestError;
 
@@ -60,10 +64,29 @@ pub enum ApiError {
     CannotDeletePastQualifiers,
 }
 
+// See above comment (but replace with racetime_bot)
+#[cfg(feature = "racetime_bot")]
+#[derive(Debug, Error)]
+pub enum RaceTimeBotError {
+    #[error("Error interacting with RaceTime: {0}")]
+    RaceTimeError(#[from] racetime::Error),
+    #[error("Trying to create a race for the wrong category")]
+    InvalidCategory,
+    #[error("No auth token (this probably should never happen)")]
+    NoAuthToken,
+    #[error("That BracketRaceInfo was already known about with a different slug: {0}")]
+    ConflictingSlug(i32),
+    #[error("Missing BracketRaceInfo for slug {0}")]
+    MissingBRI(String),
+}
+
 #[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
     TwilightHttpError(#[from] twilight_http::Error),
+
+    #[error("Error validating Discord message: {0}")]
+    MessageValidationError(#[from] MessageValidationError),
 
     #[error("Database error: {0}")]
     DatabaseError(#[from] diesel::result::Error),
@@ -94,4 +117,17 @@ pub enum NMGLeagueBotError {
 
     #[error("{0}")]
     ValidationError(#[from] ValidationError),
+
+    #[error("{0}")]
+    Bb8Error(#[from] RunError<ConnectionError>),
+
+    #[cfg(feature = "racetime_bot")]
+    #[error("{0}")]
+    RaceTimeBotError(#[from] RaceTimeBotError),
+}
+
+impl Into<racetime::Error> for NMGLeagueBotError {
+    fn into(self) -> Error {
+        Error::Custom(Box::new(self))
+    }
 }

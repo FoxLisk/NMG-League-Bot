@@ -54,7 +54,7 @@ mod interaction_handlers;
 mod interactions_utils;
 mod reaction_handlers;
 
-mod constants {
+pub mod constants {
     pub const CUSTOM_ID_START_RUN: &str = "start_run";
     pub const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
     pub const CUSTOM_ID_FORFEIT_RUN: &str = "forfeit_run";
@@ -286,7 +286,7 @@ async fn schedule_race<Tz: TimeZone>(
             &new_info,
             &p1,
             &p2,
-            state.guild_id(),
+            CONFIG.guild_id,
             &state.client,
         )
         .await

@@ -22,6 +22,7 @@ pub struct Player {
     pub discord_id: String,
     pub racetime_username: Option<String>,
     pub twitch_user_login: Option<String>,
+    pub racetime_user_id: Option<String>,
 }
 
 impl Player {
@@ -59,6 +60,15 @@ impl Player {
         conn: &mut SqliteConnection,
     ) -> Result<Option<Self>, diesel::result::Error> {
         players::table.find(id).first(conn).optional()
+    }
+    pub fn get_by_rtgg_id(
+        rtgg_id: &str,
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<Self>, diesel::result::Error> {
+        players::table
+            .filter(players::racetime_user_id.eq(rtgg_id))
+            .first(conn)
+            .optional()
     }
 
     pub fn get_by_name(

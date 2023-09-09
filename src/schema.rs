@@ -82,6 +82,7 @@ diesel::table! {
         discord_id -> Text,
         racetime_username -> Nullable<Text>,
         twitch_user_login -> Nullable<Text>,
+        racetime_user_id -> Nullable<Text>,
     }
 }
 
