@@ -39,7 +39,7 @@ use discord::Webhooks;
 use nmg_league_bot::config::{CONFIG, LOG4RS_CONF_FILE_VAR};
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
 use nmg_league_bot::db::run_migrations;
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_race_infos::BracketRaceInfoId;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::{env_var, racetime_base_url};
 
@@ -72,7 +72,8 @@ async fn main() {
     .expect("Couldn't construct twitch client");
 
     // setup some channels
-    let (upcoming_races_tx, upcoming_races_rx) = tokio::sync::mpsc::channel::<BracketRaceInfo>(100);
+    let (upcoming_races_tx, upcoming_races_rx) =
+        tokio::sync::mpsc::channel::<BracketRaceInfoId>(100);
     let state = discord::bot::launch(
         client.clone(),
         webhooks.clone(),
@@ -110,12 +111,18 @@ async fn main() {
     ));
 
     #[cfg(feature = "racetime_bot")]
-    tokio::spawn(racetime_bot::run_bot(
-        state.clone(),
-        upcoming_races_rx,
-        shutdown_send.subscribe(),
-    ));
-
+    {
+        tokio::spawn(workers::upcoming_races_worker::cron(
+            upcoming_races_tx.clone(),
+            shutdown_send.subscribe(),
+            state.clone(),
+        ));
+        tokio::spawn(racetime_bot::run_bot(
+            state.clone(),
+            upcoming_races_rx,
+            shutdown_send.subscribe(),
+        ));
+    }
     drop(state);
     drop(webhooks);
     drop(client);

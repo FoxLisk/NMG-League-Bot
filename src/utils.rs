@@ -197,6 +197,8 @@ where
     None
 }
 
+/// returns the base url for racetime.gg based on the config  
+/// (in prod this should just be `https://racetime.gg`)
 pub fn racetime_base_url() -> String {
     let secure = if CONFIG.racetime_secure { "s" } else { "" };
     let port_str = match CONFIG.racetime_port.get() {

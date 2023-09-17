@@ -68,10 +68,8 @@ log4rs = { version = "1.2.0", features = ["gzip"] }
 log = "0.4.17"
 anyhow = "1"
 
-# this depends on a new tokio-tungstenite, which drags in a bunch of new stuff and results in
-# ultimately a transitive dependency on a new version of `quote` which breaks some proc macros in
-# diesel, so we have to keep it down for now
-racetime = { version = "0.17.0", optional = true }
+
+racetime = { version = "0.18.0", optional = true }
 either = "1.9.0"
 
 [dependencies.swiss-pairings]

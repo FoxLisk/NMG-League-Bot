@@ -79,6 +79,10 @@ pub enum RaceTimeBotError {
     ConflictingSlug(i32),
     #[error("Missing BracketRaceInfo for slug {0}")]
     MissingBRI(String),
+    #[error("Worker thread for this race disconnected")]
+    WorkerDisconnect,
+    #[error("Handler disconnected (the inverse of WorkerDisconnect)")]
+    HandlerDisconnect,
 }
 
 #[derive(Error, Debug)]
@@ -128,8 +132,8 @@ pub enum NMGLeagueBotError {
 }
 
 #[cfg(feature = "racetime_bot")]
-impl Into<racetime::Error> for NMGLeagueBotError {
-    fn into(self) -> Error {
-        Error::Custom(Box::new(self))
+impl From<RaceTimeBotError> for racetime::Error {
+    fn from(value: RaceTimeBotError) -> Self {
+        Error::Custom(Box::new(value))
     }
 }

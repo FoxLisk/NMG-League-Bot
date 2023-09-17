@@ -27,9 +27,13 @@ These aren't, like, maximally well maintained and useful, but `generate_test_dat
 populating the databases. Some of these scripts are for one-off migrations, some are for testing. 
 Sorry the place is a mess.
 
+### RaceTime
+
 The racetime bot is disabled by default because it's not really appropriate to run in dev unless you also have a
 local instance of the racetime app running. To run it, use the `racetime_bot` feature (and you will have to fill in
 some extra env vars).
+
+It's not hard to get the app running: just [clone their repo](https://github.com/racetimeGG/racetime-app) and follow the steps they provide:
 
 # Other stuff
 

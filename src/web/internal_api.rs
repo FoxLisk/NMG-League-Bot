@@ -1,7 +1,7 @@
 use crate::web::ConnectionWrapper;
 use log::warn;
 use nmg_league_bot::config::CONFIG;
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
 use nmg_league_bot::utils::ResultErrToString;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -52,17 +52,20 @@ impl<'r> FromRequest<'r> for InternalAdmin {
 async fn start_race_for(
     _admin: InternalAdmin,
     bracket_race_info_id: i32,
-    sender: &State<Sender<BracketRaceInfo>>,
+    sender: &State<Sender<BracketRaceInfoId>>,
     mut conn: ConnectionWrapper<'_>,
 ) -> Json<Result<(), String>> {
     let res = match BracketRaceInfo::get_by_id(bracket_race_info_id, conn.deref_mut()) {
-        Ok(bri) => sender.send(bri).await.map_err_to_string(),
+        Ok(bri) => sender
+            .send(BracketRaceInfoId(bri.id))
+            .await
+            .map_err_to_string(),
         Err(e) => Err(format!("Error getting BRI: {e}")),
     };
     Json(res)
 }
 
-pub fn build_rocket(rocket: Rocket<Build>, sender: Sender<BracketRaceInfo>) -> Rocket<Build> {
+pub fn build_rocket(rocket: Rocket<Build>, sender: Sender<BracketRaceInfoId>) -> Rocket<Build> {
     rocket
         .mount("/internal_api/v1", rocket::routes![start_race_for])
         .manage(sender)

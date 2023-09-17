@@ -177,26 +177,40 @@ impl Season {
             .load(conn)
     }
 
-    // for finding races that are about to start or are in progress
-    pub fn get_unfinished_races_after(
-        self,
-        how_long_ago: Duration,
+    pub fn get_unfinished_races(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<(BracketRaceInfo, BracketRace)>, diesel::result::Error> {
+        use schema::bracket_race_infos;
+        use schema::bracket_races;
+        use schema::brackets;
+        let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
+
+        bracket_race_infos::table
+            .inner_join(bracket_races::table.inner_join(brackets::table))
+            .select((bracket_race_infos::all_columns, bracket_races::all_columns))
+            .filter(bracket_races::state.ne(finished_state))
+            .filter(brackets::season_id.eq(self.id))
+            .load(conn)
+    }
+
+    /// for finding races that are about to start or are in progress
+    pub fn get_unfinished_races_starting_before(
+        &self,
+        when: i64,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<(BracketRaceInfo, BracketRace)>, diesel::result::Error> {
         use schema::bracket_race_infos;
         use schema::bracket_races;
         use schema::brackets;
 
-        let now = Utc::now();
-        // TODO: this should be configurable or we should stop caring about it, maybe
-        let start_time = now - how_long_ago;
         // TODO: pretend to care about this unwrap later maybe
         let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
 
         bracket_race_infos::table
             .inner_join(bracket_races::table.inner_join(brackets::table))
             .select((bracket_race_infos::all_columns, bracket_races::all_columns))
-            .filter(bracket_race_infos::scheduled_for.gt(start_time.timestamp()))
+            .filter(bracket_race_infos::scheduled_for.lt(when))
             .filter(bracket_races::state.ne(finished_state))
             .filter(brackets::season_id.eq(self.id))
             .load(conn)

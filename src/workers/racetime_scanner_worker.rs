@@ -11,6 +11,7 @@ use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
+use nmg_league_bot::utils::racetime_base_url;
 use nmg_league_bot::worker_funcs::{
     interesting_race, races_by_player_rtgg, trigger_race_finish, RaceFinishOptions,
 };
@@ -145,7 +146,7 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
         tick_duration.as_secs()
     );
     let mut intv = tokio::time::interval(tick_duration);
-    let client = RacetimeClient::new().unwrap();
+    let client = RacetimeClient::new_with_url(&racetime_base_url()).unwrap();
     loop {
         tokio::select! {
             _ = intv.tick() => {

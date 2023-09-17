@@ -884,7 +884,7 @@ async fn handle_add_player_to_bracket_submit(
         None => {
             return Ok(plain_interaction_response(format!(
                 "That player has not been created. Use /{} to create them.",
-                ADD_PLAYER_TO_BRACKET_CMD
+                CREATE_PLAYER_CMD
             )));
         }
     };

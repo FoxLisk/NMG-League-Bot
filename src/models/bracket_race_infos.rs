@@ -13,6 +13,9 @@ use twilight_mention::Mention;
 use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
 
+#[derive(Debug, Clone)]
+pub struct BracketRaceInfoId(pub i32);
+
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone)]
 #[diesel(treat_none_as_null = true)]
 pub struct BracketRaceInfo {
@@ -91,6 +94,7 @@ impl BracketRaceInfo {
 
     /// returns the prior scheduled time, if any (as timestamp)
     /// Deletes any existing commentary signups
+    /// Cleans self.racetime_gg_url as well
     /// does *not* persist self
     pub fn schedule<T: TimeZone>(
         &mut self,
@@ -102,6 +106,7 @@ impl BracketRaceInfo {
                 .filter(commentator_signups::bracket_race_info_id.eq(self.id)),
         )
         .execute(conn)?;
+        self.racetime_gg_url = None;
         Ok(std::mem::replace(
             &mut self.scheduled_for,
             Some(when.timestamp()),

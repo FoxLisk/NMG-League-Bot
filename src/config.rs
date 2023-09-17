@@ -46,6 +46,7 @@ mod racetime {
     pub(super) const RACETIME_CATEGORY_VAR: &'static str = "RACETIME_CATEGORY";
     pub(super) const RACETIME_ROOM_POSTING_CHANNEL_ID_VAR: &'static str =
         "RACETIME_ROOM_POSTING_CHANNEL_ID";
+    pub(super) const RACETIME_BOT_NAME_VAR: &'static str = "RACETIME_BOT_NAME";
 }
 
 pub(super) const RACETIME_HOST_VAR: &'static str = "RACETIME_HOST";
@@ -81,7 +82,7 @@ pub struct Config {
     pub twitch_client_secret: ClientSecret,
 
     pub cancel_race_timeout: u64,
-    pub cron_ticks: u64,
+    pub cron_tick_seconds: u64,
     pub racetime_tick_secs: u64,
 
     pub guild_id: Id<GuildMarker>,
@@ -103,6 +104,8 @@ pub struct Config {
     pub racetime_category: String,
     #[cfg(feature = "racetime_bot")]
     pub racetime_room_posting_channel_id: Id<ChannelMarker>,
+    #[cfg(feature = "racetime_bot")]
+    pub racetime_bot_name: String,
 }
 
 fn id_from_env<T>(k: &str) -> Id<T> {
@@ -141,7 +144,7 @@ impl Config {
             discord_client_secret: env_var(CLIENT_SECRET_VAR),
             discord_authorize_url: env_var(AUTHORIZE_URL_VAR),
             cancel_race_timeout: parse(CANCEL_RACE_TIMEOUT_VAR),
-            cron_ticks: parse(CRON_TICKS_VAR),
+            cron_tick_seconds: parse(CRON_TICKS_VAR),
             racetime_tick_secs: parse(RACETIME_TICK_SECS),
             guild_id: id_from_env(GUILD_ID_VAR),
             website_url: env_var(WEBSITE_URL_VAR),
@@ -158,6 +161,8 @@ impl Config {
             racetime_category: parse(RACETIME_CATEGORY_VAR),
             #[cfg(feature = "racetime_bot")]
             racetime_room_posting_channel_id: parse(RACETIME_ROOM_POSTING_CHANNEL_ID_VAR),
+            #[cfg(feature = "racetime_bot")]
+            racetime_bot_name: parse(RACETIME_BOT_NAME_VAR),
         }
     }
 }

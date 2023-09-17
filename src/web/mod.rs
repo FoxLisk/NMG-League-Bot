@@ -20,7 +20,7 @@ use log::{info, warn};
 use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
-use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
 use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError};
@@ -720,7 +720,7 @@ fn option_default(
 
 pub(crate) async fn launch_website(
     state: Arc<DiscordState>,
-    bri_sender: Sender<BracketRaceInfo>,
+    bri_sender: Sender<BracketRaceInfoId>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Result<(), rocket::error::Error> {
     let oauth_client = OauthClient::new();
