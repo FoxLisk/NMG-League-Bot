@@ -484,6 +484,7 @@ mod tests {
             discord_id: "1234".to_string(),
             racetime_username: Some("p1#1234".to_string()),
             twitch_user_login: Some("p1_ttv".to_string()),
+            racetime_user_id: None,
         };
         let p2 = Player {
             id: 2,
@@ -491,6 +492,7 @@ mod tests {
             discord_id: "3456".to_string(),
             racetime_username: Some("p2#1234".to_string()),
             twitch_user_login: Some("p2_ttv".to_string()),
+            racetime_user_id: None,
         };
         let mut races = HashMap::new();
         races.insert(p1.racetime_username.clone().unwrap(), (&bri, &br, &p1, &p2));
@@ -558,6 +560,7 @@ mod tests {
             discord_id: "1234".to_string(),
             racetime_username: Option::from("p1#1234".to_string()),
             twitch_user_login: Option::from("p1_ttv".to_string()),
+            racetime_user_id: None,
         };
         let p3 = Player {
             id: 3,
@@ -565,6 +568,7 @@ mod tests {
             discord_id: "3456".to_string(),
             racetime_username: Option::from("p3#1234".to_string()),
             twitch_user_login: Option::from("p3_ttv".to_string()),
+            racetime_user_id: None,
         };
         let mut races = HashMap::new();
         races.insert(

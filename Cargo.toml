@@ -12,9 +12,13 @@ name = "bot"
 path = "src/main.rs"
 
 
+# when adding a feature, please add it to the "matrix" (list) in .github/workflows/build-features.yml
+# TODO: figure out how to make that NxN
 [features]
 # this feature gives you admin status at all times on the nmg-league-bot website (instead of going through discord OIDC)
 no_auth_website = []
+# this feature runs the bot that creates & interacts with racetime rooms. (The racetime scanner for picking up finished
+# races is unaffected)
 racetime_bot = ["dep:racetime"]
 testing = []
 
