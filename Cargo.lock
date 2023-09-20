@@ -2237,6 +2237,7 @@ dependencies = [
 [[package]]
 name = "racetime-api"
 version = "0.1.0"
+source = "git+https://github.com/FoxLisk/racetime-api.git#ae65ecf11a344fd2f5c670349562d50301708e94"
 dependencies = [
  "async-trait",
  "bytes",
