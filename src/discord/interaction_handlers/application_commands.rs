@@ -1355,7 +1355,7 @@ async fn handle_report_race(
 ) -> Result<InteractionResponse, String> {
     let opts = get_race_finish_opts_from_command_opts(&mut ac.options, state, false).await?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client), Some(CONFIG.guild_id), &state.channel_config)
+    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client),  &state.channel_config)
         .await
         .map(|_|plain_interaction_response(format!(
             "Race has been updated. You should see a post in {}",
@@ -1386,7 +1386,6 @@ async fn handle_rereport_race(
         opts,
         cxn.deref_mut(),
         Some(&state.client),
-        Some(CONFIG.guild_id),
         &state.channel_config,
     )
     .await

@@ -2,6 +2,7 @@
 this shitty module is stuff for workers::* to call so that I can also call it from test code
  */
 
+use crate::config::CONFIG;
 use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_races::{BracketRace, BracketRaceStateError, Outcome, PlayerResult};
 use crate::models::player::Player;
@@ -17,7 +18,7 @@ use twilight_http::Client;
 use twilight_model::channel::message::embed::{Embed, EmbedField};
 use twilight_model::channel::Message;
 use twilight_model::guild::scheduled_event::Status;
-use twilight_model::id::marker::{ChannelMarker, GuildMarker};
+use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
@@ -198,7 +199,6 @@ pub async fn trigger_race_finish(
     mut options: RaceFinishOptions,
     conn: &mut SqliteConnection,
     client: Option<&Client>,
-    gid: Option<Id<GuildMarker>>,
     channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
     options.bracket_race.add_results(
@@ -221,18 +221,16 @@ pub async fn trigger_race_finish(
                 options.bracket_race.id
             );
         }
-        if let Some(gid_) = gid {
-            if let Some(eid) = options.info.get_scheduled_event_id() {
-                if let Err(e) = c
-                    .update_guild_scheduled_event(gid_, eid)
-                    .status(Status::Completed)
-                    .await
-                {
-                    warn!(
-                        "Error ending scheduled event for race {}: {e}",
-                        options.bracket_race.id
-                    );
-                }
+        if let Some(eid) = options.info.get_scheduled_event_id() {
+            if let Err(e) = c
+                .update_guild_scheduled_event(CONFIG.guild_id, eid)
+                .status(Status::Completed)
+                .await
+            {
+                warn!(
+                    "Error ending scheduled event for race {}: {e}",
+                    options.bracket_race.id
+                );
             }
         }
 

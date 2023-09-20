@@ -41,6 +41,7 @@ fn url_from_slug(slug: &str) -> String {
 
 fn slug_from_url(url: &str) -> Option<String> {
     let base_url = format!("{}/{}", racetime_base_url(), CONFIG.racetime_category);
+    // TODO: this regex should be cached
     let url_regex: Result<Regex, regex::Error> = Regex::new(&format!(r"{base_url}/([^/]+)"));
     let re = match url_regex {
         Ok(re) => re,
@@ -50,8 +51,7 @@ fn slug_from_url(url: &str) -> Option<String> {
         }
     };
     re.captures(url)
-        .map(|c| c.get(1))
-        .flatten()
+        .and_then(|c| c.get(1))
         .map(|m| m.as_str().to_string())
 }
 
@@ -208,7 +208,6 @@ async fn create_room_for_race(
 
 struct RacetimeState {
     discord_state: Arc<DiscordState>,
-    // TODO: clear this out, this is technically a memory leak
     // TODO: dashmap?
     race_name_to_bracket_race_info_id: Mutex<HashMap<String, i32>>,
 }
@@ -319,7 +318,6 @@ async fn gethistory(
         debug!("There was a a history message already in the channel {hst:?}");
     }
     if let Err(e) = ctx.send_raw(&json!({"action": "gethistory"})).await {
-        // TODO: bail entirely?
         warn!("Error sending gethistory: {e}");
         return None;
     }

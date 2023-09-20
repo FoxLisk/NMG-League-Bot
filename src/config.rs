@@ -47,6 +47,9 @@ mod racetime {
     pub(super) const RACETIME_ROOM_POSTING_CHANNEL_ID_VAR: &'static str =
         "RACETIME_ROOM_POSTING_CHANNEL_ID";
     pub(super) const RACETIME_BOT_NAME_VAR: &'static str = "RACETIME_BOT_NAME";
+
+    pub(super) const RACETIME_ROOM_CREATION_LEAD_TIME_MINUTES_VAR: &'static str =
+        "racetime_room_creation_lead_time_minutes";
 }
 
 pub(super) const RACETIME_HOST_VAR: &'static str = "RACETIME_HOST";
@@ -106,6 +109,9 @@ pub struct Config {
     pub racetime_room_posting_channel_id: Id<ChannelMarker>,
     #[cfg(feature = "racetime_bot")]
     pub racetime_bot_name: String,
+
+    #[cfg(feature = "racetime_bot")]
+    pub racetime_room_creation_lead_time_minutes: i64,
 }
 
 fn id_from_env<T>(k: &str) -> Id<T> {
@@ -152,6 +158,10 @@ impl Config {
             racetime_host: env_var(RACETIME_HOST_VAR),
             racetime_port: parse(RACETIME_PORT_VAR),
             racetime_secure: parse(RACETIME_SECURE_VAR),
+            #[cfg(feature = "racetime_bot")]
+            racetime_room_creation_lead_time_minutes: parse(
+                RACETIME_ROOM_CREATION_LEAD_TIME_MINUTES_VAR,
+            ),
 
             #[cfg(feature = "racetime_bot")]
             racetime_client_id: env_var(RACETIME_CLIENT_ID_VAR),

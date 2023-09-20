@@ -2,6 +2,7 @@ use crate::discord::discord_state::DiscordState;
 use crate::shutdown::Shutdown;
 use chrono::{Duration, Utc};
 use log::{debug, info, warn};
+use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfoId;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::NMGLeagueBotError;
@@ -20,7 +21,8 @@ async fn run_once(
         Some(szn) => szn,
         None => return Ok(()),
     };
-    let when = Utc::now() + Duration::minutes(30);
+    let lead_time = CONFIG.racetime_room_creation_lead_time_minutes;
+    let when = Utc::now() + Duration::minutes(lead_time);
     // it would be pretty weird to have a finished race thats scheduled for the future but i'm not
     // very confident that it's impossible >_<
     let upcoming =
