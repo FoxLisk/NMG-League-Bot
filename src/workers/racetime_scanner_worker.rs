@@ -11,6 +11,7 @@ use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
+use nmg_league_bot::schema::bracket_race_infos::racetime_gg_url;
 use nmg_league_bot::utils::racetime_base_url;
 use nmg_league_bot::worker_funcs::{
     interesting_race, races_by_player_rtgg, trigger_race_finish, RaceFinishOptions,
@@ -107,7 +108,7 @@ async fn maybe_do_race_stuff(
         // this is awful, i hate doing it this way, i'm just tired of thinking about this
         let mutable_br = br.clone();
         let mut mutable_bri = bri.clone();
-        mutable_bri.racetime_gg_url = Some(format!("https://racetime.gg{}", race.url));
+        mutable_bri.racetime_gg_url = Some(format!("{}{}", racetime_base_url(), race.url));
         let p1r = e1.result()?;
         let p2r = e2.result()?;
         let mut conn = state.diesel_cxn().await?;

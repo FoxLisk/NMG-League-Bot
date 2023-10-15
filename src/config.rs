@@ -49,7 +49,7 @@ mod racetime {
     pub(super) const RACETIME_BOT_NAME_VAR: &'static str = "RACETIME_BOT_NAME";
 
     pub(super) const RACETIME_ROOM_CREATION_LEAD_TIME_MINUTES_VAR: &'static str =
-        "racetime_room_creation_lead_time_minutes";
+        "RACETIME_ROOM_CREATION_LEAD_TIME_MINUTES";
 }
 
 pub(super) const RACETIME_HOST_VAR: &'static str = "RACETIME_HOST";
