@@ -48,7 +48,7 @@ async fn sweep(state: &Arc<DiscordState>) {
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
-    let tick_duration = core::time::Duration::from_secs(CONFIG.cron_ticks);
+    let tick_duration = core::time::Duration::from_secs(CONFIG.cron_tick_seconds);
     info!(
         "Starting self-forfeiting worker: running every {} seconds",
         tick_duration.as_secs()

@@ -3,7 +3,6 @@ use diesel::prelude::{Insertable, Queryable};
 
 use crate::models::player::Player;
 use crate::save_fn;
-// use crate::schema::players::dsl::*;
 use crate::schema::player_bracket_entry;
 
 #[derive(Queryable, Debug)]

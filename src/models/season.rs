@@ -1,15 +1,15 @@
-use chrono::{Duration, Utc};
 use crate::models::brackets::Bracket;
+use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
 use serde::Serialize;
 
-use crate::schema::seasons;
-use crate::utils::epoch_timestamp;
-use crate::{save_fn, update_fn, NMGLeagueBotError, schema};
-use enum_iterator::Sequence;
 use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_races::{BracketRace, BracketRaceState};
+use crate::schema::seasons;
+use crate::utils::epoch_timestamp;
+use crate::{save_fn, schema, update_fn, NMGLeagueBotError};
+use enum_iterator::Sequence;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
 pub enum SeasonState {
@@ -50,6 +50,27 @@ impl Season {
         use crate::schema::seasons::dsl::*;
         use diesel::prelude::*;
         seasons.filter(finished.is_null()).first(conn).optional()
+    }
+
+    pub fn get_from_bracket_race_info(
+        bri: &BracketRaceInfo,
+        conn: &mut SqliteConnection,
+    ) -> Result<Self, diesel::result::Error> {
+        use crate::schema::bracket_race_infos;
+        use crate::schema::bracket_races;
+        use crate::schema::brackets;
+        use diesel::prelude::*;
+
+        let szn = seasons::table
+            .inner_join(
+                brackets::table
+                    .inner_join(bracket_races::table.inner_join(bracket_race_infos::table)),
+            )
+            .filter(bracket_race_infos::columns::bracket_race_id.eq(bri.id))
+            .select(seasons::all_columns)
+            .first(conn)?;
+
+        Ok(szn)
     }
 
     pub fn are_qualifiers_open(&self) -> Result<bool, serde_json::Error> {
@@ -132,7 +153,6 @@ impl Season {
         Ok(())
     }
 
-
     /// races that are not in finished state and that are scheduled to have started recently
     pub fn get_races_that_should_be_finishing_soon(
         &self,
@@ -148,11 +168,49 @@ impl Season {
         // TODO: pretend to care about this unwrap later maybe
         let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
 
-
         bracket_race_infos::table
             .inner_join(bracket_races::table.inner_join(brackets::table))
             .select((bracket_race_infos::all_columns, bracket_races::all_columns))
             .filter(bracket_race_infos::scheduled_for.lt(start_time.timestamp()))
+            .filter(bracket_races::state.ne(finished_state))
+            .filter(brackets::season_id.eq(self.id))
+            .load(conn)
+    }
+
+    pub fn get_unfinished_races(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<(BracketRaceInfo, BracketRace)>, diesel::result::Error> {
+        use schema::bracket_race_infos;
+        use schema::bracket_races;
+        use schema::brackets;
+        let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
+
+        bracket_race_infos::table
+            .inner_join(bracket_races::table.inner_join(brackets::table))
+            .select((bracket_race_infos::all_columns, bracket_races::all_columns))
+            .filter(bracket_races::state.ne(finished_state))
+            .filter(brackets::season_id.eq(self.id))
+            .load(conn)
+    }
+
+    /// for finding races that are about to start or are in progress
+    pub fn get_unfinished_races_starting_before(
+        &self,
+        when: i64,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<(BracketRaceInfo, BracketRace)>, diesel::result::Error> {
+        use schema::bracket_race_infos;
+        use schema::bracket_races;
+        use schema::brackets;
+
+        // TODO: pretend to care about this unwrap later maybe
+        let finished_state = serde_json::to_string(&BracketRaceState::Finished).unwrap();
+
+        bracket_race_infos::table
+            .inner_join(bracket_races::table.inner_join(brackets::table))
+            .select((bracket_race_infos::all_columns, bracket_races::all_columns))
+            .filter(bracket_race_infos::scheduled_for.lt(when))
             .filter(bracket_races::state.ne(finished_state))
             .filter(brackets::season_id.eq(self.id))
             .load(conn)
@@ -191,7 +249,6 @@ impl NewSeason {
     }
     save_fn!(seasons::table, Season);
 }
-
 
 #[cfg(test)]
 impl Season {

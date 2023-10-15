@@ -20,6 +20,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 
 use diesel::result::Error;
 use diesel::SqliteConnection;
+use either::Either;
 use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_races::{
@@ -524,12 +525,13 @@ async fn handle_update_user_info(
         match validate_racetime_username(&normalized, player.twitch_user_login.as_ref(), state)
             .await
         {
-            Ok(Some(e)) => {
+            Ok(Either::Right(e)) => {
                 user_messages.push(e);
             }
-            Ok(None) => {
+            Ok(Either::Left(u)) => {
                 user_messages.push("RaceTime name updated.");
                 player.racetime_username = Some(normalized);
+                player.racetime_user_id = Some(u.id);
                 save = true;
             }
             Err(e) => {
@@ -655,14 +657,14 @@ async fn validate_twitch_username(
     }
 }
 
-/// term is an rtgg term of art; it can be like `name` or `#scrim` or `name#scrim`
+/// term is an rtgg term (lol) of art; it can be like `name` or `#scrim` or `name#scrim`
 /// Returns Ok(None) on success, Ok(reason) on logical error, or a behind the scenes error
 /// This does an API request to racetime
 async fn validate_racetime_username(
     term: &str,
     twitch_login: Option<&String>,
     state: &Arc<DiscordState>,
-) -> Result<Option<&'static str>, NMGLeagueBotError> {
+) -> Result<Either<racetime_api::types::User, &'static str>, NMGLeagueBotError> {
     let us = UserSearch::from_term(term.to_string());
     let UserSearchResult { results } = us.query(&state.racetime_client).await?;
     // if we found any users, make sure we found an exact match (racetime does not offer
@@ -673,23 +675,23 @@ async fn validate_racetime_username(
     {
         // if the user we found has a linked twitch channel, *and* they've provided a
         // twitch channel to *us*, we can sanity check
-        if let (Some(found_chan), Some(player_login)) = (found.twitch_channel, twitch_login) {
+        if let (Some(found_chan), Some(player_login)) = (&found.twitch_channel, twitch_login) {
             if found_chan
                 .to_lowercase()
                 .ends_with(&format!("/{}", player_login.to_lowercase()))
             {
-                Ok(None)
+                Ok(Either::Left(found))
             } else {
-                Ok(Some(
+                Ok(Either::Right(
                     "The RaceTime account with that name links to a different Twitch account.",
                 ))
             }
         } else {
             // if their twitch account isn't linked, we just get to trust them
-            Ok(None)
+            Ok(Either::Left(found))
         }
     } else {
-        Ok(Some("Cannot find specified RaceTime user."))
+        Ok(Either::Right("Cannot find specified RaceTime user."))
     }
 }
 
@@ -882,7 +884,7 @@ async fn handle_add_player_to_bracket_submit(
         None => {
             return Ok(plain_interaction_response(format!(
                 "That player has not been created. Use /{} to create them.",
-                ADD_PLAYER_TO_BRACKET_CMD
+                CREATE_PLAYER_CMD
             )));
         }
     };
@@ -1323,7 +1325,7 @@ async fn get_race_finish_opts_from_command_opts(
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
         Ok(r) => r,
-        Err(diesel::result::Error::NotFound) => {
+        Err(Error::NotFound) => {
             return Err("That race ID does not exist".to_string());
         }
         Err(e) => {
@@ -1353,7 +1355,7 @@ async fn handle_report_race(
 ) -> Result<InteractionResponse, String> {
     let opts = get_race_finish_opts_from_command_opts(&mut ac.options, state, false).await?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
-    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client), Some(state.guild_id()), &state.channel_config)
+    trigger_race_finish(opts, cxn.deref_mut(), Some(&state.client),  &state.channel_config)
         .await
         .map(|_|plain_interaction_response(format!(
             "Race has been updated. You should see a post in {}",
@@ -1384,7 +1386,6 @@ async fn handle_rereport_race(
         opts,
         cxn.deref_mut(),
         Some(&state.client),
-        Some(state.guild_id()),
         &state.channel_config,
     )
     .await

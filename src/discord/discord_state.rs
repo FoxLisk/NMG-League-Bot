@@ -1,4 +1,3 @@
-use crate::discord::constants::ADMIN_ROLE_NAME;
 use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
@@ -36,9 +35,6 @@ pub struct DiscordState {
     // this isn't handled by the cache b/c it is not updated via Gateway events
     private_channels: DashMap<Id<UserMarker>, Id<ChannelMarker>>,
     application_id: Id<ApplicationMarker>,
-    // this is really embarrassing and at some point i'll regret writing all this code that assumes
-    // this is a one-discord bot, maybe
-    gid: Id<GuildMarker>,
     pub channel_config: ChannelConfig,
     pub racetime_client: RacetimeClient,
     pub twitch_client_bundle: TwitchClientBundle,
@@ -76,7 +72,6 @@ impl DiscordState {
             standby,
             application_id: aid,
             private_channels: Default::default(),
-            gid: CONFIG.guild_id,
             channel_config,
             racetime_client,
             twitch_client_bundle,
@@ -169,7 +164,7 @@ impl DiscordState {
         user_id: Id<UserMarker>,
         guild_id: Id<GuildMarker>,
     ) -> Result<bool, DiscordStateError> {
-        self.has_role_by_name(user_id, guild_id, ADMIN_ROLE_NAME)
+        self.has_role_by_name(user_id, guild_id, &CONFIG.discord_admin_role_name)
     }
 
     // convenience for website which i have negative interest in adding guild info to
@@ -177,7 +172,28 @@ impl DiscordState {
         &self,
         user_id: Id<UserMarker>,
     ) -> Result<bool, DiscordStateError> {
-        self.has_admin_role(user_id, self.gid.clone()).await
+        self.has_admin_role(user_id, CONFIG.guild_id.clone()).await
+    }
+
+    pub async fn has_nmg_league_role_by_name(
+        &self,
+        user_id: Id<UserMarker>,
+        role_name: &str,
+    ) -> Result<bool, DiscordStateError> {
+        self.has_role_by_name(user_id, CONFIG.guild_id.clone(), role_name)
+    }
+
+    pub async fn has_any_nmg_league_role(
+        &self,
+        user_id: Id<UserMarker>,
+        role_names: &[&str],
+    ) -> bool {
+        for role_name in role_names {
+            if let Ok(true) = self.has_nmg_league_role_by_name(user_id, role_name).await {
+                return true;
+            }
+        }
+        false
     }
 
     /// convenience method for getting a user's info from the twilight cache
@@ -230,9 +246,5 @@ impl DiscordState {
         // return Err(RunError::User(ConnectionError::BadConnection("asdf".to_string())));
         let pc = self.diesel_pool.get().await;
         pc
-    }
-
-    pub fn guild_id(&self) -> Id<GuildMarker> {
-        self.gid.clone()
     }
 }

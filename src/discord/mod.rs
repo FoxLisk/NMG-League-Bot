@@ -54,7 +54,7 @@ mod interaction_handlers;
 mod interactions_utils;
 mod reaction_handlers;
 
-mod constants {
+pub mod constants {
     pub const CUSTOM_ID_START_RUN: &str = "start_run";
     pub const CUSTOM_ID_FINISH_RUN: &str = "finish_run";
     pub const CUSTOM_ID_FORFEIT_RUN: &str = "forfeit_run";
@@ -72,7 +72,6 @@ mod constants {
 
     pub const CREATE_ASYNC_CMD: &str = "create_async";
     pub const CANCEL_ASYNC_CMD: &str = "cancel_async";
-    pub const ADMIN_ROLE_NAME: &'static str = "Admin";
 
     pub const CREATE_SEASON_CMD: &str = "create_season";
     pub const SET_SEASON_STATE_CMD: &str = "set_season_state";
@@ -286,7 +285,7 @@ async fn schedule_race<Tz: TimeZone>(
             &new_info,
             &p1,
             &p2,
-            state.guild_id(),
+            CONFIG.guild_id,
             &state.client,
         )
         .await
@@ -301,7 +300,7 @@ async fn schedule_race<Tz: TimeZone>(
 
         // clear some old stuff up
         // TODO: parallelize? this method on its own is gonna come close to hitting discord API
-        // limits, so maybe don't bother lol
+        //       limits, so maybe don't bother lol
 
         if let Err(e) =
             clear_commportunities_message(&mut new_info, &state.client, &state.channel_config).await
@@ -322,9 +321,9 @@ async fn schedule_race<Tz: TimeZone>(
         }
 
         // TODO: clear ZSR message and commentary assignment message, as well
-        // but those might benefit from messaging
-        // maybe just update messages to say (x vs x, but now rescheduled)?
-        // deal with it later.
+        //       but those might benefit from messaging
+        //       maybe just update messages to say (x vs x, but now rescheduled)?
+        //       deal with it later.
 
         match create_commportunities_post(&new_info, state).await {
             Ok(m) => {

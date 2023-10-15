@@ -191,7 +191,7 @@ async fn sweep(state: &Arc<DiscordState>, webhooks: &Webhooks) {
 }
 
 pub(crate) async fn cron(mut sd: Receiver<Shutdown>, webhooks: Webhooks, state: Arc<DiscordState>) {
-    let tick_duration = core::time::Duration::from_secs(CONFIG.cron_ticks);
+    let tick_duration = core::time::Duration::from_secs(CONFIG.cron_tick_seconds);
     info!(
         "Starting async race worker: running every {} seconds",
         tick_duration.as_secs()

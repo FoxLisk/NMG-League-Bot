@@ -1,3 +1,4 @@
+use crate::config::CONFIG;
 use crate::models::bracket_race_infos::BracketRaceInfo;
 use chrono::{Duration, NaiveDateTime};
 use diesel::SqliteConnection;
@@ -194,4 +195,15 @@ where
         }
     }
     None
+}
+
+/// returns the base url for racetime.gg based on the config  
+/// (in prod this should just be `https://racetime.gg`)
+pub fn racetime_base_url() -> String {
+    let secure = if CONFIG.racetime_secure { "s" } else { "" };
+    let port_str = match CONFIG.racetime_port.get() {
+        80 | 443 => "".to_string(),
+        other => format!(":{other}"),
+    };
+    format!("http{secure}://{}{port_str}", CONFIG.racetime_host)
 }

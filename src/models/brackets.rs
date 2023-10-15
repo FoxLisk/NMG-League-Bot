@@ -302,6 +302,7 @@ fn generate_initial_pairings(
         return Err(BracketError::InvalidState);
     }
     if let Some(_) = bracket.current_round(conn)? {
+        debug!("Bracket round already exists for this bracket in 'unstarted' state?!");
         return Err(BracketError::InvalidState);
     }
     match bracket.bracket_type()? {
