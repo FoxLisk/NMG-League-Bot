@@ -130,7 +130,7 @@ where
                 match urb.hydrate(ur) {
                     Ok(hydrated_ur) => {
                         if let Err(e) = hydrated_ur.await {
-                            state.submit_error(e).await;
+                            state.submit_error(format!("Error in long_command_wrapper trying to hydrate UpdateResponse: {e}")).await;
                         }
                     }
                     Err(e) => {
@@ -143,7 +143,7 @@ where
                             Ok(ur) => ur.await.map_err_to_string().err(),
                             Err(e) => Some(e.to_string()),
                         } {
-                            internal_error = format!("{internal_error}. Additional error occurred expressing this ot the user: {more_error}");
+                            internal_error.push_str(&format!(". Additional error occurred expressing this ot the user: {more_error}"));
                         }
                         state.submit_error(internal_error).await;
                     }

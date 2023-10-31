@@ -580,6 +580,8 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
     let interaction_id = interaction.id;
     let token = interaction.token.clone();
 
+    let interaction_debug = format!("{interaction:?}");
+    debug!("Handling interaction: {interaction_debug}");
     let (user_resp, admin_message) = match _handle_interaction(interaction, &state).await {
         Ok(o) => (o, None),
         Err(e) => (
@@ -608,7 +610,7 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
     }
 
     if !final_message.is_empty() {
-        warn!("{}", final_message);
+        warn!("{final_message} - interaction being handled was {interaction_debug}");
         state.submit_error(final_message).await;
     }
 }

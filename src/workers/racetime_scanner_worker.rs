@@ -11,7 +11,6 @@ use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
-use nmg_league_bot::schema::bracket_race_infos::racetime_gg_url;
 use nmg_league_bot::utils::racetime_base_url;
 use nmg_league_bot::worker_funcs::{
     interesting_race, races_by_player_rtgg, trigger_race_finish, RaceFinishOptions,
