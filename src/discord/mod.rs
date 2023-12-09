@@ -17,7 +17,7 @@ use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::interaction::application_command::CommandDataOption;
 use twilight_model::channel::Message;
-use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::marker::{GuildMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
