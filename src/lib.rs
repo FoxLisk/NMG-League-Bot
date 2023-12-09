@@ -3,8 +3,6 @@ extern crate rand;
 extern crate serde_json;
 extern crate swiss_pairings;
 
-use std::num::ParseIntError;
-
 use crate::config::CONFIG;
 use bb8::RunError;
 use diesel::ConnectionError;
@@ -131,9 +129,6 @@ pub enum NMGLeagueBotError {
     #[cfg(feature = "racetime_bot")]
     #[error("{0}")]
     RaceTimeBotError(#[from] RaceTimeBotError),
-
-    #[error("Error parsing probably a discord ID: {0}")]
-    ParseIntError(#[from] ParseIntError),
 }
 
 #[cfg(feature = "racetime_bot")]
