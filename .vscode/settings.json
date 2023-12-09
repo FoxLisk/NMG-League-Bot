@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "db",
+            "database": "${workspaceFolder:NMG-League-Bot}/db/sqlite.db3"
+        }
+    ],
+    "sqltools.useNodeRuntime": true
+}

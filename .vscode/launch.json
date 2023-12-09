@@ -1,0 +1,323 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'bot'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=bot",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "bot",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'bot'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=bot",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "bot",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'bulk_add_players'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=bulk_add_players",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "bulk_add_players",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'bulk_add_players'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=bulk_add_players",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "bulk_add_players",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'generate_brackets'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=generate_brackets",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "generate_brackets",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'generate_brackets'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=generate_brackets",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "generate_brackets",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'generate_rr_bracket'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=generate_rr_bracket",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "generate_rr_bracket",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'generate_rr_bracket'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=generate_rr_bracket",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "generate_rr_bracket",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'generate_test_data'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=generate_test_data",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "generate_test_data",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'generate_test_data'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=generate_test_data",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "generate_test_data",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'run_current_round'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=run_current_round",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "run_current_round",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'run_current_round'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=run_current_round",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "run_current_round",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'schedule_current_round_races'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=schedule_current_round_races",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "schedule_current_round_races",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'schedule_current_round_races'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=schedule_current_round_races",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "schedule_current_round_races",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'update_player_rtgg_ids'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=update_player_rtgg_ids",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "update_player_rtgg_ids",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'update_player_rtgg_ids'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=update_player_rtgg_ids",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "update_player_rtgg_ids",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug integration test 'test_round_robin'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--test=test_round_robin",
+                    "--package=nmg-league-bot"
+                ],
+                "filter": {
+                    "name": "test_round_robin",
+                    "kind": "test"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
