@@ -664,7 +664,28 @@ async fn season_history(
     Ok(Template::render("season_history", ctx))
 }
 
-#[get("/player/<name>")]
+#[get("/player/<id>")]
+async fn player_detail_by_id(
+    id: i32,
+    admin: Option<Admin>,
+    mut db: ConnectionWrapper<'_>,
+) -> Result<Template, Status> {
+    let player = match Player::get_by_id(id, &mut db) {
+        Ok(p) => p,
+        Err(e) => {
+            warn!("Error getting player info: {e}");
+            return Err(Status::InternalServerError);
+        }
+    };
+    let bc = BaseContext::new(&mut db, &admin);
+    let ctx = context! {
+        base_context: bc,
+        player: player,
+    };
+    Ok(Template::render("player_detail", ctx))
+}
+
+#[get("/player/<name>", rank = 2)]
 async fn player_detail(
     name: String,
     admin: Option<Admin>,
@@ -742,6 +763,7 @@ pub(crate) async fn launch_website(
                 season_history,
                 home,
                 player_detail,
+                player_detail_by_id,
                 bracket_detail,
             ],
         )
