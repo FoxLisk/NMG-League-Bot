@@ -276,8 +276,6 @@ async fn create_restream_request_post(
         .map_err(From::from)
 }
 
-// TODO when twilight has a patch up
-#[allow(unused)]
 async fn update_scheduled_event(
     gid: Id<GuildMarker>,
     gse_id: Id<ScheduledEventMarker>,
@@ -406,6 +404,7 @@ async fn handle_restream_request_reaction(
     let conn = cxn.deref_mut();
     let comms = info.commentator_signups(conn)?;
     let comm_ids: Vec<Id<UserMarker>> = comms.iter().map(|c| c.discord_id()).flatten().collect();
+    // TODO: get better names for comms if available
     let comm_names: Vec<String> = comm_ids
         .iter()
         .map(|did| {

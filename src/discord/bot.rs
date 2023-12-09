@@ -193,7 +193,7 @@ If anything goes wrong, tell an admin there was an issue with run `{}`
     })
 }
 
-async fn handle_run_start(
+async fn handle_async_run_start(
     _component_data: MessageComponentInteractionData,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
@@ -263,7 +263,7 @@ where
     }
 }
 
-fn handle_run_forfeit_button() -> InteractionResponse {
+fn handle_async_run_forfeit_button() -> InteractionResponse {
     let ir = create_modal(
         CUSTOM_ID_FORFEIT_MODAL,
         "Forfeit",
@@ -353,7 +353,7 @@ fn create_modal(
     }
 }
 
-async fn handle_run_finish(
+async fn handle_async_run_finish(
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
@@ -457,7 +457,7 @@ async fn handle_user_time_modal(
     Ok(Some(ir))
 }
 
-fn handle_vod_ready() -> InteractionResponse {
+fn handle_async_vod_ready() -> InteractionResponse {
     let ir = create_modal(
         CUSTOM_ID_VOD_MODAL,
         "Please enter your VoD URL",
@@ -516,10 +516,10 @@ async fn handle_button_interaction(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction_data.custom_id.as_str() {
-        CUSTOM_ID_START_RUN => handle_run_start(interaction_data, interaction, state).await,
-        CUSTOM_ID_FORFEIT_RUN => Ok(Some(handle_run_forfeit_button())),
-        CUSTOM_ID_FINISH_RUN => handle_run_finish(interaction, state).await,
-        CUSTOM_ID_VOD_READY => Ok(Some(handle_vod_ready())),
+        CUSTOM_ID_START_RUN => handle_async_run_start(interaction_data, interaction, state).await,
+        CUSTOM_ID_FORFEIT_RUN => Ok(Some(handle_async_run_forfeit_button())),
+        CUSTOM_ID_FINISH_RUN => handle_async_run_finish(interaction, state).await,
+        CUSTOM_ID_VOD_READY => Ok(Some(handle_async_vod_ready())),
         _ => {
             info!("Unhandled button: {:?}", interaction_data);
             Ok(None)

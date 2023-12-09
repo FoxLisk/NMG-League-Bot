@@ -41,7 +41,7 @@ fn url_from_slug(slug: &str) -> String {
 
 fn slug_from_url(url: &str) -> Option<String> {
     let base_url = format!("{}/{}", racetime_base_url(), CONFIG.racetime_category);
-    // TODO: this regex should be cached
+    // TODO: this regex should be cached in a OnceCell
     let url_regex: Result<Regex, regex::Error> = Regex::new(&format!(r"{base_url}/([^/]+)"));
     let re = match url_regex {
         Ok(re) => re,

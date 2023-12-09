@@ -291,6 +291,7 @@ pub async fn handle_application_interaction(
 /// if it doesn't parse, does not return that
 fn parse_day(s: &str) -> Option<(i32, u32, u32)> {
     // TODO: move regex construction elsewhere, remove unwrap (or take it out of normal code path)
+    //       in particular this should be a OnceCell
     let re = Regex::new(r#"(\d{4})/(\d{1,2})/(\d{1,2})"#).unwrap();
     let stripped = s.trim();
     let caps = re.captures(stripped)?;
