@@ -1,8 +1,9 @@
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_BRACKET_CMD,
-    CREATE_PLAYER_CMD, CREATE_ASYNC_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_ASYNC_CMD,
+    CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
+    USER_PROFILE_CMD,
 };
 use nmg_league_bot::models::season::SeasonState;
 use twilight_model::application::command::{
@@ -60,13 +61,15 @@ pub fn application_command_definitions() -> Vec<Command> {
         kind: CommandOptionType::User,
         ..command_option_default()
     })
-        .option(CommandOption {
-            description: "A message (such as a rando permalink) to show the racers when they click Start".to_string(),
-            kind: CommandOptionType::String,
-            name: "on_start_message".to_string(),
-            required: Some(false),
-            ..command_option_default()
-        })
+    .option(CommandOption {
+        description:
+            "A message (such as a rando permalink) to show the racers when they click Start"
+                .to_string(),
+        kind: CommandOptionType::String,
+        name: "on_start_message".to_string(),
+        required: Some(false),
+        ..command_option_default()
+    })
     .build();
 
     let cancel_race = CommandBuilder::new(
@@ -642,7 +645,11 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .build();
 
+    // N.B. description _must_ be empty
+    let user_profile = CommandBuilder::new(USER_PROFILE_CMD, "", CommandType::User).build();
+
     vec![
+        // slash commands
         create_race,
         cancel_race,
         create_season,
@@ -659,5 +666,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         submit_qualifier,
         update_user_info,
         check_user_info,
+        // user command[s]
+        user_profile,
     ]
 }

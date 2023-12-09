@@ -13,11 +13,11 @@ use oauth2::{
     StandardRevocableToken, StandardTokenIntrospectionResponse, StandardTokenResponse,
     TokenResponse as OauthTokenResponse, TokenUrl,
 };
-use rocket::{Build, get, Rocket};
 use rocket::http::{Cookie, CookieJar, Status};
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
 use rocket::time::Duration;
+use rocket::{get, Build, Rocket};
 use rocket::{Request, State};
 use rocket_dyn_templates::{context, Template};
 use std::collections::HashMap;
@@ -176,7 +176,7 @@ impl<'r> FromRequest<'r> for Admin {
                 let mut sm = sm_lock.lock().await;
                 let un = state
                     .get_user(uid)
-                    .map(|u| u.name)
+                    .map(|u| u.global_name.unwrap_or(u.name))
                     .unwrap_or("Unknown username".to_string());
                 debug!("Logging out {un} because they no longer have admin status");
                 sm.log_out_user(&st);
@@ -278,7 +278,6 @@ async fn discord_login(
         Err(redirect)
     }
 }
-
 
 pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.mount("/", rocket::routes![login_page, discord_login])

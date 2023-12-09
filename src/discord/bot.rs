@@ -563,6 +563,7 @@ async fn _handle_interaction(
             InteractionData::ModalSubmit(ms) => {
                 handle_modal_submission(ms, interaction, &state).await
             }
+
             _ => {
                 warn!("Unhandled interaction: {:?}", interaction);
                 Ok(None)

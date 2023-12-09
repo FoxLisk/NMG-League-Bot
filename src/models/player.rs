@@ -49,7 +49,9 @@ impl Player {
         if let Some(u) = Self::get_by_discord_id(&user.id.to_string(), conn)? {
             Ok((u, false))
         } else {
-            let np = NewPlayer::new(user.name, user.id.to_string(), None, None);
+            // uhh... it'd be nice to have user's server nick here but w/e
+            let best_name = user.global_name.unwrap_or(user.name);
+            let np = NewPlayer::new(best_name, user.id.to_string(), None, None);
             let saved = np.save(conn)?;
             Ok((saved, true))
         }

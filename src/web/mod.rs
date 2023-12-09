@@ -230,7 +230,7 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
         let username = match run.racer_id() {
             Ok(uid) => discord_state
                 .get_user(uid)
-                .map(|u| u.name)
+                .map(|u| u.global_name.unwrap_or(u.name))
                 .unwrap_or("Unknown".to_string()),
             Err(e) => {
                 warn!("Error parsing racer id {}", e);

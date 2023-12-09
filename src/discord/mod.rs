@@ -17,7 +17,7 @@ use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::interaction::application_command::CommandDataOption;
 use twilight_model::channel::Message;
-use twilight_model::id::marker::{GuildMarker};
+use twilight_model::id::marker::GuildMarker;
 use twilight_model::id::Id;
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
@@ -84,6 +84,8 @@ pub mod constants {
     pub const SCHEDULE_RACE_CMD: &str = "schedule_race";
     pub const SUBMIT_QUALIFIER_CMD: &str = "submit_qualifier";
     pub const UPDATE_USER_INFO_CMD: &str = "update_user_info";
+
+    pub const USER_PROFILE_CMD: &str = "See user profile";
 
     pub const CHECK_USER_INFO_CMD: &str = "check_user_info";
     pub const RESCHEDULE_RACE_CMD: &str = "reschedule_race";
@@ -221,10 +223,21 @@ pub struct ErrorResponse {
     internal_error: String,
 }
 
+// TODO: some kind of impl From<&str> for ErrorResponse that returns an error response with "Internal error, sorry."
+//       as the user facing error and the &str as the internal one?
+//       or maybe From<E: Error> that behaves similarly
+
 impl ErrorResponse {
     fn new<S1: Into<String>, S2: Display>(user_facing_error: S1, internal_error: S2) -> Self {
         Self {
             user_facing_error: user_facing_error.into(),
+            internal_error: internal_error.to_string(),
+        }
+    }
+
+    fn new_internal(internal_error: impl Display) -> Self {
+        Self {
+            user_facing_error: "Internal error, sorry.".to_string(),
             internal_error: internal_error.to_string(),
         }
     }
