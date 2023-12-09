@@ -356,7 +356,7 @@ impl DisplayRace {
                     Some(
                         utc_dt
                             .with_timezone(&chrono_tz::US::Eastern)
-                            .format("%A, %B %d at %r (%Z)")
+                            .format("%A, %B %d at %_I:%M %p (%Z)")
                             .to_string(),
                     )
                 } else {
