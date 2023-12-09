@@ -395,7 +395,7 @@ mod tests {
     }
     #[test]
     fn test_date_math() {
-        let scheduled = Utc.timestamp(1667349918, 0);
+        let scheduled = Utc.timestamp_opt(1667349918, 0).unwrap();
         let race_started_very_old =
             DateTime::parse_from_rfc3339("2022-10-23T19:07:20.025Z").unwrap();
         let dur = scheduled.signed_duration_since(race_started_very_old);

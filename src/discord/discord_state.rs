@@ -5,6 +5,7 @@ use diesel::ConnectionError;
 use log::warn;
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::DieselConnectionManager;
+use nmg_league_bot::models::player::Player;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::ResultErrToString;
 use nmg_league_bot::ChannelConfig;
@@ -199,6 +200,28 @@ impl DiscordState {
     /// convenience method for getting a user's info from the twilight cache
     pub fn get_user(&self, user_id: Id<UserMarker>) -> Option<User> {
         self.cache.user(user_id).map(|u| u.value().clone())
+    }
+
+    /// gets best available name for this user (without hitting the discord http api)
+    pub async fn best_name_for(&self, user_id: Id<UserMarker>) -> String {
+        // maybe would be good to like care about errors in here?
+        if let Ok(mut conn) = self.diesel_cxn().await {
+            if let Ok(Some(p)) = Player::get_by_discord_id(&user_id.to_string(), &mut conn) {
+                return p.name;
+            }
+        }
+        if let Some(member) = self.cache.member(CONFIG.guild_id, user_id) {
+            if let Some(nick) = member.nick() {
+                return nick.to_string();
+            }
+        }
+        if let Some(user) = self.get_user(user_id) {
+            if let Some(global) = user.global_name {
+                return global;
+            }
+            return user.name;
+        }
+        "unknown".to_string()
     }
 
     pub async fn create_response(

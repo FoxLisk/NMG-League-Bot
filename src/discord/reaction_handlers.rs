@@ -58,6 +58,23 @@ enum ReactionAddError {
     RequestValidationError(#[from] twilight_validate::request::ValidationError),
 }
 
+async fn comm_ids_and_names(
+    info: &BracketRaceInfo,
+    state: &Arc<DiscordState>,
+) -> Result<Vec<(Id<UserMarker>, String)>, ReactionAddError> {
+    // N.B. is it dangerous to get a new connection off of this state? we probably only want one per thread...
+    let mut cxn = state.diesel_cxn().await?;
+    let conn = cxn.deref_mut();
+    let comms = info.commentator_signups(conn)?;
+    let mut out = vec![];
+    for comm in comms {
+        if let Ok(id) = comm.discord_id() {
+            out.push((id.clone(), state.best_name_for(id.clone()).await));
+        }
+    }
+    Ok(out)
+}
+
 async fn _handle_reaction_remove(
     reaction: Box<ReactionRemove>,
     state: &Arc<DiscordState>,
@@ -160,23 +177,15 @@ async fn handle_commentary_confirmation(
 ) -> Result<(), ReactionAddError> {
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
-    let comms = info.commentator_signups(conn)?;
-    let comm_names = comms
-        .iter()
-        .map(|c| c.discord_id())
-        .flatten()
-        .map(|did| {
-            state
-                .cache
-                .user(did)
-                .map(|u| u.name.clone())
-                .unwrap_or("unknown".to_string())
-        })
+    let names = comm_ids_and_names(&info, state)
+        .await?
+        .into_iter()
+        .map(|(_, name)| name)
         .collect();
     if let Some(gse) = info.get_scheduled_event_id() {
         // gsus let me live
         if let Some(gid) = _reaction.guild_id {
-            if let Err(e) = update_scheduled_event(gid, gse, Some(&comm_names), None, state).await {
+            if let Err(e) = update_scheduled_event(gid, gse, Some(&names), None, state).await {
                 warn!("Error updating scheduled event: {:?}", e);
             }
         }
@@ -185,7 +194,7 @@ async fn handle_commentary_confirmation(
     // we're sending almost identical messages to zsr & commentary-discussion
     let mut fields = race_to_nice_embeds(&info, conn)?;
 
-    let comms_string = comm_names.iter().join(" and ");
+    let comms_string = names.join(" and ");
     fields.push(EmbedField {
         inline: false,
         name: "Commentators".to_string(),
@@ -283,8 +292,6 @@ async fn update_scheduled_event(
     restream_channel: Option<String>,
     state: &Arc<DiscordState>,
 ) -> Result<(), ReactionAddError> {
-    let mut s = String::new();
-
     let mut req = state.client.update_guild_scheduled_event(gid, gse_id);
     let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
 
@@ -399,28 +406,16 @@ async fn handle_restream_request_reaction(
             }
         }
     }
-
+    let (comm_ids, comm_names): (Vec<Id<UserMarker>>, Vec<String>) =
+        comm_ids_and_names(&info, state).await?.into_iter().unzip();
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
-    let comms = info.commentator_signups(conn)?;
-    let comm_ids: Vec<Id<UserMarker>> = comms.iter().map(|c| c.discord_id()).flatten().collect();
-    // TODO: get better names for comms if available
-    let comm_names: Vec<String> = comm_ids
-        .iter()
-        .map(|did| {
-            state
-                .cache
-                .user(did.clone())
-                .map(|u| u.name.clone())
-                .unwrap_or("unknown".to_string())
-        })
-        .collect();
 
     let mut fields = race_to_nice_embeds(&info, conn)?;
     fields.push(EmbedField {
         inline: false,
         name: "Commentators".to_string(),
-        value: comm_names.iter().join(" and "),
+        value: comm_names.join(" and "),
     });
     fields.push(EmbedField {
         inline: false,
@@ -445,7 +440,7 @@ async fn handle_restream_request_reaction(
     }];
     let (p1, p2) = info.race(conn)?.players(conn)?;
     let mut pings = comm_ids
-        .into_iter()
+        .iter()
         .map(|i| i.mention().to_string())
         .collect::<Vec<_>>();
     pings.push(p1.mention_or_name());
