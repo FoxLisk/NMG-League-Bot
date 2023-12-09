@@ -73,12 +73,12 @@ impl ManageConnection for DieselConnectionManager {
     }
 
     // TODO: this is probably bad to leave unimplemented
-    async fn is_valid(&self, conn: &mut Self::Connection) -> Result<(), Self::Error> {
+    async fn is_valid(&self, _conn: &mut Self::Connection) -> Result<(), Self::Error> {
         Ok(())
     }
 
     // TODO: this is probably bad to leave unimplemented
-    fn has_broken(&self, conn: &mut Self::Connection) -> bool {
+    fn has_broken(&self, _conn: &mut Self::Connection) -> bool {
         false
     }
 }

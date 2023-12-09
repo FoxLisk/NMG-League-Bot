@@ -2,7 +2,6 @@ use crate::models::bracket_races::BracketRace;
 use crate::schema::{bracket_race_infos, commentator_signups};
 use std::num::ParseIntError;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::{save_fn, update_fn};
 use chrono::{DateTime, TimeZone, Utc};

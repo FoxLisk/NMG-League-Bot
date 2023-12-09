@@ -2,7 +2,7 @@ use crate::Webhooks;
 use bb8::{Pool, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
-use log::{debug, warn};
+use log::warn;
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::models::player::Player;
@@ -205,21 +205,17 @@ impl DiscordState {
     /// gets best available name for this user (without hitting the discord http api)
     pub async fn best_name_for(&self, user_id: Id<UserMarker>) -> String {
         // maybe would be good to like care about errors in here?
-        debug!("Finding best name for {user_id}");
         if let Ok(mut conn) = self.diesel_cxn().await {
             if let Ok(Some(p)) = Player::get_by_discord_id(&user_id.to_string(), &mut conn) {
-                debug!("Found player: {p:?}");
                 return p.name;
             }
         }
         if let Some(member) = self.cache.member(CONFIG.guild_id, user_id) {
             if let Some(nick) = member.nick() {
-                debug!("Found guild member: {member:?}");
                 return nick.to_string();
             }
         }
         if let Some(user) = self.get_user(user_id) {
-            debug!("Found user: {user:?}");
             if let Some(global) = user.global_name {
                 return global;
             }
