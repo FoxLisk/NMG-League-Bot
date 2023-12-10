@@ -20,6 +20,8 @@ use thiserror::Error;
 
 use rand::seq::SliceRandom;
 
+use super::bracket_races::PlayerResult;
+
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 enum BracketState {
     Unstarted,
@@ -437,33 +439,26 @@ impl Bracket {
                 Outcome::P1Win => (2, 0),
                 Outcome::P2Win => (0, 2),
             };
-            let p1_i = info
+            let p1_i_b = info
                 .entry(race.player_1_id)
                 .or_insert(PlayerInfoBuilder::new(race.player_1_id));
-            p1_i.times.push(p1r.time());
-            p1_i.points += p1_adjust;
-            p1_i.opponents.push(race.player_2_id);
+            p1_i_b.results.push(p1r);
+            p1_i_b.points += p1_adjust;
+            p1_i_b.opponents.push(race.player_2_id);
 
-            let p2_i = info
+            let p2_i_b = info
                 .entry(race.player_2_id)
                 .or_insert(PlayerInfoBuilder::new(race.player_2_id));
-            p2_i.times.push(p2r.time());
-            p2_i.points += p2_adjust;
-            p2_i.opponents.push(race.player_1_id);
+            p2_i_b.results.push(p2r);
+            p2_i_b.points += p2_adjust;
+            p2_i_b.opponents.push(race.player_1_id);
         }
         let points: HashMap<i32, i32> = info.values().map(|p| (p.id, p.points)).collect();
 
         Ok(info
             .into_values()
             .map(|builder| builder.build(&points))
-            .sorted_by_key(|p| {
-                (
-                    -p.points,
-                    -p.opponent_points,
-                    p.times.iter().sum::<u32>(),
-                    p.id,
-                )
-            })
+            .sorted_by_cached_key(|p| (-p.points, -p.opponent_points, p.time_adjusted(), p.id))
             .collect())
     }
 }
@@ -472,7 +467,7 @@ struct PlayerInfoBuilder {
     id: i32,
     points: i32,
     opponents: Vec<i32>,
-    times: Vec<u32>,
+    results: Vec<PlayerResult>,
 }
 
 impl PlayerInfoBuilder {
@@ -481,7 +476,7 @@ impl PlayerInfoBuilder {
             id,
             points: 0,
             opponents: vec![],
-            times: vec![],
+            results: vec![],
         }
     }
 
@@ -498,11 +493,12 @@ impl PlayerInfoBuilder {
                 }
             })
             .sum();
+
         PlayerInfo {
             id: self.id,
             points: self.points,
             opponent_points: score,
-            times: self.times,
+            results: self.results,
         }
     }
 }
@@ -513,8 +509,33 @@ pub struct PlayerInfo {
     pub points: i32,
     /// see [points]
     pub opponent_points: i32,
-    /// seconds
-    pub times: Vec<u32>,
+    results: Vec<PlayerResult>,
+}
+
+impl PlayerInfo {
+    /// total time of all races, with forfeits counting as 3 hours (for use in sorting)
+    fn time_adjusted(&self) -> u32 {
+        self.results.iter().map(|r| r.time()).sum()
+    }
+
+    pub fn avg_time_adjusted(&self) -> f32 {
+        self.time_adjusted() as f32 / self.results.len() as f32
+    }
+
+    pub fn avg_time_finished(&self) -> f32 {
+        let finished = self
+            .results
+            .iter()
+            .filter_map(|r| match r {
+                PlayerResult::Forfeit => None,
+                PlayerResult::Finish(t) => Some(*t),
+            })
+            .collect::<Vec<_>>();
+        if finished.is_empty() {
+            return 0.0;
+        }
+        finished.iter().sum::<u32>() as f32 / finished.len() as f32
+    }
 }
 
 fn all_races_complete(races: &[BracketRace]) -> bool {
