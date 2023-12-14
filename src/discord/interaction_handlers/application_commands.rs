@@ -4,6 +4,7 @@ use crate::discord::constants::{
     CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
+    USER_PROFILE_CMD,
 };
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
@@ -14,6 +15,7 @@ use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
+use rustls::internal::msgs::message::Message;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -21,7 +23,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::result::Error;
 use diesel::SqliteConnection;
 use either::Either;
-use log::{info, warn};
+use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_races::{
     get_current_round_race_for_player, BracketRace, BracketRaceState, BracketRaceStateError,
@@ -48,15 +50,15 @@ use twilight_model::application::command::{CommandOptionChoice, CommandOptionCho
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption,
 };
-use twilight_model::application::interaction::{Interaction, InteractionType};
+use twilight_model::application::interaction::{Interaction, InteractionData, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
 use twilight_model::channel::message::embed::EmbedField;
-use twilight_model::channel::message::Embed;
+use twilight_model::channel::message::{Embed, MessageFlags};
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ChannelMarker, MessageMarker};
+use twilight_model::id::marker::{ChannelMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twilight_validate::message::MessageValidationError;
@@ -205,6 +207,9 @@ pub async fn handle_application_interaction(
         }
         CHECK_USER_INFO_CMD => {
             return handle_check_user_info(ac, interaction, state).await;
+        }
+        USER_PROFILE_CMD => {
+            return handle_user_profile(ac, interaction, state).await;
         }
 
         _ => {}
@@ -563,6 +568,36 @@ async fn handle_update_user_info(
     }
 }
 
+async fn handle_user_profile(
+    ac: Box<CommandData>,
+    interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    fn get_user(ac: Box<CommandData>) -> Result<User, &'static str> {
+        let id = ac
+            .target_id
+            .ok_or("Missing target_id")?
+            .cast::<UserMarker>();
+        let mut resolved = ac.resolved.ok_or("Missing resolved")?;
+        resolved
+            .users
+            .remove(&id)
+            .ok_or("Target user missing from resolved field")
+    }
+    let user = get_user(ac).map_err(ErrorResponse::new_internal)?;
+    let mut conn = state
+        .diesel_cxn()
+        .await
+        .map_err(ErrorResponse::new_internal)?;
+
+    let (p, _created) = Player::get_or_create_from_discord_user(user.clone(), &mut conn)
+        .map_err(ErrorResponse::new_internal)?;
+
+    let formatted = format_player(None, &p);
+
+    Ok(Some(formatted))
+}
+
 async fn handle_check_user_info(
     mut _ac: Box<CommandData>,
     mut interaction: Box<InteractionCreate>,
@@ -608,6 +643,12 @@ fn format_player(content: Option<String>, player: &Player) -> InteractionRespons
             value: r.clone(),
         });
     }
+    let profile_link = format!("{}/player/{}", CONFIG.website_url, player.id,);
+    fields.push(EmbedField {
+        inline: false,
+        name: "Player profile".to_string(),
+        value: profile_link,
+    });
 
     let embeds = vec![Embed {
         author: None,
@@ -616,7 +657,7 @@ fn format_player(content: Option<String>, player: &Player) -> InteractionRespons
         fields,
         footer: None,
         image: None,
-        kind: "".to_string(),
+        kind: "rich".to_string(),
         provider: None,
         thumbnail: None,
         timestamp: None,
@@ -630,6 +671,7 @@ fn format_player(content: Option<String>, player: &Player) -> InteractionRespons
         data: Some(InteractionResponseData {
             content,
             embeds: Some(embeds),
+            flags: Some(MessageFlags::EPHEMERAL),
             ..Default::default()
         }),
     }
