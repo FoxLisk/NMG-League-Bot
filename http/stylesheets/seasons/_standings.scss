@@ -1,3 +1,5 @@
+@use '../common/colors';
+
 #season-sub-page {
   #standings-page-container {
     .bracket-standings-container {
@@ -7,12 +9,12 @@
         font-size: 1.75rem;
         margin: 0 0.5rem 1rem;
       }
+
+      span.without-forfeits {
+        font-size: 0.85rem;
+        font-style: italic;
+        color: colors.$season-standings-without-forfeits-color;
+      }
     }
   }
-}
-
-span.without-forfeits {
-  font-size: 0.85rem;
-  font-style: italic;
-  color: #9ba0ab;
 }
