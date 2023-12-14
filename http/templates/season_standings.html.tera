@@ -6,52 +6,55 @@
 {% block season_body %}
 <div id="standings-page-container">
     {% for bracket in brackets %}
-        <div class="bracket-standings-container">
-            <h2 class="bracket-title">Bracket: {{ bracket.name }}</h2>
-            <table class="bracket-standings">
-                <thead>
-                    <tr>
-                        <td>
-                            Rank
-                        </td>
-                        <td>
-                            Player Name
-                        </td>
-                        <td>
-                            Points
-                        </td>
-                        <td>
-                            Opponent Points
-                        </td>
-                        <td>
-                            Average Time
-                        </td>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for player in bracket.players %}
-                        <tr>
-                            <td>
-                                {{ loop.index }}
-                            </td>
-                            <td>
-                                {{ macros::link(href=player.player_detail_url, text=player.name) }}
-                            </td>
-                            <td>
-                                {{ player.points }}
-                            </td>
-                            <td>
-                                {{ player.opponent_points }}
-                            </td>
-                            <td>
-                                {{ macros::get_text_or_placeholder(text = player.average_time) }}
-                            </td>
-                        </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-        <hr class="template-item-separator" />
+    <div class="bracket-standings-container">
+        <h2 class="bracket-title">Bracket: {{ bracket.name }}</h2>
+        <table class="bracket-standings">
+            <thead>
+                <tr>
+                    <td>
+                        Rank
+                    </td>
+                    <td>
+                        Player Name
+                    </td>
+                    <td>
+                        Points
+                    </td>
+                    <td>
+                        Opponent Points
+                    </td>
+                    <td>
+                        Average Time <span class="without-forfeits">(without forfeits)</span>
+                    </td>
+                </tr>
+            </thead>
+            <tbody>
+                {% for player in bracket.players %}
+                <tr>
+                    <td>
+                        {{ loop.index }}
+                    </td>
+                    <td>
+                        {{ macros::link(href=player.player_detail_url, text=player.name) }}
+                    </td>
+                    <td>
+                        {{ player.points }}
+                    </td>
+                    <td>
+                        {{ player.opponent_points }}
+                    </td>
+                    <td>
+                        {{ macros::get_text_or_placeholder(text = player.average_time_adjusted) }}
+                        <span class="without-forfeits">
+                            ({{ macros::get_text_or_placeholder(text = player.average_time_finished) | trim }})
+                        </span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <hr class="template-item-separator" />
     {% endfor %}
 </div>
 {% endblock %}
