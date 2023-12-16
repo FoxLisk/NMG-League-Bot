@@ -754,7 +754,7 @@ where
                 }
             }
             let we_are_p1 = race.player_1_id == our_player_id;
-            // writing code like this makes me thing I have made a terrible mistake somewhere
+            // writing code like this makes me think I have made a terrible mistake somewhere
             let outcome = match race.outcome() {
                 Ok(Some(o)) => match o {
                     nmg_league_bot::models::bracket_races::Outcome::Tie => "draw",
@@ -827,8 +827,6 @@ where
     ) -> Result<PlayerHistory, diesel::result::Error> {
         use crate::schema::bracket_races;
         use diesel::prelude::*;
-        // use nmg_league_bot::models::bracket_races::BracketRace;
-        // use nmg_league_bot::models::season::Season;
         let results: Vec<(BracketRace, (BracketRound, (Bracket, Season)))> = bracket_races::table
             .filter(
                 bracket_races::player_1_id
@@ -870,7 +868,6 @@ where
             None
         }
     };
-    warn!("player history: {player_history:?}");
     let ctx = context! {
         base_context: bc,
         player: player,

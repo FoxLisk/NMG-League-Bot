@@ -33,7 +33,7 @@
             <tbody>
                 {% for race in season.races %}
                 <tr>
-                    <td>{{ race.outcome}}</td>
+                    <td>{{race.outcome}}</td>
                     <td>{{race.time}}</td>
                     <td>{{race.opponent}}</td>
                     <td>{{race.opponent_time}}</td>
