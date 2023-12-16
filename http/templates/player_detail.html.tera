@@ -3,21 +3,48 @@
 {% import "macros" as macros %}
 {% block pagename %}{% if player %}{{ player.name }} Detail{% else %}Player not found{% endif %}{% endblock %}
 {% block body %}
-    {% if player %}
-        <div>
-            <span>{{ player.name }}</span>
-            {% if player.twitch_user_login %}
-                {% set url = "https://twitch.tv/<name>" | replace(from="<name>", to=player.twitch_user_login) %}
-                <div>{{ macros::link(href=url, text="Twitch stream") }}</div>
-                {#
-                <a href="https://twitch.tv/{{ player.twitch_user_login}}">Twitch stream</a></div>
-                #}
-            {% endif %}
-            {% if player.racetime_username %}
-                <div>Racetime username: {{ player.racetime_username }}</div>
-            {% endif %}
-        </div>
-    {% else %}
-        Player not found.
+<div>
+    <span>{{ player.name }}</span>
+    {% if player.twitch_user_login %}
+    {% set url = "https://twitch.tv/<name>" | replace(from="<name>", to=player.twitch_user_login) %}
+    <div>{{ macros::link(href=url, text="Twitch stream") }}</div>
     {% endif %}
+    {% if player.racetime_username %}
+    <div>Racetime username: {{ player.racetime_username }}</div>
+    {% endif %}
+    {% if player_history %}
+    <hr />
+    {% for season in player_history.seasons %}
+
+    <h2>{{ macros::link(href=season.season.url, text=season.season.title)}}</h2>
+    <div class="races">
+        <table>
+            <thead>
+                <tr>
+                    <td>Outcome</td>
+                    <td>Time</td>
+                    <td>
+                        Opponent
+                    </td>
+                    <td>
+                        Opponent's Time
+                    </td>
+                </tr>
+            <tbody>
+                {% for race in season.races %}
+                <tr>
+                    <td>{{ race.outcome}}</td>
+                    <td>{{race.time}}</td>
+                    <td>{{race.opponent}}</td>
+                    <td>{{race.opponent_time}}</td>
+                </tr>
+                {% endfor %}
+
+            </tbody>
+            </thead>
+        </table>
+    </div>
+    {% endfor %}
+    {% endif%}
+</div>
 {% endblock %}
