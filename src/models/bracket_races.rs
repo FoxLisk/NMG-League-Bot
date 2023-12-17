@@ -12,6 +12,7 @@ use diesel::prelude::*;
 use diesel::SqliteConnection;
 use log::warn;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
 use thiserror::Error;
@@ -134,11 +135,19 @@ impl BracketRace {
         &self,
         conn: &mut SqliteConnection,
     ) -> Result<(Player, Player), diesel::result::Error> {
-        // TODO multiple queries bad 😫
-        let p1 =
-            Player::get_by_id(self.player_1_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
-        let p2 =
-            Player::get_by_id(self.player_2_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
+        let mut players = crate::schema::players::table
+            .filter(crate::schema::players::id.eq_any(vec![self.player_1_id, self.player_2_id]))
+            .load::<Player>(conn)?
+            .into_iter()
+            .map(|p| (p.id, p))
+            .collect::<HashMap<_, _>>();
+        let p1 = players
+            .remove(&self.player_1_id)
+            .ok_or(diesel::result::Error::NotFound)?;
+
+        let p2 = players
+            .remove(&self.player_2_id)
+            .ok_or(diesel::result::Error::NotFound)?;
         Ok((p1, p2))
     }
 
