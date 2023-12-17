@@ -7,25 +7,27 @@ use nmg_league_bot::models::season::{NewSeason, Season};
 
 extern crate dotenv;
 
+const PLAYERS_PER_BRACKET: i32 = 16;
+
 // Generates season, bracket, and 16 players, including 1 for me and 1 for my alt
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().unwrap();
-    let mut db = raw_diesel_cxn_from_env().unwrap();
+    let mut db = raw_diesel_cxn_from_env()?;
 
-    run_migrations(&mut db).unwrap();
+    run_migrations(&mut db)?;
 
-    if Season::get_active_season(&mut db).unwrap().is_some() {
-        println!("Test data already generated");
-        return;
+    if Season::get_active_season(&mut db)?.is_some() {
+        return Err(anyhow::anyhow!("Test data already generated"));
     }
 
     let nsn = NewSeason::new("Test NMG", "alttp", "Any% NMG");
     let sn = nsn.save(&mut db).unwrap();
 
-    generate_bracket(&sn, 1, BracketType::Swiss, &mut db).unwrap();
-    generate_bracket(&sn, 2, BracketType::Swiss, &mut db).unwrap();
+    generate_bracket(&sn, 1, BracketType::Swiss, &mut db)?;
+    generate_bracket(&sn, 2, BracketType::Swiss, &mut db)?;
+    Ok(())
 }
 
 fn generate_bracket(
@@ -37,11 +39,11 @@ fn generate_bracket(
     let nb = NewBracket::new(season, format!("Test Bracket {id}"), bt);
     let b = nb.save(conn)?;
     println!("season: {:?}, bracket: {:?}", season, b);
-    for np in get_players(16 * id, id == 1) {
+    for np in get_players(PLAYERS_PER_BRACKET * id, id == 1) {
         let p = np.save(conn)?;
         let entry = NewPlayerBracketEntry::new(&b, &p);
         let pbe = entry.save(conn)?;
-        println!("Player {:?}, pbe {:?}", p, pbe);
+        println!("Player {p:?}, pbe {pbe:?}");
     }
     Ok(())
 }
