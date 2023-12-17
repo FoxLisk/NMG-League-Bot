@@ -1324,11 +1324,11 @@ async fn handle_see_unscheduled_races(
     let mut fields = vec![];
     for br in unscheduled {
         let (p1, p2) = br.players(cxn.deref_mut()).map_err_to_string()?;
-        let bname = br.bracket(cxn.deref_mut()).map_err_to_string()?;
+        let bname = br.bracket(cxn.deref_mut()).map_err_to_string()?.name;
         let field = EmbedField {
             inline: false,
             name: format!("{} vs {}", p1.name, p2.name),
-            value: bname.name,
+            value: bname,
         };
         fields.push(field);
     }
