@@ -1,3 +1,4 @@
+pub mod asyncs;
 pub mod bracket_race_infos;
 pub mod bracket_races;
 pub mod bracket_rounds;
@@ -6,7 +7,6 @@ pub mod player;
 pub mod player_bracket_entries;
 pub mod qualifer_submission;
 pub mod season;
-pub mod asyncs;
 
 // TODO: should this be a derive macro?
 /// creates a function named `save()` that takes a &SqliteConnection
@@ -35,5 +35,5 @@ macro_rules! delete_fn {
         pub fn delete(self, conn: &mut diesel::SqliteConnection) -> diesel::QueryResult<usize> {
             diesel::delete($table.find(self.id)).execute(conn)
         }
-    }
+    };
 }

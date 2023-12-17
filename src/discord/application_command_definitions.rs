@@ -2,8 +2,8 @@ use crate::discord::constants::{
     ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_ASYNC_CMD,
     CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
-    SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
-    USER_PROFILE_CMD,
+    SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
+    UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
 use nmg_league_bot::models::season::SeasonState;
 use twilight_model::application::command::{
@@ -37,7 +37,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         }
     }
 
-    let create_race = CommandBuilder::new(
+    let create_async_race = CommandBuilder::new(
         CREATE_ASYNC_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
         CommandType::ChatInput,
@@ -72,7 +72,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .build();
 
-    let cancel_race = CommandBuilder::new(
+    let cancel_async_race = CommandBuilder::new(
         CANCEL_ASYNC_CMD.to_string(),
         "Cancel an existing asynchronous race".to_string(),
         CommandType::ChatInput,
@@ -648,10 +648,17 @@ pub fn application_command_definitions() -> Vec<Command> {
     // N.B. description _must_ be empty
     let user_profile = CommandBuilder::new(USER_PROFILE_CMD, "", CommandType::User).build();
 
+    let see_unscheduled_races = CommandBuilder::new(
+        SEE_UNSCHEDULED_RACES_CMD.to_string(),
+        "See unscheduled races",
+        CommandType::ChatInput,
+    )
+    .build();
+
     vec![
         // slash commands
-        create_race,
-        cancel_race,
+        create_async_race,
+        cancel_async_race,
         create_season,
         set_season_state,
         create_bracket,
@@ -666,6 +673,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         submit_qualifier,
         update_user_info,
         check_user_info,
+        see_unscheduled_races,
         // user command[s]
         user_profile,
     ]

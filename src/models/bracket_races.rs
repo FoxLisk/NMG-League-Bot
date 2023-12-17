@@ -6,6 +6,7 @@ use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
+use crate::NMGLeagueBotError;
 use chrono::{DateTime, Duration, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
@@ -94,6 +95,14 @@ impl BracketRace {
     /// this expects the object to exist, so it returns Self instead of Option<Self>
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         bracket_races::table.find(id).first(conn)
+    }
+
+    pub fn unscheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, NMGLeagueBotError> {
+        let state = serde_json::to_string(&BracketRaceState::New)?;
+        bracket_races::table
+            .filter(bracket_races::state.eq(state))
+            .load(conn)
+            .map_err(From::from)
     }
 }
 
