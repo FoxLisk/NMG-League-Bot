@@ -30,6 +30,7 @@
                         Opponent's Time
                     </td>
                 </tr>
+            </thead>
             <tbody>
                 {% for race in season.races %}
                 <tr>
@@ -41,7 +42,6 @@
                 {% endfor %}
 
             </tbody>
-            </thead>
         </table>
     </div>
     {% endfor %}
