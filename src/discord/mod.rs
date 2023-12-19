@@ -92,6 +92,8 @@ pub mod constants {
     pub const REPORT_RACE_CMD: &str = "report_race";
     pub const UPDATE_FINISHED_RACE_CMD: &str = "update_finished_race";
     pub const GENERATE_PAIRINGS_CMD: &str = "generate_pairings";
+
+    pub const SEE_UNSCHEDULED_RACES_CMD: &str = "unscheduled_races";
 }
 
 // the functions in here aren't well organized

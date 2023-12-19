@@ -6,11 +6,13 @@ use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
+use crate::NMGLeagueBotError;
 use chrono::{DateTime, Duration, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use log::warn;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
 use thiserror::Error;
@@ -95,6 +97,14 @@ impl BracketRace {
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         bracket_races::table.find(id).first(conn)
     }
+
+    pub fn unscheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, NMGLeagueBotError> {
+        let state = serde_json::to_string(&BracketRaceState::New)?;
+        bracket_races::table
+            .filter(bracket_races::state.eq(state))
+            .load(conn)
+            .map_err(From::from)
+    }
 }
 
 impl BracketRace {
@@ -125,11 +135,19 @@ impl BracketRace {
         &self,
         conn: &mut SqliteConnection,
     ) -> Result<(Player, Player), diesel::result::Error> {
-        // TODO multiple queries bad 😫
-        let p1 =
-            Player::get_by_id(self.player_1_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
-        let p2 =
-            Player::get_by_id(self.player_2_id, conn)?.ok_or(diesel::result::Error::NotFound)?;
+        let mut players = crate::schema::players::table
+            .filter(crate::schema::players::id.eq_any(vec![self.player_1_id, self.player_2_id]))
+            .load::<Player>(conn)?
+            .into_iter()
+            .map(|p| (p.id, p))
+            .collect::<HashMap<_, _>>();
+        let p1 = players
+            .remove(&self.player_1_id)
+            .ok_or(diesel::result::Error::NotFound)?;
+
+        let p2 = players
+            .remove(&self.player_2_id)
+            .ok_or(diesel::result::Error::NotFound)?;
         Ok((p1, p2))
     }
 

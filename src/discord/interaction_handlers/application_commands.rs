@@ -3,8 +3,8 @@ use crate::discord::constants::{
     ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_ASYNC_CMD,
     CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
-    SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD,
-    USER_PROFILE_CMD,
+    SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
+    UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
@@ -15,7 +15,6 @@ use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
-use rustls::internal::msgs::message::Message;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -23,7 +22,7 @@ use chrono::{DateTime, Duration, TimeZone, Utc};
 use diesel::result::Error;
 use diesel::SqliteConnection;
 use either::Either;
-use log::{debug, info, warn};
+use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_races::{
     get_current_round_race_for_player, BracketRace, BracketRaceState, BracketRaceStateError,
@@ -50,7 +49,7 @@ use twilight_model::application::command::{CommandOptionChoice, CommandOptionCho
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption,
 };
-use twilight_model::application::interaction::{Interaction, InteractionData, InteractionType};
+use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{Embed, MessageFlags};
@@ -284,6 +283,12 @@ pub async fn handle_application_interaction(
         UPDATE_FINISHED_RACE_CMD => {
             admin_command_wrapper(handle_rereport_race(ac, state).await.map(Option::from))
         }
+
+        SEE_UNSCHEDULED_RACES_CMD => admin_command_wrapper(
+            handle_see_unscheduled_races(ac, state)
+                .await
+                .map(Option::from),
+        ),
 
         _ => {
             info!("Unhandled application command: {}", ac.name);
@@ -570,7 +575,7 @@ async fn handle_update_user_info(
 
 async fn handle_user_profile(
     ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
+    _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     fn get_user(ac: Box<CommandData>) -> Result<User, &'static str> {
@@ -1306,6 +1311,49 @@ async fn handle_create_season(
         "Season {} created!",
         s.id
     )))
+}
+
+async fn handle_see_unscheduled_races(
+    _ac: Box<CommandData>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+
+    let mut unscheduled = BracketRace::unscheduled(cxn.deref_mut()).map_err_to_string()?;
+    unscheduled.sort_by_key(|br| br.bracket_id);
+    let mut fields = vec![];
+    for br in unscheduled {
+        let (p1, p2) = br.players(cxn.deref_mut()).map_err_to_string()?;
+        let bname = br.bracket(cxn.deref_mut()).map_err_to_string()?.name;
+        let field = EmbedField {
+            inline: false,
+            name: format!("{} vs {}", p1.name, p2.name),
+            value: bname,
+        };
+        fields.push(field);
+    }
+    let ir = InteractionResponse {
+        kind: InteractionResponseType::ChannelMessageWithSource,
+        data: Some(InteractionResponseData {
+            embeds: Some(vec![Embed {
+                fields,
+                author: None,
+                color: None,
+                description: None,
+                footer: None,
+                image: None,
+                kind: "rich".to_string(),
+                provider: None,
+                thumbnail: None,
+                timestamp: None,
+                title: None,
+                url: None,
+                video: None,
+            }]),
+            ..Default::default()
+        }),
+    };
+    Ok(ir)
 }
 
 async fn handle_create_bracket(
