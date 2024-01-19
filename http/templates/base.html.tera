@@ -12,7 +12,7 @@
         {% endblock %}
     </head>
     <body>
-        <nav id="top-nav">
+        <nav id="top-nav" data-current-season-id="{{base_context.current_season.id}}">
             <a id="home-link" class="nav-item nav-main-logo" href="/">NMG League</a>
             {% if base_context.current_season %}
                 <a id="current-season-link" class="nav-item nav-generic-item" href="/season/{{base_context.current_season.id}}">
