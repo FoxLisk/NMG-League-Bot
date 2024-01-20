@@ -1,50 +1,61 @@
 interface Page {
-  name: string;
   pathFormat: RegExp;
   navItemSelector: string;
 }
 
-const CURRENT_SEASON_PAGE_NAME = 'currentSeason';
-const TOP_LEVEL_PAGES: Page[] = [
+const TOP_NAV_SELECTOR = '#top-nav';
+const currentSeasonNumber: string = (document.querySelector(TOP_NAV_SELECTOR) as HTMLElement)?.dataset.currentSeasonId ?? '-1';
+
+const TOPNAV_PAGES: Page[] = [
+  // Home
   {
-    name: 'home',
     pathFormat: new RegExp('^/$'),
     navItemSelector: '#home-link',
   },
+
+  // Current Season
   {
-    name: CURRENT_SEASON_PAGE_NAME,
-    pathFormat: new RegExp('^/season/.*$'),
+    pathFormat: new RegExp(`^/season/${currentSeasonNumber}/.*$`),
     navItemSelector: '#current-season-link',
   },
+
+  // Previous Seasons
   {
-    name: 'previousSeasons',
-    pathFormat: new RegExp('^/seasons$'),
+    // Match `seasons` or any season detail page
+    // Current season number already covered above so all other season numbers would be previous seasons
+    pathFormat: new RegExp(`^/season(s|/.*)$`),
     navItemSelector: '#previous-seasons-link',
   },
+
+  // Asyncs
   {
-    name: 'asyncs',
     pathFormat: new RegExp('^/asyncs$'),
     navItemSelector: '#asyncs-link',
   },
+
+  // Login
   {
-    name: 'login',
     pathFormat: new RegExp('^/login$'),
     navItemSelector: '#login-link',
   },
 ];
-const CURRENT_SEASON_SUB_PAGES: Page[] = [
+
+const SEASON_DETAIL_PAGE_PATH_FORMAT = new RegExp('^/season/.*$');
+const SEASON_DETAIL_SUBNAV_PAGES: Page[] = [
+  // Brackets
   {
-    name: 'brackets',
     pathFormat: new RegExp('^/season/.*?/bracket.*?$'),
     navItemSelector: '#current-season-brackets-link',
   },
+
+  // Standings
   {
-    name: 'standings',
     pathFormat: new RegExp('^/season/.*?/standings$'),
     navItemSelector: '#current-season-standings-link',
   },
+
+  // Qualifiers
   {
-    name: 'qualifiers',
     pathFormat: new RegExp('^/season/.*?/qualifiers$'),
     navItemSelector: '#current-season-qualifiers-link',
   },
@@ -54,18 +65,20 @@ const ACTIVE_NAV_CLASS_NAME = 'nav-item-active';
 
 // Highlight nav items
 (() => {
-  const currentPage = TOP_LEVEL_PAGES.find(page => location.pathname.match(page.pathFormat));
+  const currentPage = TOPNAV_PAGES.find(page => location.pathname.match(page.pathFormat));
   if (currentPage === undefined) {
     return;
   }
+
   document.querySelector(currentPage.navItemSelector)?.classList.add(ACTIVE_NAV_CLASS_NAME);
 
-  if (currentPage.name !== CURRENT_SEASON_PAGE_NAME) {
+  // Check to see if we're on the season detail page
+  if (!location.pathname.match(SEASON_DETAIL_PAGE_PATH_FORMAT)) {
     return;
   }
 
-  // On a `current-season` page. Highlight appropriate sub-page nav item.
-  const subPage = CURRENT_SEASON_SUB_PAGES.find(subPage => location.pathname.match(subPage.pathFormat));
+  // Highlight appropriate sub-page nav items on season detail page
+  const subPage = SEASON_DETAIL_SUBNAV_PAGES.find(subPage => location.pathname.match(subPage.pathFormat));
   if (subPage !== undefined) {
     document.querySelector(subPage.navItemSelector)?.classList.add(ACTIVE_NAV_CLASS_NAME);
   }
