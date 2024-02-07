@@ -6,7 +6,7 @@
         <title>{% block pagename %}{% endblock %} | NMG League</title>
         <link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
         <link rel="stylesheet" type="text/css" href="/static/css/index.css">
-        <script defer type="text/javascript" src="/static/js/compiled/nav-highlights.js"></script>
+        <script type="module" src="/static/js/compiled/topnav-highlights.js"></script>
         <link rel="icon" href="/favicon.ico" sizes="any">
         {% block scripts %}
         {% endblock %}

@@ -1,5 +1,9 @@
 {% extends "base" %}
 
+{% block scripts %}
+    <script type="module" src="/static/js/compiled/season-nav-highlights.js"></script>
+{% endblock %}
+
 {% block body %}
 <div id="season-container">
     <div id="season-banner">
