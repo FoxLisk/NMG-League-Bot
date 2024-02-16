@@ -11,6 +11,13 @@
     <div id="previous-seasons-list">
 
         <div class="previous-season-item">
+            <h3 class="season-title">Season 5</h3>
+            Season 5 was back to vanilla Any% NMG. This time we had a clean break with
+            {{macros::link(href="/season/5", text="three swiss brackets")}}.
+        </div>
+        <hr class="season-separator" />
+
+        <div class="previous-season-item">
             <h3 class="season-title">Season 4</h3>
             For Season 4 we went with Vanilla Preset, and the event was spearheaded by relkin. We hosted
             {{ macros::link(href="/season/3", text="three brackets here") }}, and one more
@@ -27,15 +34,19 @@
         <div class="previous-season-item">
             <h3 class="season-title">Season 2</h3>
             Season 2 is mostly available on this site {{ macros::link(href="/season/1", text="here") }}.
-            You can find the Rain State info in {{ macros::link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit", text="this google sheet") }}.
+            You can find the Rain State info in
+            {{ macros::link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit", text="this google sheet") }}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 1</h3>
-            Season 1 predates this website. You can find the Dark World bracket on challonge {{ macros::link(href="https://challonge.com/h7z70mm7", text="here") }}.
-            For the Light World we had {{ macros::link(href="https://challonge.com/20m8zgsx", text="three rounds in challonge") }}
-            and {{macros::link(href="https://docs.google.com/spreadsheets/d/1N8GEBTF1lMGGBCNNyBE0B53pzb1Z-bl15TESpHhprao/edit#gid=0", text="one round in a google sheet")}}.
+            Season 1 predates this website. You can find the Dark World bracket on challonge
+            {{ macros::link(href="https://challonge.com/h7z70mm7", text="here") }}.
+            For the Light World we had
+            {{ macros::link(href="https://challonge.com/20m8zgsx", text="three rounds in challonge") }}
+            and
+            {{macros::link(href="https://docs.google.com/spreadsheets/d/1N8GEBTF1lMGGBCNNyBE0B53pzb1Z-bl15TESpHhprao/edit#gid=0", text="one round in a google sheet")}}.
         </div>
 
     </div>
