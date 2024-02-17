@@ -56,7 +56,7 @@
         </table>
     </div>
     <div id="no-qualifiers" class="hidden">
-        poop
+        No qualifiers have been submitted yet.
     </div>
 </div>
 {% endblock %}
