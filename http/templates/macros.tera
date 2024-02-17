@@ -75,3 +75,8 @@
     </tbody>
 </table>
 {% endmacro %}
+
+{% macro player_detail(name) %}
+{% set url = "/player/" ~ name %}
+{{ self::link(href=url, text=name) }}
+{% endmacro player_detail %}

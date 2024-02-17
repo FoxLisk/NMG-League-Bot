@@ -28,6 +28,11 @@
     background-color: colors.$season-sub-page-bg-color;
     padding: 1px 3rem;
 
+    div.seasons-sub-page-container {
+
+      margin: 1rem 0 2rem;
+    }
+
     table {
       width: 100%;
       border: 1px solid colors.$season-table-header-color;
