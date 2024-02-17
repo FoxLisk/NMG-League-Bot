@@ -1,0 +1,17 @@
+<!DOCTYPE HTML>
+
+{% block templates %}
+{% endblock %}
+<html lang="en">
+
+<head>
+    {% block skeleton_head %}
+    {% endblock %}
+</head>
+
+<body>
+    {% block skeleton_body %}
+    {% endblock %}
+</body>
+
+</html>

@@ -1,6 +1,6 @@
-{% extends "base" %}
-{% block scripts %}
-    <script defer type="text/javascript" src="static/js/login_redirect.js"></script>
+{% extends "skeleton" %}
+{% block skeleton_head %}
+<script defer type="text/javascript" src="static/js/login_redirect.js"></script>
 {% endblock %}
 {% block pagename %}Redirect...{% endblock %}
 {% block body %}
