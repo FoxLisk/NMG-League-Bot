@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 wrapper.classList.add('hidden');
                 return;
             } else {
-                no_qualifiers.classList.remove('hidden');
+                no_qualifiers.classList.add('hidden');
                 wrapper.classList.remove('hidden');
             }
             rows.map(r => tbody.appendChild(r));
