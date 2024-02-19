@@ -592,13 +592,18 @@ fn get_standings_context(
                         .cloned()
                         .unwrap_or("Unknown".to_string());
 
+                    let avg = if s.avg_time_finished() > 0.0 {
+                        format_hms(s.avg_time_finished() as u64)
+                    } else {
+                        "N/A".to_string()
+                    };
                     StandingsPlayer {
                         player_detail_url: uri!(player_detail(name = &name)).to_string(),
                         name,
                         points: (s.points as f32) / 2.0,
                         opponent_points: (s.opponent_points as f32) / 2.0,
                         average_time_adjusted: format_hms(s.avg_time_adjusted() as u64),
-                        average_time_finished: format_hms(s.avg_time_finished() as u64),
+                        average_time_finished: avg,
                     }
                 })
                 .collect()
