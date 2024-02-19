@@ -301,8 +301,8 @@ async fn async_view(admin: Admin, discord_state: &State<Arc<DiscordState>>) -> T
 
 #[derive(Serialize)]
 struct DisplayPlayer {
-    name_and_status: String,
-    player_detail_url: String,
+    name: String,
+    status: String,
     winner: bool,
     loser: bool,
 }
@@ -318,14 +318,14 @@ struct DisplayRace {
 
 impl DisplayPlayer {
     fn new(p: &Player, res: Option<PlayerResult>, winner: bool, loser: bool) -> Self {
-        let name_and_status = if let Some(r) = res {
-            format!("{} ({r})", p.name)
+        let status = if let Some(r) = res {
+            format!("{r}")
         } else {
-            p.name.clone()
+            "".to_string()
         };
         Self {
-            name_and_status,
-            player_detail_url: uri!(player_detail(name = &p.name)).to_string(),
+            name: p.name.clone(),
+            status,
             winner,
             loser,
         }
@@ -586,12 +586,12 @@ fn get_standings_context(
             standings
                 .iter()
                 .map(|s| {
+                    // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     let name = players_map
                         .get(&s.id)
                         .cloned()
                         .unwrap_or("Unknown".to_string());
 
-                    // N.B. it is probably more correct to do `players.remove` instead of `players.get.cloned`
                     StandingsPlayer {
                         player_detail_url: uri!(player_detail(name = &name)).to_string(),
                         name,

@@ -2,8 +2,8 @@
 
 {% import "macros" as macros %}
 {% block scripts %}
-    <script type="module" src="/static/js/compiled/season-nav-highlights.js"></script>
-    <script defer type="text/javascript" src="/static/js/season_qualifiers.js"></script>
+<script type="module" src="/static/js/compiled/season-nav-highlights.js"></script>
+<script defer type="text/javascript" src="/static/js/season_qualifiers.js"></script>
 {% endblock %}
 {% block pagename %}{{season.format}} Qualifiers{% endblock %}
 
@@ -12,12 +12,11 @@
     <tr>
         <td class="place"></td>
         <td class="player">{{ macros::link(href="", text="") }}</td>
-        <td class="time"></td>
-        <td class="vod">{{ macros::link(href="", text="link") }}</td>
+        <td class="time">{{ macros::link(href="", text="link") }}</td>
         {% if base_context.admin %}
-            <td class="delete-qualifier">
-                <img src="/static/images/trash-can-regular.png" width="16" height="16">
-                <div class="
+        <td class="delete-qualifier">
+            <img src="/static/images/trash-can-regular.png" width="16" height="16">
+            <div class="
                     spinner
                     w-5 h-5 rounded-full border border-2 border-red-600 relative hidden
 
@@ -27,33 +26,37 @@
 
                     animate-spin
                 "></div>
-            </td>
+        </td>
         {% endif %}
     </tr>
 </template>
 {% endblock %}
 
 {% block season_body %}
-<div id="qualifiers" data-season-id="{{ season.id }}">
-    <div id="qualifiers-title-container">
-        <h2 id="qualifiers-title">Qualifiers</h2>
-        <button type="button" id="toggle-obsolete-button" class="hidden">Show obsolete</button>
-    </div>
+<div id="qualifiers" data-season-id="{{ season.id }}" class="seasons-sub-page-container">
+    <div id="qualifiers-wrapper" class="hidden">
+        <div id="qualifiers-title-container">
+            <h2 id="qualifiers-title">Qualifiers</h2>
+            <button type="button" id="toggle-obsolete-button" class="hidden">Show obsolete</button>
+        </div>
 
-    <table id="qualifiers_table" class="hidden">
-        <thead>
-            <tr>
-                <td>Rank</td>
-                <td>Player Name</td>
-                <td>Time</td>
-                <td>VoD</td>
-                {% if base_context.admin %}
+        <table id="qualifiers_table" class="hidden">
+            <thead>
+                <tr>
+                    <td>Rank</td>
+                    <td>Player Name</td>
+                    <td>Time</td>
+                    {% if base_context.admin %}
                     <td>Delete</td>
-                {% endif %}
-            </tr>
-        </thead>
-        <tbody>
-        </tbody>
-    </table>
+                    {% endif %}
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+    </div>
+    <div id="no-qualifiers" class="hidden">
+        No qualifiers have been submitted yet.
+    </div>
 </div>
 {% endblock %}

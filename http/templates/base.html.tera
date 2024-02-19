@@ -1,38 +1,36 @@
-<!DOCTYPE HTML>
-{% block templates %}
+{% extends "skeleton" %}
+
+{% block skeleton_head %}
+<title>{% block pagename %}{% endblock %} | NMG League</title>
+<link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
+<link rel="stylesheet" type="text/css" href="/static/css/index.css">
+<script type="module" src="/static/js/compiled/topnav-highlights.js"></script>
+<link rel="icon" href="/favicon.ico" sizes="any">
+{% block scripts %}
+{% endblock scripts %}
+{% endblock skeleton_head %}
+
+{% block skeleton_body %}
+<nav id="top-nav" data-current-season-id="{{base_context.current_season.id}}">
+    <a id="home-link" class="nav-item nav-main-logo" href="/">NMG League</a>
+    {% if base_context.current_season %}
+    <a id="current-season-link" class="nav-item nav-generic-item" href="/season/{{base_context.current_season.id}}">
+        <span>Current Season</span>
+    </a>
+    {% endif %}
+    <a id="previous-seasons-link" class="nav-item nav-generic-item" href="/seasons">
+        <span>Previous Seasons</span>
+    </a>
+    {% if base_context.admin %}
+    <a id="asyncs-link" class="nav-item nav-generic-item" href="/asyncs">
+        <span>Asyncs</span>
+    </a>
+    {% else %}
+    <a id="login-link" class="nav-item nav-generic-item" href="/login">
+        <span>Login</span>
+    </a>
+    {% endif %}
+</nav>
+{% block body %}
 {% endblock %}
-<html lang="en">
-    <head>
-        <title>{% block pagename %}{% endblock %} | NMG League</title>
-        <link rel="stylesheet" type="text/css" href="/static/css/tailwind.css">
-        <link rel="stylesheet" type="text/css" href="/static/css/index.css">
-        <script type="module" src="/static/js/compiled/topnav-highlights.js"></script>
-        <link rel="icon" href="/favicon.ico" sizes="any">
-        {% block scripts %}
-        {% endblock %}
-    </head>
-    <body>
-        <nav id="top-nav" data-current-season-id="{{base_context.current_season.id}}">
-            <a id="home-link" class="nav-item nav-main-logo" href="/">NMG League</a>
-            {% if base_context.current_season %}
-                <a id="current-season-link" class="nav-item nav-generic-item" href="/season/{{base_context.current_season.id}}">
-                    <span>Current Season</span>
-                </a>
-            {% endif %}
-            <a id="previous-seasons-link" class="nav-item nav-generic-item" href="/seasons">
-                <span>Previous Seasons</span>
-            </a>
-            {% if base_context.admin %}
-                <a id="asyncs-link" class="nav-item nav-generic-item" href="/asyncs">
-                    <span>Asyncs</span>
-                </a>
-            {% else %}
-                <a id="login-link" class="nav-item nav-generic-item" href="/login">
-                    <span>Login</span>
-                </a>
-            {% endif %}
-        </nav>
-        {% block body %}
-        {% endblock %}
-    </body>
-</html>
+{% endblock skeleton_body %}

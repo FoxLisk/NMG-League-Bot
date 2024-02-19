@@ -7,7 +7,7 @@ function seconds_to_hmmss(secs) {
     var out = '';
     if (hours > 0) {
         out = `${hours}:${lpad(mins % 60)}:${lpad(secs % 60)}`;
-    }  else {
+    } else {
         out = `${lpad(mins % 60)}:%{lpad(secs % 60)}`;
     }
     return out;
@@ -39,7 +39,7 @@ async function get_qualifiers(season_id) {
 function build_row(template, qual_row, seen) {
     let row = template.content.cloneNode(true).querySelector('tr');
     let cols = row.querySelectorAll('td');
-    let [place, player, time, vod, delete_] = cols;
+    let [place, player, time, delete_] = cols;
     let name = qual_row.player_name;
     if (seen.players[name]) {
         row.classList.add("hidden", "obsolete-qualifier-times");
@@ -49,17 +49,25 @@ function build_row(template, qual_row, seen) {
         seen.place += 1;
         seen.players[name] = true;
     }
-    player.href = "/player/" + name;
-    player.textContent = name;
-    time.textContent = qual_row.time;
-    let vod_anchor = vod.querySelector('a');
-    vod_anchor.href = qual_row.vod;
-    vod_anchor.textContent = "link";
+    let player_anchor = player.querySelector('a');
+    player_anchor.href = "/player/" + name;
+    player_anchor.textContent = name;
+
+    let time_anchor = time.querySelector('a');
+    time_anchor.href = qual_row.vod;
+    time_anchor.textContent = qual_row.time;
 
     if (delete_) {
         delete_.dataset['target_id'] = qual_row.id;
     }
     return row;
+}
+
+function build_rows(qualifiers) {
+    const template = document.querySelector('template#qualifier_submission');
+    var seen = { place: 1, players: {} };
+    let rows = qualifiers.map(e => build_row(template, e, seen));
+    return rows;
 }
 
 /// deletes the qualifier with this id
@@ -83,45 +91,47 @@ async function do_delete(id) {
     }
 }
 
-function build_rows(qualifiers) {
-    const template = document.querySelector('template#qualifier_submission');
-    var seen = {place: 1, players: {}};
-    let rows = qualifiers.map(e => build_row(template, e, seen));
-    return rows;
-}
-
 document.addEventListener('DOMContentLoaded', async () => {
     let container = document.getElementById('qualifiers');
     let table = document.getElementById('qualifiers_table')
     let season_id = container.dataset['seasonId'];
     let tbody = document.querySelector('#qualifiers_table tbody');
-    let button = document.querySelector('button#toggle-obsolete-button');
-
+    let toggle_obsolete_button = document.querySelector('button#toggle-obsolete-button');
+    let wrapper = document.getElementById('qualifiers-wrapper');
+    let no_qualifiers = document.getElementById('no-qualifiers');
     let qualifiers = await get_qualifiers(season_id);
     try {
         var obsolete_hidden = true;
         function rebuild() {
             tbody.innerHTML = "";
             let rows = build_rows(qualifiers);
+            if (rows.length == 0) {
+                no_qualifiers.classList.remove('hidden');
+                wrapper.classList.add('hidden');
+                return;
+            } else {
+                no_qualifiers.classList.add('hidden');
+                wrapper.classList.remove('hidden');
+            }
             rows.map(r => tbody.appendChild(r));
             let obsolete_rows = document.querySelectorAll('tr.obsolete-qualifier-times');
-            button.classList.remove("hidden");
+            toggle_obsolete_button.classList.remove("hidden");
             table.classList.remove('hidden');
             function effect_obsolete_hidden() {
                 if (obsolete_hidden) {
                     // hide things
                     obsolete_rows.forEach(r => { r.classList.add('hidden'); });
-                    button.textContent = 'Show obsolete';
+                    toggle_obsolete_button.textContent = 'Show obsolete';
                 } else {
                     // show things
                     obsolete_rows.forEach(r => { r.classList.remove('hidden'); });
-                    button.textContent = 'Hide obsolete';
+                    toggle_obsolete_button.textContent = 'Hide obsolete';
                 }
             }
             effect_obsolete_hidden();
-            button.addEventListener('click', e => {
+            toggle_obsolete_button.addEventListener('click', e => {
                 e.preventDefault();
-                obsolete_hidden = ! obsolete_hidden;
+                obsolete_hidden = !obsolete_hidden;
                 effect_obsolete_hidden();
             });
         }
@@ -130,8 +140,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!delete_) {
                 return;
             }
-            let whatever = confirm("Really delete?");
-            if (!whatever) {
+            let confirmed = confirm("Really delete?");
+            if (!confirmed) {
                 return;
             }
             let trashcan = delete_.querySelector('img');

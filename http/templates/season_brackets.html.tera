@@ -4,11 +4,19 @@
 
 {% block pagename %}{{season.format}} Brackets{% endblock %}
 {% block season_body %}
-<ul class="list-disc" >
-{% for bracket in brackets %}
-  <li title="Bracket id#{{ bracket.id }}">
-    {{ macros::link(href=bracket.url, text=bracket.name) }}
-  </li>
-{% endfor %}
-</ul>
+<div id="brackets-page-container" class="seasons-sub-page-container">
+  {% if brackets %}
+
+  <ul class="list-disc">
+    {% for bracket in brackets %}
+    <li title="Bracket id#{{ bracket.id }}">
+      {{ macros::link(href=bracket.url, text=bracket.name) }}
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% else %}
+Brackets have not yet been created for this season.
+{% endif %}
 {% endblock %}
