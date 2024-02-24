@@ -1,0 +1,6 @@
+{% extends "base" %}
+
+{% block pagename %}{% if player %}{{ player.name }} Detail{% else %}Player not found{% endif %}{% endblock %}
+{% block body %}
+Player not found.
+{% endblock %}

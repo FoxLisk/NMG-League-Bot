@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use rocket::http::Status;
@@ -21,7 +21,7 @@ use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
-use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
+use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;
@@ -671,25 +671,218 @@ async fn season_history(
     Ok(Template::render("season_history", ctx))
 }
 
+fn render_player_detail<F>(
+    func: F,
+    admin: Option<Admin>,
+    db: &mut SqliteConnection,
+) -> Result<Template, Status>
+where
+    F: FnOnce(&mut SqliteConnection) -> Result<Option<Player>, diesel::result::Error>,
+{
+    let bc = BaseContext::new(db, &admin);
+    let player = match func(db) {
+        Ok(Some(p)) => p,
+        Ok(None) => {
+            return Ok(Template::render(
+                "player_detail_empty",
+                context! {base_context: bc },
+            ));
+        }
+        Err(e) => {
+            warn!("Error getting player info: {e}");
+            return Err(Status::InternalServerError);
+        }
+    };
+
+    #[derive(Debug, Serialize)]
+    struct RaceHistory {
+        opponent: String,
+        round: i32,
+        /// "win", "loss", or "draw"
+        outcome: &'static str,
+        time: String,
+        opponent_time: String,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct SeasonInfo {
+        url: String,
+        title: String,
+        season_id: i32,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct SeasonHistory {
+        season: SeasonInfo,
+        races: Vec<RaceHistory>,
+    }
+    impl SeasonHistory {
+        fn new(season: Season, bracket: Bracket) -> Self {
+            let title = format!("{} ({})", season.format, bracket.name);
+            let url = uri!(bracket_detail(
+                season_id = season.id,
+                bracket_id = bracket.id
+            ))
+            .to_string();
+            Self {
+                season: SeasonInfo {
+                    title,
+                    url,
+                    season_id: season.id,
+                },
+                races: Default::default(),
+            }
+        }
+        fn add_race(
+            &mut self,
+            race: BracketRace,
+            round: BracketRound,
+            our_player_id: i32,
+            players: &HashMap<i32, Player>,
+        ) {
+            // skip unfinished races
+            match race.state() {
+                Ok(s) => match s {
+                    BracketRaceState::Finished => {}
+                    _ => {
+                        info!("Race {} not finished, skipping.", race.id);
+                    }
+                },
+                Err(e) => {
+                    warn!("Error fetching race state. Skipping. {e}");
+                    return;
+                }
+            }
+            let we_are_p1 = race.player_1_id == our_player_id;
+            // writing code like this makes me think I have made a terrible mistake somewhere
+            let outcome = match race.outcome() {
+                Ok(Some(o)) => match o {
+                    nmg_league_bot::models::bracket_races::Outcome::Tie => "draw",
+                    nmg_league_bot::models::bracket_races::Outcome::P1Win => {
+                        if we_are_p1 {
+                            "win"
+                        } else {
+                            "loss"
+                        }
+                    }
+                    nmg_league_bot::models::bracket_races::Outcome::P2Win => {
+                        if we_are_p1 {
+                            "loss"
+                        } else {
+                            "win"
+                        }
+                    }
+                },
+                Ok(None) => {
+                    info!("Race {} not finished, skipping", race.id);
+                    return;
+                }
+                Err(e) => {
+                    warn!("Error fetching race outcoming, skipping: {e}");
+                    return;
+                }
+            };
+            let (our_result, their_result, their_id) = if we_are_p1 {
+                (
+                    race.player_1_result(),
+                    race.player_2_result(),
+                    race.player_2_id,
+                )
+            } else {
+                (
+                    race.player_2_result(),
+                    race.player_1_result(),
+                    race.player_1_id,
+                )
+            };
+            fn res_opt_to_display(r: Option<PlayerResult>) -> String {
+                r.map(|pr| pr.to_string())
+                    .unwrap_or("Missing data".to_string())
+            }
+
+            let p = players
+                .get(&their_id)
+                .map(|p| p.name.clone())
+                .unwrap_or("Unknown".to_string());
+
+            let rh = RaceHistory {
+                opponent: p,
+                round: round.round_num,
+                outcome: outcome,
+                time: res_opt_to_display(our_result),
+                opponent_time: res_opt_to_display(their_result),
+            };
+            self.races.push(rh);
+            self.races.sort_by_key(|rh| rh.round);
+        }
+    }
+    #[derive(Debug, Serialize)]
+    struct PlayerHistory {
+        seasons: Vec<SeasonHistory>,
+    }
+
+    fn get_player_history(
+        db: &mut SqliteConnection,
+        id: i32,
+    ) -> Result<PlayerHistory, diesel::result::Error> {
+        use crate::schema::bracket_races;
+        use diesel::prelude::*;
+        let results: Vec<(BracketRace, (BracketRound, (Bracket, Season)))> = bracket_races::table
+            .filter(
+                bracket_races::player_1_id
+                    .eq(id)
+                    .or(bracket_races::player_2_id.eq(id)),
+            )
+            .inner_join(crate::schema::bracket_rounds::table.inner_join(
+                crate::schema::brackets::table.inner_join(crate::schema::seasons::table),
+            ))
+            .load(db)?;
+        let all_player_ids = results
+            .iter()
+            .map(|(r, _)| vec![r.player_1_id, r.player_2_id])
+            .flatten()
+            .collect::<HashSet<_>>();
+        let players: Vec<Player> = crate::schema::players::table
+            .filter(crate::schema::players::id.eq_any(all_player_ids))
+            .load(db)?;
+        let player_map: HashMap<i32, Player> = players.into_iter().map(|p| (p.id, p)).collect();
+        let mut season_histories: HashMap<i32, SeasonHistory> = Default::default();
+
+        for (race, (round, (bracket, season))) in results.into_iter() {
+            let bid = bracket.id;
+            let history = season_histories
+                .entry(season.id)
+                .or_insert(SeasonHistory::new(season, bracket));
+
+            history.add_race(race, round, id, &player_map);
+        }
+        let mut histories: Vec<SeasonHistory> = season_histories.into_values().collect();
+        histories.sort_by_key(|s| s.season.season_id);
+        Ok(PlayerHistory { seasons: histories })
+    }
+
+    let player_history = match get_player_history(db, player.id) {
+        Ok(p) => Some(p),
+        Err(e) => {
+            warn!("Error getting player season history: {e}");
+            None
+        }
+    };
+    let ctx = context! {
+        base_context: bc,
+        player: player,
+        player_history: player_history,
+    };
+    Ok(Template::render("player_detail", ctx))
+}
+
 #[get("/player/<id>")]
 async fn player_detail_by_id(
     id: i32,
     admin: Option<Admin>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
-    let player = match Player::get_by_id(id, &mut db) {
-        Ok(p) => p,
-        Err(e) => {
-            warn!("Error getting player info: {e}");
-            return Err(Status::InternalServerError);
-        }
-    };
-    let bc = BaseContext::new(&mut db, &admin);
-    let ctx = context! {
-        base_context: bc,
-        player: player,
-    };
-    Ok(Template::render("player_detail", ctx))
+    render_player_detail(|db| Player::get_by_id(id, db), admin, db.deref_mut())
 }
 
 #[get("/player/<name>", rank = 2)]
@@ -698,19 +891,7 @@ async fn player_detail(
     admin: Option<Admin>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
-    let player = match Player::get_by_name(&name, &mut db) {
-        Ok(p) => p,
-        Err(e) => {
-            warn!("Error getting player info: {e}");
-            return Err(Status::InternalServerError);
-        }
-    };
-    let bc = BaseContext::new(&mut db, &admin);
-    let ctx = context! {
-        base_context: bc,
-        player: player,
-    };
-    Ok(Template::render("player_detail", ctx))
+    render_player_detail(|db| Player::get_by_name(&name, db), admin, db.deref_mut())
 }
 
 #[get("/")]
