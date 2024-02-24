@@ -14,6 +14,9 @@
     {% endif %}
     {% if player_history %}
     <hr />
+    <div class="text-xl">
+        Race History
+    </div>
     {% for season in player_history.seasons %}
 
     <h2>{{ macros::link(href=season.season.url, text=season.season.title)}}</h2>
