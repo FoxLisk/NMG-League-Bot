@@ -1320,6 +1320,11 @@ async fn handle_see_unscheduled_races(
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
 
     let mut unscheduled = BracketRace::unscheduled(cxn.deref_mut()).map_err_to_string()?;
+    if unscheduled.is_empty() {
+        return Ok(plain_interaction_response(
+            "There are no unscheduled races.",
+        ));
+    }
     unscheduled.sort_by_key(|br| br.bracket_id);
     let mut fields = vec![];
     for br in unscheduled {
