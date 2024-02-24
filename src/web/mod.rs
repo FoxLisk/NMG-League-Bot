@@ -715,14 +715,10 @@ async fn player_detail(
 
 #[get("/")]
 async fn home(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
-    #[derive(Serialize, Debug)]
-    struct HomeCtx {
-        base_context: BaseContext,
-    }
-    let ctx = HomeCtx {
-        base_context: BaseContext::new(&mut db, &admin),
-    };
-    Ok(Template::render("home", ctx))
+    Ok(Template::render(
+        "home",
+        context! { base_context: BaseContext::new(&mut db, &admin)},
+    ))
 }
 
 fn option_default(
