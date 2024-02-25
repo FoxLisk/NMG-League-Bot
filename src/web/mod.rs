@@ -849,7 +849,6 @@ where
         let mut season_histories: HashMap<i32, SeasonHistory> = Default::default();
 
         for (race, (round, (bracket, season))) in results.into_iter() {
-            let bid = bracket.id;
             let history = season_histories
                 .entry(season.id)
                 .or_insert(SeasonHistory::new(season, bracket));

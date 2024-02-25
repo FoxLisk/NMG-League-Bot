@@ -8,7 +8,7 @@ use twilight_model::http::interaction::{
 };
 
 /// InteractionResponseData with just content + no allowed mentions
-fn plain_interaction_data<S: Into<String>>(content: S) -> InteractionResponseData {
+pub fn plain_interaction_data<S: Into<String>>(content: S) -> InteractionResponseData {
     InteractionResponseData {
         content: Some(content.into()),
         allowed_mentions: Some(AllowedMentions::default()),

@@ -8,8 +8,8 @@ use crate::discord::constants::{
 };
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
-    autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_response,
-    update_resp_to_plain_content,
+    autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_data,
+    plain_interaction_response, update_resp_to_plain_content,
 };
 use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
@@ -1321,9 +1321,14 @@ async fn handle_see_unscheduled_races(
 
     let mut unscheduled = BracketRace::unscheduled(cxn.deref_mut()).map_err_to_string()?;
     if unscheduled.is_empty() {
-        return Ok(plain_interaction_response(
-            "There are no unscheduled races.",
-        ));
+        let mut data = plain_interaction_data("There are no unscheduled races.");
+        data.flags = Some(MessageFlags::EPHEMERAL);
+        let ir = InteractionResponse {
+            kind: InteractionResponseType::ChannelMessageWithSource,
+            data: Some(data),
+        };
+
+        return Ok(ir);
     }
     unscheduled.sort_by_key(|br| br.bracket_id);
     let mut fields = vec![];
