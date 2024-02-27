@@ -25,7 +25,7 @@
                         Race Status
                     </td>
                     <td>
-                        Restream Link
+                        Restream Link<img class="icon external-link-icon" src="/static/images/external-link.png">
                     </td>
                 </tr>
             </thead>

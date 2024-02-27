@@ -45,7 +45,9 @@
                 <tr>
                     <td>Rank</td>
                     <td>Player Name</td>
-                    <td>Time</td>
+                    <td>
+                        Time<img class="icon external-link-icon" src="/static/images/external-link.png">
+                    </td>
                     {% if base_context.admin %}
                     <td>Delete</td>
                     {% endif %}
