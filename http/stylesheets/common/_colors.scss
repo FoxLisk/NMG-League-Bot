@@ -2,6 +2,7 @@
 
 // Common
 $text-color: #e5e7eb;
+$subdued-text-color: #{$text-color}99;
 $body-bg-color: #465876;
 $faint-black-box-shadow-color: #00000055;
 $page-content-container-bg-color: #374151;
@@ -28,7 +29,6 @@ $season-standings-without-forfeits-color:  #9ba0ab;
 // Bracket Details
 $winner-cell-bg-color: #22d3ee33;
 $loser-cell-bg-color: #f8717133;
-$race-not-scheduled-text-color: #{$text-color}99;
 $race-complete-text-color: #80a5e1;
 
 // Qualifiers

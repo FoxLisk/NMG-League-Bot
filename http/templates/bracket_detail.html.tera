@@ -5,7 +5,7 @@
 {% block pagename %}{{ bracket.bracket.name }} Detail{% endblock %}
 {% block season_body %}
 
-<div id="bracket-detail-page">
+<div id="bracket-detail-page" class="stats-container">
     <h2 id="bracket-title" title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</h2>
     <hr id="bracket-title-separator" />
 
