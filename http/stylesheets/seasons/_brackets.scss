@@ -34,17 +34,27 @@
         background-color: colors.$loser-cell-bg-color;
       }
 
+      span.race-time {
+        font-size: 0.97rem;
+        color: colors.$mellow-text-color;
+      }
+
+      span.race-scheduled-text {
+        color: colors.$mellow-text-color;
+      }
+
       span.race-not-scheduled-text {
-        font-size: 0.95rem;
-        font-style: italic;
-        color: colors.$subdued-text-color;
+        font-size: 0.97rem;
       }
 
       span.race-complete-text {
-        font-size: 0.95rem;
         font-style: italic;
         font-weight: bold;
         color: colors.$race-complete-text-color;
+      }
+
+      span.empty-restream-link {
+        color: colors.$subdued-text-color;
       }
     }
   }

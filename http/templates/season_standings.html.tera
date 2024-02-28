@@ -25,7 +25,7 @@
                         Opponent Points
                     </td>
                     <td>
-                        Average Time <span class="without-forfeits">(without forfeits)</span>
+                        Average Time <span class="without-forfeits subdued-text">(without forfeits)</span>
                     </td>
                 </tr>
             </thead>
@@ -46,7 +46,7 @@
                     </td>
                     <td>
                         {{ macros::get_text_or_placeholder(text = player.average_time_adjusted) }}
-                        <span class="without-forfeits">
+                        <span class="without-forfeits subdued-text">
                             ({{ macros::get_text_or_placeholder(text = player.average_time_finished) | trim | safe }})
                         </span>
                     </td>

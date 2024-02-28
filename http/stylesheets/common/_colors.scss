@@ -2,6 +2,7 @@
 
 // Common
 $text-color: #e5e7eb;
+$mellow-text-color: #{$text-color}e4;
 $subdued-text-color: #{$text-color}99;
 $body-bg-color: #465876;
 $faint-black-box-shadow-color: #00000055;
@@ -23,8 +24,6 @@ $season-table-header-color: #15171b;
 $season-table-column-border-color: #23262e;
 $season-table-bg-color: #363c48;
 $season-table-even-row-color: #3d4351;
-// Season standings
-$season-standings-without-forfeits-color:  #9ba0ab;
 
 // Bracket Details
 $winner-cell-bg-color: #22d3ee33;
