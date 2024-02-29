@@ -7,7 +7,12 @@ body {
 
 a {
   color: colors.$highlight-color;
-  text-decoration: underline;
+  text-decoration: underline transparent;
+  transition: text-decoration 150ms ease;
+}
+
+a:hover {
+  text-decoration-color: colors.$highlight-color;
 }
 
 nav a {
