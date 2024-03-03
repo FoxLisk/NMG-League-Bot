@@ -7,7 +7,7 @@
     <span>{{ player.name }}</span>
     {% if player.twitch_user_login %}
     {% set url = "https://twitch.tv/<name>" | replace(from="<name>", to=player.twitch_user_login) %}
-    <div>{{ macros::link(href=url, text="Twitch stream") }}</div>
+    <div>{{ macros::external_link(href=url, text="Twitch stream") }}</div>
     {% endif %}
     {% if player.racetime_username %}
     <div>Racetime username: {{ player.racetime_username }}</div>

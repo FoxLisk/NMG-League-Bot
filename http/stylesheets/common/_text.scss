@@ -1,0 +1,6 @@
+@use 'colors';
+
+.subdued-text {
+  font-style: italic;
+  color: colors.$subdued-text-color !important;
+}

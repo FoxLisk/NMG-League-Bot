@@ -4,9 +4,8 @@
 
 {% block pagename %}{{season.format}} Brackets{% endblock %}
 {% block season_body %}
-<div id="brackets-page-container" class="seasons-sub-page-container">
-  {% if brackets %}
 
+{% if brackets %}
   <ul class="list-disc">
     {% for bracket in brackets %}
     <li title="Bracket id#{{ bracket.id }}">
@@ -14,9 +13,11 @@
     </li>
     {% endfor %}
   </ul>
-</div>
 
 {% else %}
-Brackets have not yet been created for this season.
+  <div class="placeholder-message-banner subdued-text">
+    Brackets have not yet been created for this season
+  </div>
 {% endif %}
+
 {% endblock %}

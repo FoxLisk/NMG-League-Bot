@@ -28,9 +28,14 @@
     background-color: colors.$season-sub-page-bg-color;
     padding: 1px 3rem;
 
-    div.seasons-sub-page-container {
-
+    div.stats-container {
       margin: 1rem 0 2rem;
+    }
+
+    div.placeholder-message-banner {
+      margin: 1.2rem 0;
+      font-size: 1.2rem;
+      text-align: center;
     }
 
     table {

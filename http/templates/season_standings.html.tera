@@ -4,8 +4,8 @@
 
 {% block pagename %}{{season.format}} Standings{% endblock %}
 {% block season_body %}
-<div id="standings-page-container" class="seasons-sub-page-container">
-    {% if brackets  %}
+{% if brackets  %}
+<div id="standings-page-container" class="stats-container">
     {% for bracket in brackets %}
     <div class="bracket-standings-container">
         <h2 class="bracket-title">Bracket: {{ bracket.name }}</h2>
@@ -25,7 +25,7 @@
                         Opponent Points
                     </td>
                     <td>
-                        Average Time <span class="without-forfeits">(without forfeits)</span>
+                        Average Time <span class="without-forfeits subdued-text">(without forfeits)</span>
                     </td>
                 </tr>
             </thead>
@@ -46,7 +46,7 @@
                     </td>
                     <td>
                         {{ macros::get_text_or_placeholder(text = player.average_time_adjusted) }}
-                        <span class="without-forfeits">
+                        <span class="without-forfeits subdued-text">
                             ({{ macros::get_text_or_placeholder(text = player.average_time_finished) | trim | safe }})
                         </span>
                     </td>
@@ -57,8 +57,10 @@
     </div>
     <hr class="template-item-separator" />
     {% endfor %}
-    {% else %}
-    Standings are not available until at least one full round has been completed.
-    {% endif %}
 </div>
+{% else %}
+<div class="placeholder-message-banner subdued-text">
+    Standings will only be available after one full round has been completed
+</div>
+{% endif %}
 {% endblock %}

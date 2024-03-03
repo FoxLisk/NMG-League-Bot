@@ -33,8 +33,8 @@
 {% endblock %}
 
 {% block season_body %}
-<div id="qualifiers" data-season-id="{{ season.id }}" class="seasons-sub-page-container">
-    <div id="qualifiers-wrapper" class="hidden">
+<div id="qualifiers" data-season-id="{{ season.id }}">
+    <div id="qualifiers-wrapper" class="stats-container hidden">
         <div id="qualifiers-title-container">
             <h2 id="qualifiers-title">Qualifiers</h2>
             <button type="button" id="toggle-obsolete-button" class="hidden">Show obsolete</button>
@@ -45,7 +45,9 @@
                 <tr>
                     <td>Rank</td>
                     <td>Player Name</td>
-                    <td>Time</td>
+                    <td>
+                        Time<img class="icon external-link-icon" src="/static/images/external-link.png">
+                    </td>
                     {% if base_context.admin %}
                     <td>Delete</td>
                     {% endif %}
@@ -55,8 +57,8 @@
             </tbody>
         </table>
     </div>
-    <div id="no-qualifiers" class="hidden">
-        No qualifiers have been submitted yet.
+    <div id="no-qualifiers" class="placeholder-message-banner subdued-text hidden">
+        No qualifiers have been submitted for this season yet
     </div>
 </div>
 {% endblock %}

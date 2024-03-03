@@ -15,7 +15,7 @@
                     To see details for the ongoing season, {{ macros::link(href=url, text="click here") }}.
                 {% endif %}
                 To view seasonal history, {{ macros::link(href="/seasons", text="click here") }}.
-                To participate in league races, signup for commentary, or get updates for upcoming races, be sure to {{ macros::link(href="https://discord.gg/exrgFbna7d", text="join our discord") }}.
+                To participate in league races, signup for commentary, or get updates for upcoming races, be sure to {{ macros::external_link(href="https://discord.gg/exrgFbna7d", text="join our discord") }}.
                 It's almost league!!!
             </div>
         </div>

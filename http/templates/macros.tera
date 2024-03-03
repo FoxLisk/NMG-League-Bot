@@ -1,6 +1,10 @@
-{# for some reason, the -% here doesn't actually work, so the {% endmacro %} has to go on the same line :\ #}
 {%- macro link(href, text) -%}
-    <a href="{{ href }}">{{ text }}</a>{% endmacro link %}
+    <a href="{{ href }}">{{ text }}</a>
+{%- endmacro link -%}
+
+{%- macro external_link(href, text) -%}
+    <a href="{{ href }}">{{ text }}<img class="icon external-link-icon" src="/static/images/external-link-highlighted.png"></a>
+{%- endmacro external_link -%}
 
 {% macro header(name) %}
 <th class="border-x border-slate-500">
