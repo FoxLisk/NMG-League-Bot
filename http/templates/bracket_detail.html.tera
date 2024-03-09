@@ -33,20 +33,23 @@
                 {% for race in round.races %}
                 <tr title="Race id #{{ race.race_id }}">
                     <td
-                        class="{% if race.player_1.winner %} winner-cell {% elif race.player_1.loser %} loser-cell {% endif %}"
-                    >
+                        class="{% if race.player_1.winner %} winner-cell {% elif race.player_1.loser %} loser-cell {% endif %}">
                         {{ macros::player_detail(name=race.player_1.name) }}
+                        {% if race.player_1.status %}
                         <span class="race-time {% if race.player_1.status == 'Forfeit' -%} subdued-text {%- endif %}">
                             ({{ race.player_1.status }})
                         </span>
+                        {% endif %}
                     </td>
                     <td
-                        class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}"
-                    >
+                        class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}">
                         {{ macros::player_detail(name=race.player_2.name) }}
+
+                        {% if race.player_1.status %}
                         <span class="race-time {% if race.player_2.status == 'Forfeit' -%} subdued-text {%- endif %}">
                             ({{ race.player_2.status }})
                         </span>
+                        {% endif %}
                     </td>
                     <td>
                         {% if race.scheduled %}
