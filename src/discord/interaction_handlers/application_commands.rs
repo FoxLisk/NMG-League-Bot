@@ -13,8 +13,8 @@ use crate::discord::interactions_utils::{
     autocomplete_result, button_component, get_subcommand_options, interaction_to_custom_id,
     plain_ephemeral_response, plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
-use crate::{discord, get_focused_opt, get_opt_s};
+use crate::discord::{self, notify_racer, ErrorResponse, ScheduleRaceError};
+use crate::{find_opt, get_focused_opt, get_opt_s};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
@@ -28,9 +28,7 @@ use diesel::SqliteConnection;
 use either::Either;
 use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
-use nmg_league_bot::models::bracket_races::{
-    get_current_round_race_for_player, BracketRace, BracketRaceState, PlayerResult,
-};
+use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::brackets::{Bracket, BracketType, NewBracket};
 use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -38,7 +36,7 @@ use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
 use nmg_league_bot::utils::{ResultCollapse, ResultErrToString};
 use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishError, RaceFinishOptions};
-use nmg_league_bot::{utils, BracketRaceStateError, NMGLeagueBotError};
+use nmg_league_bot::{utils, BracketRaceState, BracketRaceStateError, NMGLeagueBotError};
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
@@ -444,7 +442,7 @@ async fn _handle_schedule_race_cmd(
         match Player::get_by_discord_id(&user.id.to_string(), cxn.deref_mut()).map_err(|e| {
             ErrorResponse::new(
                 BLAND_USER_FACING_ERROR,
-                format!("Error fetching player: {}", e),
+                format!("Error fetching player: {e}"),
             )
         })? {
             Some(p) => p,
@@ -455,19 +453,98 @@ async fn _handle_schedule_race_cmd(
             }
         };
 
-    let race_opt = get_current_round_race_for_player(&player, cxn.deref_mut()).map_err(|e| {
+    let opponent = find_opt!("opponent", &mut ac.options, User).map_err(|e| {
         ErrorResponse::new(
             BLAND_USER_FACING_ERROR,
-            format!("Error fetching race for player: {}", e),
+            format!("Invalid `opponent` parameter in schedule_race command: {e}"),
         )
     })?;
-    let the_race = match race_opt {
-        Some(r) => r,
-        None => {
+
+    // N.B. it looks like autocomplete doesn't work with Discord Users. We could swap this to take a different data type
+    // and add autocomplete on *players* behind the scenes. I'm not sure that's better and I also don't feel like implementing it
+    // right now.
+    let opp_player = match opponent {
+        Some(o) => {
+            if o == user.id {
+                return Ok(UpdateResponseBag::new_content(
+                    "Your opponent must be someone other than yourself.",
+                ));
+            }
+            // N.B. we could probably rewrite this to squish the two Player queries into one
+            let p = Player::get_by_discord_id(&o.to_string(), cxn.deref_mut()).map_err(|e| {
+                ErrorResponse::new(
+                    BLAND_USER_FACING_ERROR,
+                    format!("Error fetching opponent: {e}"),
+                )
+            })?;
+            match p {
+                Some(p) => Some(p),
+                None => {
+                    return Ok(UpdateResponseBag::new_content(
+                        "That opponent could not be found. \
+                    Please double check the username and try again.",
+                    ));
+                }
+            }
+        }
+        None => None,
+    };
+
+    let mut races = BracketRace::get_unfinished_races_for_player(&player, cxn.deref_mut())
+        .map_err(|e| {
+            ErrorResponse::new(
+                BLAND_USER_FACING_ERROR,
+                format!("Error fetching races for player: {}", e),
+            )
+        })?;
+
+    fn find_matching_race(vs_whomst: Player, races: Vec<BracketRace>) -> Option<BracketRace> {
+        for race in races {
+            if race.involves_player(&vs_whomst) {
+                return Some(race);
+            }
+        }
+        None
+    }
+
+    // Could this be simplified? we are, _in fact_, treating 0, 1, and many differently,
+    // but it feels like we should be able to combine the 1 and many cases :thinkDorm:
+    let the_race = match races.len() {
+        0 => {
             return Ok(UpdateResponseBag::new_content(
                 "You do not have an active race.",
             ));
         }
+        1 => {
+            let candidate = races.pop().unwrap();
+            if let Some(opp) = opp_player {
+                if candidate.involves_player(&opp) {
+                    candidate
+                } else {
+                    return Ok(UpdateResponseBag::new_content(
+                        "Your race is not against that opponent.",
+                    ));
+                }
+            } else {
+                candidate
+            }
+        }
+        _ => match opp_player {
+            Some(opp) => match find_matching_race(opp, races) {
+                Some(r) => r,
+                None => {
+                    return Ok(UpdateResponseBag::new_content(
+                        "No active race found against that opponent.",
+                    ));
+                }
+            },
+            None => {
+                return Ok(UpdateResponseBag::new_content(
+                    "You have more than one active race. Please specify \
+                    the opponent you are scheduling against.",
+                ));
+            }
+        },
     };
 
     match discord::schedule_race(the_race, dt, &state).await {
@@ -617,7 +694,7 @@ async fn handle_set_restream(
                 }
                 info.restream_channel = Some(channel);
             }
-            Err(e) => {
+            Err(_e) => {
                 return Ok(plain_interaction_response(
                     "Please provide a full URL including `https://`.",
                 ));
@@ -983,7 +1060,6 @@ async fn handle_submit_qualifier(
     };
 
     let update_pls_suffix = if created {
-        // it's dumb that there's no way to statically concatenate constants such as UPDATE_USER_INFO_CMD into strings
         format!(" I would really appreciate it if you would run the `/{UPDATE_USER_INFO_CMD}` command and provide your \
          Twitch and RaceTime info!")
     } else {
@@ -1115,17 +1191,21 @@ async fn handle_add_player_to_bracket_submit(
     let discord_id = get_opt_s!("user", &mut ac.options, User)?;
     let bracket_name = get_opt_s!("bracket", &mut ac.options, String)?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let player = match Player::get_by_discord_id(&(discord_id.to_string()), cxn.deref_mut())
-        .map_err(|e| e.to_string())?
-    {
-        Some(p) => p,
-        None => {
-            return Ok(plain_interaction_response(format!(
-                "That player has not been created. Use /{} to create them.",
-                CREATE_PLAYER_CMD
-            )));
+    let user = state.get_user(discord_id).ok_or("Cannot find that user")?;
+
+    let (player, created) = match Player::get_or_create_from_discord_user(user, cxn.deref_mut()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(format!("Error getting or creating player: {e}"));
         }
     };
+
+    let update_pls_suffix = if created {
+        format!(" This player was freshly created and has no user info!")
+    } else {
+        "".to_string()
+    };
+
     let szn = Season::get_active_season(cxn.deref_mut())
         .map_err(|e| e.to_string())?
         .ok_or("There's no active season.".to_string())?;
@@ -1141,7 +1221,12 @@ async fn handle_add_player_to_bracket_submit(
 
     let npbe = NewPlayerBracketEntry::new(&bracket, &player);
     npbe.save(cxn.deref_mut())
-        .map(|_| plain_interaction_response(format!("{} added to {}", player.name, bracket.name)))
+        .map(|_| {
+            plain_interaction_response(format!(
+                "{} added to {}.{update_pls_suffix}",
+                player.name, bracket.name
+            ))
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -1648,7 +1733,7 @@ async fn handle_report_race(
             state.channel_config.match_results.mention()
         )))
         .map_err(|e| match e {
-            RaceFinishError::BracketRaceStateError(BracketRaceStateError::InvalidState) => {
+            RaceFinishError::BracketRaceStateError(BracketRaceStateError::InvalidState(_, _)) => {
                 format!("That race is already finished. Please use `/{UPDATE_FINISHED_RACE_CMD}` if you are trying to \
                 change the results of a finished race.")
             }
@@ -1712,7 +1797,7 @@ async fn handle_generate_pairings(
             "Pairings generated! See them at {}{url}",
             CONFIG.website_url,
         ))),
-        Err(e) => Err(format!("Error generating pairings: {e:?}")),
+        Err(e) => Err(format!("Error generating pairings: {e}")),
     }
 }
 

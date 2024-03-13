@@ -5,10 +5,10 @@ use diesel::{RunQueryDsl, SqliteConnection};
 use serde::Serialize;
 
 use crate::models::bracket_race_infos::BracketRaceInfo;
-use crate::models::bracket_races::{BracketRace, BracketRaceState};
+use crate::models::bracket_races::BracketRace;
 use crate::schema::seasons;
 use crate::utils::epoch_timestamp;
-use crate::{save_fn, schema, update_fn, NMGLeagueBotError};
+use crate::{save_fn, schema, update_fn, BracketRaceState, NMGLeagueBotError};
 use enum_iterator::Sequence;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
@@ -288,5 +288,22 @@ impl Season {
             rtgg_category_name: "".to_string(),
             rtgg_goal_name: goal.to_string(),
         }
+    }
+}
+
+#[cfg(feature = "development")]
+impl Season {
+    pub fn ensure_started_season(conn: &mut SqliteConnection) -> anyhow::Result<Self> {
+        if let Some(s) =  Season::get_active_season(conn)? {
+            return Ok(s);
+        }
+
+        let nsn = NewSeason::new("Test NMG", "alttp", "Any% NMG", conn)?;
+        let mut sn = nsn.save(conn).unwrap();
+        sn.set_state(SeasonState::QualifiersOpen, conn)?;
+        sn.set_state(SeasonState::QualifiersClosed, conn)?;
+        sn.set_state(SeasonState::Started, conn)?;
+        sn.update(conn)?;
+        Ok(sn)
     }
 }

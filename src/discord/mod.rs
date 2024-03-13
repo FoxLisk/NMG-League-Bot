@@ -25,7 +25,7 @@ use crate::discord::constants::CUSTOM_ID_START_RUN;
 use nmg_league_bot::models::asyncs::race::AsyncRace;
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState};
+use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::player::{MentionOptional, Player};
 use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
 
@@ -33,7 +33,7 @@ use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::worker_funcs::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
-use nmg_league_bot::{ApplicationCommandOptionError, BracketRaceStateError};
+use nmg_league_bot::{ApplicationCommandOptionError, BracketRaceState, BracketRaceStateError};
 use thiserror::Error;
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::channel::message::{Component, Embed};
@@ -159,6 +159,21 @@ pub fn get_opt(
     opts: &mut Vec<CommandDataOption>,
     kind: CommandOptionType,
 ) -> Result<CommandDataOption, ApplicationCommandOptionError> {
+    match find_opt(name, opts, kind) {
+        Ok(Some(o)) => Ok(o),
+        Ok(None) => Err(ApplicationCommandOptionError::MissingOption(
+            name.to_string(),
+        )),
+        Err(e) => Err(e),
+    }
+}
+
+/// like [get_opt] but for non-required options - returns Ok(None) if it's missing
+pub fn find_opt(
+    name: &str,
+    opts: &mut Vec<CommandDataOption>,
+    kind: CommandOptionType,
+) -> Result<Option<CommandDataOption>, ApplicationCommandOptionError> {
     let mut i = 0;
     while i < opts.len() {
         if opts[i].name == name {
@@ -167,9 +182,7 @@ pub fn get_opt(
         i += 1;
     }
     if i >= opts.len() {
-        return Err(ApplicationCommandOptionError::MissingOption(
-            name.to_string(),
-        ));
+        return Ok(None);
     }
     let actual_kind = opts[i].value.kind();
     if actual_kind != kind {
@@ -179,22 +192,57 @@ pub fn get_opt(
         ));
     }
 
-    Ok(opts.swap_remove(i))
+    Ok(Some(opts.swap_remove(i)))
+}
+
+#[macro_export]
+/// Takes a [CommandDataOption] and unwraps the CommandOptionValue inside it into the resultant type, if possible
+/// e.g. cda_to_val!(opt, User) would return the `Id<UserMarker>`` (or an error)
+// CommandDataOption -> Result<T, ApplicationCommandOptionError>
+macro_rules! cda_to_val {
+    ($opt:expr, $t: ident) => {
+        if let twilight_model::application::interaction::application_command::CommandOptionValue::$t(output) = $opt.value {
+            Ok(output)
+        } else {
+            Err(nmg_league_bot::ApplicationCommandOptionError::UnexpectedOptionKind(
+                twilight_model::application::command::CommandOptionType::$t,
+                $opt.value.kind(),
+            ))
+        }
+    }
 }
 
 #[macro_export]
 macro_rules! get_opt {
-    ($opt_name:expr, $options:expr, $t:ident) => {{
-        crate::discord::get_opt($opt_name, $options, twilight_model::application::command::CommandOptionType::$t).and_then(|opt| {
-            if let twilight_model::application::interaction::application_command::CommandOptionValue::$t(output) = opt.value {
-                Ok(output)
-            } else {
-                Err(nmg_league_bot::ApplicationCommandOptionError::UnexpectedOptionKind(
-                    twilight_model::application::command::CommandOptionType::$t, opt.value.kind()
-                ))
-            }
+    ($opt_name:expr, $options:expr, $t:ident) => {
+        $crate::find_opt!($opt_name, $options, $t).and_then(|maybe_opt| match maybe_opt {
+            Some(opt) => Ok(opt),
+            None => Err(
+                nmg_league_bot::ApplicationCommandOptionError::MissingOption($opt_name.to_string()),
+            ),
         })
-    }};
+    };
+}
+
+#[macro_export]
+/// Takes an option name (e.g. `"hour"``), a list of options (e.g. `&mut ac.data.options`), and a type to unwrap the option into (e.g. `Integer`)
+///
+/// Tries to find the option of the given name in the provided options and provide the unwrapped value.
+///
+/// If it's missing, returns Ok(None). If it's present but has the wrong type, returns Err(ApplicationCommandOptionError::UnexpectedOptionKind)
+macro_rules! find_opt {
+    ($opt_name:expr, $options:expr, $t:ident) => {
+        match crate::discord::find_opt(
+            $opt_name,
+            $options,
+            twilight_model::application::command::CommandOptionType::$t,
+        ) {
+            Ok(Some(opt)) => $crate::cda_to_val!(opt, $t).map(Some),
+            Ok(None) => Ok(None),
+            Err(e) => Err(e),
+        }
+        // .and_then(|maybe_dataopt| Ok(maybe_dataopt.and_then(|opt| $crate::cda_to_val!(opt, $t))))
+    };
 }
 
 /**

@@ -1,14 +1,12 @@
 use diesel::SqliteConnection;
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::raw_diesel_cxn_from_env;
-use nmg_league_bot::models::bracket_races::{
-    get_current_round_race_for_player, BracketRaceState, PlayerResult,
-};
+use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::brackets::Bracket;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishOptions};
-use nmg_league_bot::ChannelConfig;
+use nmg_league_bot::{BracketRaceState, ChannelConfig};
 use rand::{thread_rng, Rng};
 use twilight_http::Client;
 
@@ -46,8 +44,9 @@ async fn run_bracket(
     let mut rng = thread_rng();
 
     for player in bracket.players(conn).unwrap() {
-        let race = get_current_round_race_for_player(&player, conn)
+        let race = BracketRace::get_unfinished_races_for_player(&player, conn)
             .unwrap()
+            .pop()
             .unwrap();
         println!("Race: {:?}", race);
 

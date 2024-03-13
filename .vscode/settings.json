@@ -11,5 +11,6 @@
     "rust-analyzer.cargo.features": [
         "testing",
         "racetime_bot",
+        "development"
     ]
 }
