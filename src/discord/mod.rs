@@ -25,7 +25,7 @@ use crate::discord::constants::CUSTOM_ID_START_RUN;
 use nmg_league_bot::models::asyncs::race::AsyncRace;
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState};
+use nmg_league_bot::models::bracket_races::{BracketRace};
 use nmg_league_bot::models::player::{MentionOptional, Player};
 use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
 
@@ -33,7 +33,7 @@ use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::worker_funcs::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
-use nmg_league_bot::{ApplicationCommandOptionError, BracketRaceStateError};
+use nmg_league_bot::{ApplicationCommandOptionError, BracketRaceState, BracketRaceStateError};
 use thiserror::Error;
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::channel::message::{Component, Embed};
@@ -159,6 +159,21 @@ pub fn get_opt(
     opts: &mut Vec<CommandDataOption>,
     kind: CommandOptionType,
 ) -> Result<CommandDataOption, ApplicationCommandOptionError> {
+    match find_opt(name, opts, kind) {
+        Ok(Some(o)) => Ok(o),
+        Ok(None) => Err(ApplicationCommandOptionError::MissingOption(
+            name.to_string(),
+        )),
+        Err(e) => Err(e),
+    }
+}
+
+/// like [get_opt] but for non-required options - returns Ok(None) if it's missing
+pub fn find_opt(
+    name: &str,
+    opts: &mut Vec<CommandDataOption>,
+    kind: CommandOptionType,
+) -> Result<Option<CommandDataOption>, ApplicationCommandOptionError> {
     let mut i = 0;
     while i < opts.len() {
         if opts[i].name == name {
@@ -167,9 +182,7 @@ pub fn get_opt(
         i += 1;
     }
     if i >= opts.len() {
-        return Err(ApplicationCommandOptionError::MissingOption(
-            name.to_string(),
-        ));
+        return Ok(None);
     }
     let actual_kind = opts[i].value.kind();
     if actual_kind != kind {
@@ -179,7 +192,7 @@ pub fn get_opt(
         ));
     }
 
-    Ok(opts.swap_remove(i))
+    Ok(Some(opts.swap_remove(i)))
 }
 
 #[macro_export]

@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use nmg_league_bot::BracketRaceState;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, PlayerResult};
+use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError};
 use nmg_league_bot::models::player::Player;

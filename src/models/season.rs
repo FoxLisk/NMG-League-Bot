@@ -5,10 +5,10 @@ use diesel::{RunQueryDsl, SqliteConnection};
 use serde::Serialize;
 
 use crate::models::bracket_race_infos::BracketRaceInfo;
-use crate::models::bracket_races::{BracketRace, BracketRaceState};
+use crate::models::bracket_races::BracketRace;
 use crate::schema::seasons;
 use crate::utils::epoch_timestamp;
-use crate::{save_fn, schema, update_fn, NMGLeagueBotError};
+use crate::{save_fn, schema, update_fn, BracketRaceState, NMGLeagueBotError};
 use enum_iterator::Sequence;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]

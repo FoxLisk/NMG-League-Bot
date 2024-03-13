@@ -1,6 +1,6 @@
-use crate::models::bracket_races::{BracketRace, BracketRaceState};
+use crate::models::bracket_races::{BracketRace};
 use crate::models::brackets::Bracket;
-use crate::save_fn;
+use crate::{save_fn, BracketRaceState};
 use crate::schema::bracket_rounds;
 use diesel::prelude::*;
 
