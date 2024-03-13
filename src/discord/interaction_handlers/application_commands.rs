@@ -11,7 +11,7 @@ use crate::discord::interactions_utils::{
     autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_data,
     plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
+use crate::discord::{find_opt, notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
@@ -45,7 +45,9 @@ use std::sync::Arc;
 use twilight_http::request::application::interaction::UpdateResponse;
 use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
-use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
+use twilight_model::application::command::{
+    CommandOptionChoice, CommandOptionChoiceValue, CommandOptionType,
+};
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption,
 };
@@ -409,7 +411,7 @@ async fn _handle_schedule_race_cmd(
         match Player::get_by_discord_id(&user.id.to_string(), cxn.deref_mut()).map_err(|e| {
             ErrorResponse::new(
                 BLAND_USER_FACING_ERROR,
-                format!("Error fetching player: {}", e),
+                format!("Error fetching player: {e}"),
             )
         })? {
             Some(p) => p,
@@ -419,6 +421,16 @@ async fn _handle_schedule_race_cmd(
                 ));
             }
         };
+
+    let opponent = match find_opt("opponent", &mut ac.options, CommandOptionType::User) {
+        Ok(o) => o,
+        Err(e) => {
+            return Err(ErrorResponse::new(
+                BLAND_USER_FACING_ERROR,
+                format!("Error identifying opponent in schedule_race command: {e}"),
+            ));
+        }
+    };
 
     let race_opt = get_current_round_race_for_player(&player, cxn.deref_mut()).map_err(|e| {
         ErrorResponse::new(
@@ -1463,7 +1475,7 @@ async fn handle_report_race(
             state.channel_config.match_results.mention()
         )))
         .map_err(|e| match e {
-            RaceFinishError::BracketRaceStateError(BracketRaceStateError::InvalidState) => {
+            RaceFinishError::BracketRaceStateError(BracketRaceStateError::InvalidState(_, _)) => {
                 format!("That race is already finished. Please use `/{UPDATE_FINISHED_RACE_CMD}` if you are trying to \
                 change the results of a finished race.")
             }
@@ -1521,7 +1533,7 @@ async fn handle_generate_pairings(
             "Pairings generated! See them at {}{url}",
             CONFIG.website_url,
         ))),
-        Err(e) => Err(format!("Error generating pairings: {e:?}")),
+        Err(e) => Err(format!("Error generating pairings: {e}")),
     }
 }
 
