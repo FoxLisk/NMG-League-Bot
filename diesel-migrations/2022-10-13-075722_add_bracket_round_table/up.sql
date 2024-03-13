@@ -1,4 +1,4 @@
--- represents a round in a bracket
+s-- represents a round in a bracket
 CREATE TABLE if not exists bracket_rounds (
     id              INTEGER PRIMARY KEY NOT NULL,
     round_num       INTEGER NOT NULL,

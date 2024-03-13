@@ -6,6 +6,7 @@ use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
+use crate::BracketRaceState;
 use crate::BracketRaceStateError;
 use crate::NMGLeagueBotError;
 use chrono::{DateTime, Duration, TimeZone};
@@ -17,12 +18,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
 
-#[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
-pub enum BracketRaceState {
-    New,
-    Scheduled,
-    Finished,
-}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
@@ -170,7 +165,10 @@ impl BracketRace {
         match self.state()? {
             BracketRaceState::New | BracketRaceState::Scheduled => {}
             BracketRaceState::Finished => {
-                return Err(BracketRaceStateError::InvalidState);
+                return Err(BracketRaceStateError::InvalidState(
+                    vec![BracketRaceState::New, BracketRaceState::Scheduled],
+                    BracketRaceState::Finished,
+                ));
             }
         };
         let mut info = self.info(conn)?;
@@ -193,8 +191,12 @@ impl BracketRace {
         p2: Option<&PlayerResult>,
         force: bool,
     ) -> Result<(), BracketRaceStateError> {
-        if !force && self.state()? == BracketRaceState::Finished {
-            return Err(BracketRaceStateError::InvalidState);
+        let state = self.state()?;
+        if !force && state == BracketRaceState::Finished {
+            return Err(BracketRaceStateError::InvalidState(
+                vec![BracketRaceState::Finished],
+                state,
+            ));
         }
         if let Some(p1r) = p1 {
             self.player_1_result = Some(serde_json::to_string(p1r)?);
@@ -224,7 +226,7 @@ impl BracketRace {
         let (p1, p2) = match (self.player_1_result(), self.player_2_result()) {
             (Some(p1r), Some(p2r)) => (p1r, p2r),
             _ => {
-                return Err(BracketRaceStateError::InvalidState);
+                return Err(BracketRaceStateError::MissingResult);
             }
         };
 
@@ -282,43 +284,39 @@ impl BracketRace {
 pub fn get_current_round_race_for_player(
     player: &Player,
     conn: &mut SqliteConnection,
-) -> Result<Option<BracketRace>, diesel::result::Error> {
-    let sn = match Season::get_active_season(conn)? {
-        Some(s) => s,
+) -> Result<Option<BracketRace>, NMGLeagueBotError> {
+    let bracket = match player.get_current_bracket(conn)? {
+        Some(b) => b,
         None => {
             return Ok(None);
         }
     };
 
-    for bracket in sn.brackets(conn)? {
-        let round = match bracket.current_round(conn)? {
-            Some(r) => r,
-            None => {
-                continue;
-            }
-        };
-        let mut races: Vec<BracketRace> = bracket_races::table
-            .filter(bracket_races::round_id.eq(round.id))
-            .filter(
-                bracket_races::player_1_id
-                    .eq(player.id)
-                    .or(bracket_races::player_2_id.eq(player.id)),
-            )
-            .load(conn)?;
-        if races.is_empty() {
-            continue;
-        } else {
-            if races.len() != 1 {
-                warn!("Multiple races for same racer?");
-            }
-            return Ok(races.pop());
+    let round = match bracket.current_round(conn)? {
+        Some(r) => r,
+        None => {
+            return Ok(None);
         }
+    };
+    let mut races: Vec<BracketRace> = bracket_races::table
+        .filter(bracket_races::round_id.eq(round.id))
+        .filter(
+            bracket_races::player_1_id
+                .eq(player.id)
+                .or(bracket_races::player_2_id.eq(player.id)),
+        )
+        .load(conn)?;
+    if races.is_empty() {
+        Ok(None)
+    } else {
+        if races.len() != 1 {
+            warn!("Multiple races for same racer?");
+        }
+        Ok(races.pop())
     }
-
-    Ok(None)
 }
 
-#[derive(Insertable)]
+#[derive(Insertable, Debug)]
 #[diesel(table_name=bracket_races)]
 pub struct NewBracketRace {
     bracket_id: i32,
