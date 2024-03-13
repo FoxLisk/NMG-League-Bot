@@ -1,5 +1,7 @@
+use crate::models::brackets::BracketState;
+use crate::models::player_bracket_entries::PlayerBracketEntry;
 use crate::schema::players;
-use crate::{save_fn, update_fn};
+use crate::{save_fn, update_fn, NMGLeagueBotError};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Deserialize;
@@ -10,6 +12,8 @@ use twilight_mention::Mention;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 use twilight_model::user::User;
+
+use super::brackets::Bracket;
 
 pub trait MentionOptional {
     fn mention_maybe(&self) -> Option<String>;
@@ -26,6 +30,18 @@ pub struct Player {
     pub racetime_user_id: Option<String>,
 }
 
+impl PartialEq for Player {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Player {}
+impl core::hash::Hash for Player {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+// statics
 impl Player {
     /// this should never fail but i'm scared of assuming that
     pub fn discord_id(&self) -> Result<Id<UserMarker>, ParseIntError> {
@@ -102,7 +118,26 @@ impl Player {
             .map(|i| i.mention().to_string())
             .unwrap_or(self.name.clone())
     }
+
     update_fn! {}
+}
+
+// methods
+impl Player {
+    pub fn get_current_bracket(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Option<Bracket>, NMGLeagueBotError> {
+        use crate::schema::{brackets, player_bracket_entry};
+        let started = serde_json::to_string(&BracketState::Started)?;
+        let result: Option<(PlayerBracketEntry, Bracket)> = player_bracket_entry::table
+            .filter(player_bracket_entry::player_id.eq(self.id))
+            .inner_join(brackets::table)
+            .filter(brackets::state.eq(started))
+            .first(conn)
+            .optional()?;
+        Ok(result.map(|(_, b)| b))
+    }
 }
 
 impl<T> MentionOptional for Result<Option<Player>, T> {

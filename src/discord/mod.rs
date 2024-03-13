@@ -161,6 +161,19 @@ pub fn get_opt(
     opts: &mut Vec<CommandDataOption>,
     kind: CommandOptionType,
 ) -> Result<CommandDataOption, String> {
+    match find_opt(name, opts, kind) {
+        Ok(Some(o)) => Ok(o),
+        Ok(None) => Err(format!("Unable to find expected option {}", name)),
+        Err(e) => Err(e),
+    }
+}
+
+/// like [get_opt] but for non-required options - returns Ok(None) if it's missing
+pub fn find_opt(
+    name: &str,
+    opts: &mut Vec<CommandDataOption>,
+    kind: CommandOptionType,
+) -> Result<Option<CommandDataOption>, String> {
     let mut i = 0;
     while i < opts.len() {
         if opts[i].name == name {
@@ -169,7 +182,7 @@ pub fn get_opt(
         i += 1;
     }
     if i >= opts.len() {
-        return Err(format!("Unable to find expected option {}", name));
+        return Ok(None);
     }
     let actual_kind = opts[i].value.kind();
     if actual_kind != kind {
@@ -181,9 +194,8 @@ pub fn get_opt(
         ));
     }
 
-    Ok(opts.swap_remove(i))
+    Ok(Some(opts.swap_remove(i)))
 }
-
 /**
 get_opt!("name", &mut vec_of_options, OptionType)
 
