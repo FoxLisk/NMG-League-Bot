@@ -15,6 +15,7 @@ use log::{debug, warn};
 use rand::thread_rng;
 use serde::Serialize;
 use std::collections::{HashMap, VecDeque};
+use std::time::Duration;
 use swiss_pairings::{PairingError, TourneyConfig};
 use thiserror::Error;
 
@@ -113,11 +114,8 @@ fn generate_next_round_pairings_swiss(
         points_per_draw: 1,
         error_on_repeated_opponent: true,
     };
-    let (pairings, _standings) = swiss_pairings::swiss_pairings(
-        &pairing_rounds,
-        &cfg,
-        swiss_pairings::random_by_scoregroup,
-    )?;
+    let (pairings, _standings) =
+        swiss_pairings::swiss_pairings(&pairing_rounds, &cfg, Some(Duration::from_millis(5000)))?;
     debug!("{:?}", pairings);
 
     let mut players: HashMap<_, _> =
