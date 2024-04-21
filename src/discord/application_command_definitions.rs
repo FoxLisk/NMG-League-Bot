@@ -1,6 +1,6 @@
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_ASYNC_CMD,
-    CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
+    CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
     UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
@@ -655,6 +655,59 @@ pub fn application_command_definitions() -> Vec<Command> {
     )
     .build();
 
+    let commentator_bundle = CommandBuilder::new(
+        COMMENTATORS_CMD,
+        "Commentary subcommands",
+        CommandType::ChatInput,
+    )
+    .option(CommandOption {
+        description: "add a commentator to a race".to_string(),
+        kind: CommandOptionType::SubCommand,
+        name: "add".to_string(),
+        options: Some(vec![
+            CommandOption {
+                description: "commentator to add".to_string(),
+                kind: CommandOptionType::User,
+                name: "commentator".to_string(),
+                required: Some(true),
+                ..command_option_default()
+            },
+            CommandOption {
+                description: "race to add them to".to_string(),
+                kind: CommandOptionType::Integer,
+                name: "race".to_string(),
+                autocomplete: Some(true),
+                required: Some(true),
+                ..command_option_default()
+            },
+        ]),
+        ..command_option_default()
+    })
+    .option(CommandOption {
+        description: "remove a commentator from a race".to_string(),
+        kind: CommandOptionType::SubCommand,
+        name: "remove".to_string(),
+        options: Some(vec![
+            CommandOption {
+                description: "commentator to remove".to_string(),
+                kind: CommandOptionType::User,
+                name: "commentator".to_string(),
+                required: Some(true),
+                ..command_option_default()
+            },
+            CommandOption {
+                description: "race to remove them from".to_string(),
+                kind: CommandOptionType::Integer,
+                name: "race".to_string(),
+                autocomplete: Some(true),
+                required: Some(true),
+                ..command_option_default()
+            },
+        ]),
+        ..command_option_default()
+    })
+    .build();
+
     vec![
         // slash commands
         create_async_race,
@@ -676,5 +729,6 @@ pub fn application_command_definitions() -> Vec<Command> {
         see_unscheduled_races,
         // user command[s]
         user_profile,
+        commentator_bundle,
     ]
 }

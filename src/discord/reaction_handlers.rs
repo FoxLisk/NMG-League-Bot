@@ -21,6 +21,8 @@ use crate::discord::{
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::utils::race_to_nice_embeds;
 
+use super::{comm_ids_and_names, embed_with_title, update_scheduled_event};
+
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {
     debug!("Handling reaction removed: {:?}", reaction);
     if let Err(e) = _handle_reaction_remove(reaction, state).await {
@@ -56,23 +58,6 @@ enum ReactionAddError {
     MessageValidationError(#[from] MessageValidationError),
     #[error("Error validating a request: {0}")]
     RequestValidationError(#[from] twilight_validate::request::ValidationError),
-}
-
-async fn comm_ids_and_names(
-    info: &BracketRaceInfo,
-    state: &Arc<DiscordState>,
-) -> Result<Vec<(Id<UserMarker>, String)>, ReactionAddError> {
-    // N.B. is it dangerous to get a new connection off of this state? we probably only want one per thread...
-    let mut cxn = state.diesel_cxn().await?;
-    let conn = cxn.deref_mut();
-    let comms = info.commentator_signups(conn)?;
-    let mut out = vec![];
-    for comm in comms {
-        if let Ok(id) = comm.discord_id() {
-            out.push((id.clone(), state.best_name_for(id.clone()).await));
-        }
-    }
-    Ok(out)
 }
 
 async fn _handle_reaction_remove(
@@ -141,10 +126,7 @@ async fn is_admin_confirmation_reaction(
             return false;
         }
         Err(e) => {
-            warn!(
-                "Error checking if the user for reaction {:?} is an admin: {}",
-                reaction, e
-            );
+            warn!("Error checking if the user for reaction {reaction:?} is an admin: {e}",);
             return false;
         }
     };
@@ -168,7 +150,7 @@ async fn handle_commportunities_reaction(
     }
 }
 
-// this is when sirius or another admin clicks linkbot on a commportunities post, to indicate
+// this is when an admin clicks Linkbot on a commportunities post, to indicate
 // we are satisfied with the assigned commentators
 async fn handle_commentary_confirmation(
     mut info: BracketRaceInfo,
@@ -177,7 +159,7 @@ async fn handle_commentary_confirmation(
 ) -> Result<(), ReactionAddError> {
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
-    let names = comm_ids_and_names(&info, state)
+    let names = comm_ids_and_names(&info, state, conn)
         .await?
         .into_iter()
         .map(|(_, name)| name)
@@ -260,21 +242,7 @@ async fn create_restream_request_post(
     fields: Vec<EmbedField>,
     state: &Arc<DiscordState>,
 ) -> Result<Message, ReactionAddError> {
-    let embeds = vec![Embed {
-        author: None,
-        color: None,
-        description: None,
-        fields,
-        footer: None,
-        image: None,
-        kind: "rich".to_string(),
-        provider: None,
-        thumbnail: None,
-        timestamp: None,
-        title: Some("Restream Channel Request".to_string()),
-        url: None,
-        video: None,
-    }];
+    let embeds = vec![embed_with_title(fields, "Restream Channel Request")];
     state
         .client
         .create_message(state.channel_config.zsr.clone())
@@ -285,26 +253,7 @@ async fn create_restream_request_post(
         .map_err(From::from)
 }
 
-async fn update_scheduled_event(
-    gid: Id<GuildMarker>,
-    gse_id: Id<ScheduledEventMarker>,
-    commentators: Option<&Vec<String>>,
-    restream_channel: Option<String>,
-    state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
-    let mut req = state.client.update_guild_scheduled_event(gid, gse_id);
-    let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
 
-    if let Some(comm_str) = thingy.as_ref() {
-        req = req.description(Some(comm_str))?;
-    }
-
-    if let Some(chan) = restream_channel.as_ref() {
-        req = req.location(Some(chan));
-    }
-    req.await?;
-    Ok(())
-}
 
 async fn handle_commentary_signup(
     mut info: BracketRaceInfo,
@@ -320,12 +269,12 @@ async fn handle_commentary_signup(
             .map(|c| c.discord_id())
             .flatten()
             .collect();
-        create_sirius_inbox_post(&reaction, ids, &info, state).await?;
+        create_commentator_signup_post(&reaction, ids, &info, state).await?;
     }
     Ok(())
 }
 
-async fn create_sirius_inbox_post(
+async fn create_commentator_signup_post(
     reaction: &Box<ReactionAdd>,
     users: Vec<Id<UserMarker>>,
     info: &BracketRaceInfo,
@@ -398,18 +347,29 @@ async fn handle_restream_request_reaction(
     };
     let url = format!("https://twitch.tv/{chan}");
     info.restream_channel = Some(url.clone());
+
+    let mut cxn = state.diesel_cxn().await?;
+    let conn = cxn.deref_mut();
+    let comms = comm_ids_and_names(&info, state, conn)
+        .await?
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect::<Vec<_>>();
     if let Some(gse_id) = info.get_scheduled_event_id() {
         // TODO: if the event somehow *doesn't* exist, we should probably create it, yeah?
         if let Some(gid) = reaction.guild_id {
-            if let Err(e) = update_scheduled_event(gid, gse_id, None, Some(url), state).await {
+            if let Err(e) =
+                update_scheduled_event(gid, gse_id, Some(&comms), Some(url), state).await
+            {
                 warn!("Error updating scheduled event: {:?}", e);
             }
         }
     }
     let (comm_ids, comm_names): (Vec<Id<UserMarker>>, Vec<String>) =
-        comm_ids_and_names(&info, state).await?.into_iter().unzip();
-    let mut cxn = state.diesel_cxn().await?;
-    let conn = cxn.deref_mut();
+        comm_ids_and_names(&info, state, conn)
+            .await?
+            .into_iter()
+            .unzip();
 
     let mut fields = race_to_nice_embeds(&info, conn)?;
     fields.push(EmbedField {

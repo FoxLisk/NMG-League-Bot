@@ -105,6 +105,14 @@ impl BracketRace {
             .load(conn)
             .map_err(From::from)
     }
+
+    pub fn scheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, NMGLeagueBotError> {
+        let state = serde_json::to_string(&BracketRaceState::Scheduled)?;
+        bracket_races::table
+            .filter(bracket_races::state.eq(state))
+            .load(conn)
+            .map_err(From::from)
+    }
 }
 
 impl BracketRace {
