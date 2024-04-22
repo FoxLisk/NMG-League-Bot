@@ -15,6 +15,7 @@ use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
+use once_cell::sync::Lazy;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -682,20 +683,37 @@ fn format_player(content: Option<String>, player: &Player) -> InteractionRespons
     }
 }
 
+/// this will attempt to turn `https://twitch.tv/foxlisk` into `foxlisk`
+/// if it doesn't look like the first form, it just returns the original string
+fn tolerate_twitch_links(link: &str) -> String {
+    static URL_REGEX: Lazy<Result<Regex, regex::Error>> =
+        Lazy::new(|| Regex::new(r"^(?:https?://)?twitch.tv/(?<username>\w+?)$"));
+    if let Some(m) = URL_REGEX
+        .as_ref()
+        .ok()
+        .and_then(|r| r.captures(link))
+        .and_then(|c| c.name("username"))
+    {
+        return m.as_str().to_string();
+    }
+    return link.to_string();
+}
+
 /// returns normalized login (i.e. what twitch gives back) if the lookup succeeds, None otherwise
 /// This does an API request to twitch
 async fn validate_twitch_username(
     username: &str,
     state: &Arc<DiscordState>,
 ) -> Result<Option<String>, NMGLeagueBotError> {
-    let logins = vec![username.into()];
+    let username = tolerate_twitch_links(username);
+    let logins = vec![(&username).into()];
     let req = GetUsersRequest::logins(&logins);
     let mut users = state.twitch_client_bundle.req_get(req).await?;
     // just sort of assuming len == 1 here
     if let Some(u) = users.data.pop() {
         // intellij really thinks this is Iterator::take, but it's actually an aliri_braid method
         let got: String = u.login.take();
-        if got.eq_ignore_ascii_case(username) {
+        if got.eq_ignore_ascii_case(&username) {
             Ok(Some(got))
         } else {
             Ok(None)
@@ -1528,7 +1546,7 @@ async fn handle_generate_pairings(
 #[cfg(test)]
 mod tests {
     use crate::discord::interaction_handlers::application_commands::{
-        datetime_from_options, normalize_racetime_name,
+        datetime_from_options, normalize_racetime_name, tolerate_twitch_links,
     };
     use chrono::{Datelike, Timelike};
 
@@ -1569,5 +1587,17 @@ mod tests {
             "a b c#1234",
             normalize_racetime_name(weird_spaces_stray_space)
         );
+    }
+
+    #[test]
+    fn test_twitch_links() {
+        for (input, expected) in vec![
+            ("foxlisk", "foxlisk"),
+            ("https://twitch.tv/foxlisk", "foxlisk"),
+            ("twitch.tv/foxlisk", "foxlisk"),
+            ("http://twitch.tv/asdf_12345", "asdf_12345"),
+        ] {
+            assert_eq!(tolerate_twitch_links(input), expected.to_string())
+        }
     }
 }
