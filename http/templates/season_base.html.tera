@@ -5,16 +5,16 @@
 {% endblock %}
 
 {% block body %}
-<div id="season-container">
-    <div id="season-banner">
-        <div id="season-title">{{ season.format }}</div>
+<div id="season-container" class="page-container">
+    <div class="page-title-container">
+        <div class="title">{{ season.format }}</div>
         <nav id="season-nav">
             <a id="current-season-brackets-link" class="nav-item" href="/season/{{season.id}}/brackets">Brackets</a>
             <a id="current-season-standings-link" class="nav-item" href="/season/{{season.id}}/standings">Standings</a>
             <a id="current-season-qualifiers-link" class="nav-item" href="/season/{{season.id}}/qualifiers">Qualifiers</a>
         </nav>
     </div>
-    <div id="season-sub-page">
+    <div id="season-sub-page" class="page-content-container">
         {% block season_body %}{% endblock %}
     </div>
 </div>

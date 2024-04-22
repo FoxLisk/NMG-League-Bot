@@ -1,0 +1,22 @@
+@use 'colors';
+
+.page-container {
+  margin: 3.5rem auto;
+  box-shadow: 1px 1px 6px black;
+
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.page-title-container {
+  background-color: colors.$page-content-container-bg-color;
+
+  .title {
+    display: inline-block;
+    margin: 1rem 0;
+  }
+}
+
+.page-content-container {
+  background-color: colors.$season-sub-page-bg-color;
+}

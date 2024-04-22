@@ -4,11 +4,11 @@
 
 {% block pagename %} History {% endblock %}
 {% block body %}
-<div id="previous-seasons-page">
-    <div id="title-banner">
-        <h1 id="title">Previous Seasons</h1>
+<div id="previous-seasons-page" class="page-container">
+    <div class="page-title-container">
+        <h1 class="title">Previous Seasons</h1>
     </div>
-    <div id="previous-seasons-list">
+    <div class="page-content-container">
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 6</h3>

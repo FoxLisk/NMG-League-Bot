@@ -2,16 +2,11 @@
 
 #season-container {
   width: 90%;
-  margin: 3.5rem auto;
-  box-shadow: 1px 1px 6px black;
 
-  #season-banner {
-    background-color: colors.$page-content-container-bg-color;
+  .page-title-container {
     padding: 0 3rem;
 
-    #season-title {
-      display: inline-block;
-      margin: 1rem 0;
+    .title {
       font-size: 3rem;
     }
 
@@ -25,7 +20,6 @@
   }
 
   #season-sub-page {
-    background-color: colors.$season-sub-page-bg-color;
     padding: 1px 3rem;
 
     div.stats-container {
