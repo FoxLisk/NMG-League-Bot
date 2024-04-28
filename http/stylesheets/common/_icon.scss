@@ -1,8 +1,19 @@
-.icon {
-  width: 1rem;
+@mixin psuedo-element-icon-mixin {
+  content: '';
   display: inline-block;
+  background-size: 100% 100%;
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
-.external-link-icon {
-  margin: 0 0.125rem 0.125rem 0.25rem;
+.external-link::after {
+  @include psuedo-element-icon-mixin;
+  background-image: url('/static/images/external-link-highlighted.png');
+  margin: 0 0.175rem;
+}
+
+.external-link-column-header::after {
+  @include psuedo-element-icon-mixin;
+  background-image: url('/static/images/external-link.png');
+  vertical-align: middle;
 }

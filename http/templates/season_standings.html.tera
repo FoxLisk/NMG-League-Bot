@@ -13,19 +13,19 @@
             <thead>
                 <tr>
                     <td>
-                        Rank
+                        <span>Rank</span>
                     </td>
                     <td>
-                        Player Name
+                        <span>Player Name</span>
                     </td>
                     <td>
-                        Points
+                        <span>Points</span>
                     </td>
                     <td>
-                        Opponent Points
+                        <span>Opponent Points</span>
                     </td>
                     <td>
-                        Average Time <span class="without-forfeits subdued-text">(without forfeits)</span>
+                        <span>Average Time</span> <span class="without-forfeits subdued-text">(without forfeits)</span>
                     </td>
                 </tr>
             </thead>
@@ -33,19 +33,19 @@
                 {% for player in bracket.players %}
                 <tr>
                     <td>
-                        {{ loop.index }}
+                        <span>{{ loop.index }}</span>
                     </td>
                     <td>
-                        {{ macros::player_detail(name=player.name) }}
+                        <span>{{ macros::player_detail(name=player.name) }}</span>
                     </td>
                     <td>
-                        {{ player.points }}
+                        <span>{{ player.points }}</span>
                     </td>
                     <td>
-                        {{ player.opponent_points }}
+                        <span>{{ player.opponent_points }}</span>
                     </td>
                     <td>
-                        {{ macros::get_text_or_placeholder(text = player.average_time_adjusted) }}
+                        <span>{{ macros::get_text_or_placeholder(text = player.average_time_adjusted) }}</span>
                         <span class="without-forfeits subdued-text">
                             ({{ macros::get_text_or_placeholder(text = player.average_time_finished) | trim | safe }})
                         </span>

@@ -16,34 +16,32 @@
             <thead>
                 <tr>
                     <td>
-                        Player 1
+                        <span>Player 1</span>
                     </td>
                     <td>
-                        Player 2
+                        <span>Player 2</span>
                     </td>
                     <td>
-                        Race Status
+                        <span>Race Status</span>
                     </td>
-                    <td>
-                        Restream Link<img class="icon external-link-icon" src="/static/images/external-link.png">
+                    <td class="external-link-column-header">
+                        <span>Restream Link</span>
                     </td>
                 </tr>
             </thead>
             <tbody>
                 {% for race in round.races %}
                 <tr title="Race id #{{ race.race_id }}">
-                    <td
-                        class="{% if race.player_1.winner %} winner-cell {% elif race.player_1.loser %} loser-cell {% endif %}">
-                        {{ macros::player_detail(name=race.player_1.name) }}
+                    <td class="{% if race.player_1.winner %} winner-cell {% elif race.player_1.loser %} loser-cell {% endif %}">
+                        <span>{{ macros::player_detail(name=race.player_1.name) }}</span>
                         {% if race.player_1.status %}
                         <span class="race-time {% if race.player_1.status == 'Forfeit' -%} subdued-text {%- endif %}">
                             ({{ race.player_1.status }})
                         </span>
                         {% endif %}
                     </td>
-                    <td
-                        class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}">
-                        {{ macros::player_detail(name=race.player_2.name) }}
+                    <td class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}">
+                        <span>{{ macros::player_detail(name=race.player_2.name) }}</span>
 
                         {% if race.player_1.status %}
                         <span class="race-time {% if race.player_2.status == 'Forfeit' -%} subdued-text {%- endif %}">
@@ -62,7 +60,7 @@
                     </td>
                     <td>
                         {% if race.channel %}
-                        {{ macros::link(href=race.channel, text=race.channel) }}
+                        <span>{{ macros::link(href=race.channel, text=race.channel) }}</span>
                         {% else %}
                         <span class="empty-restream-link">&mdash;</span>
                         {% endif %}

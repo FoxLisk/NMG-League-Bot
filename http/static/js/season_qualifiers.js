@@ -43,9 +43,11 @@ function build_row(template, qual_row, seen) {
     let name = qual_row.player_name;
     if (seen.players[name]) {
         row.classList.add("hidden", "obsolete-qualifier-times");
-        place.textContent = "(obsolete)";
+        const placeContentContainer = place.querySelector('span');
+        placeContentContainer.textContent = "(obsolete)";
     } else {
-        place.textContent = seen.place;
+        const placeContentContainer = place.querySelector('span');
+        placeContentContainer.textContent = seen.place;
         seen.place += 1;
         seen.players[name] = true;
     }
