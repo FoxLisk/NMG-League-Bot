@@ -694,9 +694,10 @@ fn tolerate_twitch_links(link: &str) -> String {
         .and_then(|r| r.captures(link))
         .and_then(|c| c.name("username"))
     {
-        return m.as_str().to_string();
+        m.as_str().to_string()
+    } else {
+        link.to_string()
     }
-    return link.to_string();
 }
 
 /// returns normalized login (i.e. what twitch gives back) if the lookup succeeds, None otherwise
