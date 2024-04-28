@@ -1,7 +1,7 @@
 use crate::discord::components::action_row;
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, CREATE_ASYNC_CMD,
-    CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
+    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
+    CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
     UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
@@ -11,11 +11,14 @@ use crate::discord::interactions_utils::{
     autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_data,
     plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
+use crate::discord::{
+    comm_ids_and_names, notify_racer, update_scheduled_event, ErrorResponse, ScheduleRaceError,
+};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
+use rocket::futures::SinkExt;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -48,7 +51,7 @@ use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
 use twilight_model::application::interaction::application_command::{
-    CommandData, CommandDataOption,
+    CommandData, CommandDataOption, CommandOptionValue,
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
@@ -291,6 +294,23 @@ pub async fn handle_application_interaction(
                 .map(Option::from),
         ),
 
+        COMMENTATORS_CMD => admin_command_wrapper(match interaction.kind {
+            InteractionType::ApplicationCommand => {
+                handle_commentator_command(ac, interaction, state)
+                    .await
+                    .map(Some)
+            }
+            InteractionType::ApplicationCommandAutocomplete => {
+                handle_commentator_autocomplete(ac, interaction, state)
+                    .await
+                    .map(Some)
+            }
+            _ => Ok(Some(plain_interaction_response(format!(
+                "Unexpected InteractionType for {}",
+                RESCHEDULE_RACE_CMD
+            )))),
+        }),
+
         _ => {
             info!("Unhandled application command: {}", ac.name);
             Ok(None)
@@ -453,7 +473,7 @@ fn handle_schedule_race_autocomplete(
     get_focused_opt!("day", &mut ac.options, String)?;
 
     let today = Utc::now().date().with_timezone(&chrono_tz::US::Eastern);
-    let mut options = vec![];
+    let mut options = Vec::with_capacity(7);
     for i in 0..7 {
         let dur = Duration::days(i);
         let day = today.clone() + dur;
@@ -464,6 +484,130 @@ fn handle_schedule_race_autocomplete(
         });
     }
     Ok(autocomplete_result(options))
+}
+
+async fn handle_commentator_autocomplete(
+    ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    // TODO: we are simply assuming that this is an autocomplete for the "race" field, because it's annoying to verify right now
+
+    let mut conn = state.diesel_cxn().await.map_err_to_string()?;
+    let scheduled_races = BracketRace::scheduled(&mut conn).map_err_to_string()?;
+    let mut options = Vec::with_capacity(scheduled_races.len());
+
+    let pids = scheduled_races
+        .iter()
+        .map(|r| vec![r.player_1_id, r.player_2_id])
+        .flatten()
+        .collect::<Vec<_>>();
+    let involved_players = Player::by_id(Some(pids), &mut conn).map_err_to_string()?;
+    let name = |id| {
+        involved_players
+            .get(&id)
+            .map(|p| p.name.as_str())
+            .unwrap_or("Unknown")
+    };
+
+    for race in scheduled_races {
+        let title = {
+            let p1 = name(race.player_1_id);
+            let p2 = name(race.player_2_id);
+            format!("{p1} vs {p2}")
+        };
+
+        options.push(CommandOptionChoice {
+            name: title,
+            name_localizations: None,
+            value: CommandOptionChoiceValue::Integer(race.id as i64),
+        });
+    }
+    Ok(autocomplete_result(options))
+}
+
+/// returns, effectively, the subcommand option itself; unbundled into a (name, [options]) tuple
+async fn get_subcommand_options(
+    options: Vec<CommandDataOption>,
+) -> Result<(String, Vec<CommandDataOption>), String> {
+    if options.len() != 1 {
+        warn!("`get_subcommand` called on a list of more than one option, which is probably not correct");
+    }
+    for option in options {
+        if let CommandOptionValue::SubCommand(sc) = option.value {
+            return Ok((option.name, sc));
+        }
+    }
+    Err(format!("No subcommand found"))
+}
+
+async fn handle_commentator_command(
+    mut ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let (cmd_s, mut subcommand_opts) =
+        get_subcommand_options(std::mem::take(&mut ac.options)).await?;
+    enum Cmd {
+        Add,
+        Remove,
+    }
+    let cmd = match cmd_s.as_str() {
+        "add" => Cmd::Add,
+        "remove" => Cmd::Remove,
+        _ => {
+            return Err(format!("Unkown commentator command `{cmd_s}`"));
+        }
+    };
+    let user = get_opt!("commentator", &mut subcommand_opts, User)?;
+    let race_id = get_opt!("race", &mut subcommand_opts, Integer)?;
+    let mut conn = state.diesel_cxn().await.map_err_to_string()?;
+    let race = BracketRace::get_by_id(race_id as i32, &mut conn).map_err_to_string()?;
+    let mut info = race.info(&mut conn).map_err_to_string()?;
+    match cmd {
+        Cmd::Add => match info
+            .new_commentator_signup(user, &mut conn)
+            .map_err_to_string()?
+        {
+            true => {}
+            false => {
+                return Ok(plain_interaction_response(
+                    "That person is already signed up.",
+                ));
+            }
+        },
+        Cmd::Remove => match info
+            .remove_commentator(user, &mut conn)
+            .map_err_to_string()?
+        {
+            0 => {
+                return Ok(plain_interaction_response("That person was not signed up."));
+            }
+            _ => {}
+        },
+    }
+    let comms = comm_ids_and_names(&info, state, &mut conn)
+        .await
+        .map_err_to_string()?
+        .into_iter()
+        .map(|(_, n)| n)
+        .collect::<Vec<_>>();
+    if let Some(gse_id) = info.get_scheduled_event_id() {
+        if let Err(e) =
+            update_scheduled_event(CONFIG.guild_id.clone(), gse_id, Some(&comms), None, state).await
+        {
+            state
+                .submit_error(format!("Error updating scheduled event: {e}"))
+                .await;
+        }
+    }
+
+    // it would be nice to also update the restream request message
+    // and maybe send pings to the new comm? but i think it's not very important and it seems annoying to implement
+
+    Ok(plain_interaction_response(format!(
+        "Commentators updated on race {race_id}"
+    )))
 }
 
 /// people constantly input `name #1234` instead of `name#1234` so let's try to handle that

@@ -3,6 +3,7 @@ use crate::{save_fn, update_fn};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::num::ParseIntError;
 use std::str::FromStr;
 use twilight_mention::Mention;
@@ -29,6 +30,18 @@ impl Player {
     /// this should never fail but i'm scared of assuming that
     pub fn discord_id(&self) -> Result<Id<UserMarker>, ParseIntError> {
         Id::<UserMarker>::from_str(&self.discord_id)
+    }
+
+    pub fn by_id(
+        ids: Option<Vec<i32>>,
+        conn: &mut SqliteConnection,
+    ) -> Result<HashMap<i32, Player>, diesel::result::Error> {
+        let ps = if let Some(ids) = ids {
+            players::table.filter(players::id.eq_any(ids)).load(conn)?
+        } else {
+            players::table.load(conn)?
+        };
+        Ok(ps.into_iter().map(|p: Player| (p.id, p)).collect::<_>())
     }
 
     pub fn get_by_discord_id(

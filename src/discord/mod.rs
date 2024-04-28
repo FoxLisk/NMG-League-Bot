@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use bb8::RunError;
 use chrono::{DateTime, Duration, TimeZone, Utc};
-use diesel::ConnectionError;
+use diesel::{ConnectionError, SqliteConnection};
+use itertools::Itertools as _;
 use log::{info, warn};
 use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_http::Client;
@@ -16,8 +17,9 @@ use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle}
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::interaction::application_command::CommandDataOption;
+use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::Message;
-use twilight_model::id::marker::GuildMarker;
+use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
@@ -94,6 +96,7 @@ pub mod constants {
     pub const GENERATE_PAIRINGS_CMD: &str = "generate_pairings";
 
     pub const SEE_UNSCHEDULED_RACES_CMD: &str = "unscheduled_races";
+    pub const COMMENTATORS_CMD: &str = "commentators";
 }
 
 // the functions in here aren't well organized
@@ -477,6 +480,39 @@ fn multistream_link(p1: &Player, p2: &Player) -> String {
     )
 }
 
+async fn comm_ids_and_names(
+    info: &BracketRaceInfo,
+    state: &Arc<DiscordState>,
+    conn: &mut SqliteConnection,
+) -> Result<Vec<(Id<UserMarker>, String)>, diesel::result::Error> {
+    let comms = info.commentator_signups(conn)?;
+    let mut out = vec![];
+    for comm in comms {
+        if let Ok(id) = comm.discord_id() {
+            out.push((id.clone(), state.best_name_for(id.clone()).await));
+        }
+    }
+    Ok(out)
+}
+
+fn embed_with_title(fields: Vec<EmbedField>, title: impl Into<String>) -> Embed {
+    Embed {
+        author: None,
+        color: None,
+        description: None,
+        fields,
+        footer: None,
+        image: None,
+        kind: "rich".to_string(),
+        provider: None,
+        thumbnail: None,
+        timestamp: None,
+        title: Some(title.into()),
+        url: None,
+        video: None,
+    }
+}
+
 pub fn generate_invite_link() -> Result<String, VarError> {
     let client_id = &CONFIG.discord_client_id;
     let permissions = Permissions::MANAGE_ROLES
@@ -504,4 +540,25 @@ pub fn generate_invite_link() -> Result<String, VarError> {
         | Permissions::USE_SLASH_COMMANDS;
     let permissions = permissions.bits() | (1 << 44); // this is CREATE_EVENTS, an undocumented(?) new(?) permission
     Ok(format!("https://discord.com/oauth2/authorize?client_id={client_id}&permissions={permissions}&scope=bot%20applications.commands"))
+}
+
+async fn update_scheduled_event(
+    gid: Id<GuildMarker>,
+    gse_id: Id<ScheduledEventMarker>,
+    commentators: Option<&Vec<String>>,
+    restream_channel: Option<String>,
+    state: &Arc<DiscordState>,
+) -> Result<(), NMGLeagueBotError> {
+    let mut req = state.client.update_guild_scheduled_event(gid, gse_id);
+    let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
+
+    if let Some(comm_str) = thingy.as_ref() {
+        req = req.description(Some(comm_str))?;
+    }
+
+    if let Some(chan) = restream_channel.as_ref() {
+        req = req.location(Some(chan));
+    }
+    req.await?;
+    Ok(())
 }
