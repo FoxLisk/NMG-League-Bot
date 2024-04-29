@@ -10,9 +10,9 @@
 {% block templates %}
 <template id="qualifier_submission">
     <tr>
-        <td class="place"></td>
-        <td class="player">{{ macros::link(href="", text="") }}</td>
-        <td class="time">{{ macros::link(href="", text="link") }}</td>
+        <td class="place"><span></span></td>
+        <td class="player"><span>{{ macros::link(href="", text="") }}</span></td>
+        <td class="time"><span>{{ macros::link(href="", text="link") }}</span></td>
         {% if base_context.admin %}
         <td class="delete-qualifier">
             <img src="/static/images/trash-can-regular.png" width="16" height="16">
@@ -43,13 +43,13 @@
         <table id="qualifiers_table" class="hidden">
             <thead>
                 <tr>
-                    <td>Rank</td>
-                    <td>Player Name</td>
-                    <td>
-                        Time<img class="icon external-link-icon" src="/static/images/external-link.png">
+                    <td><span>Rank</span></td>
+                    <td><span>Player Name</span></td>
+                    <td class="external-link-column-header">
+                        <span>Time</span>
                     </td>
                     {% if base_context.admin %}
-                    <td>Delete</td>
+                    <td><span>Delete</span></td>
                     {% endif %}
                 </tr>
             </thead>

@@ -3,7 +3,7 @@
 {%- endmacro link -%}
 
 {%- macro external_link(href, text) -%}
-    <a href="{{ href }}">{{ text }}<img class="icon external-link-icon" src="/static/images/external-link-highlighted.png"></a>
+    <a href="{{ href }}" class="external-link">{{ text }}</a>
 {%- endmacro external_link -%}
 
 {% macro header(name) %}
