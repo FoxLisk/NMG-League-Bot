@@ -2,7 +2,8 @@
 
 * Feature: `/commentators {add,remove}` - admin-only commands to update commentators on races that have
   made it out of #commportunities
-* QoL: `/update_user_info` now tolerant to users putting their twitch URL instead of their twitch username
+* Feature: `/update_user_info` now tolerant to users putting their twitch URL instead of their twitch username
+* Feature: Season 6 history blurb
 
 # Season 6
 
