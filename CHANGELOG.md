@@ -1,3 +1,9 @@
+# Season 7
+
+* Feature: `/commentators {add,remove}` - admin-only commands to update commentators on races that have
+  made it out of #commportunities
+* QoL: `/update_user_info` now tolerant to users putting their twitch URL instead of their twitch username
+
 # Season 6
 
 * Feature: Player race history now shown on player history page
@@ -7,6 +13,7 @@
 * Feature: Bracket standings now additionally show players' average race times with forfeits removed
 * Feature: Player profile command added to Discord context menu
 * Feature: Commentator signups will now use best known name for users
+* Feature: Support non-2^n-sized Swiss brackets
 
 # Season 5 and before
 
