@@ -32,42 +32,6 @@
       text-align: center;
     }
 
-    table {
-      width: 100%;
-      border: 1px solid colors.$season-table-header-color;
-      border-collapse: collapse;
-      box-shadow: 1px 1px 5px colors.$faint-black-box-shadow-color;
-
-      thead {
-        background: colors.$season-table-header-color;
-      }
-
-      tr {
-        td {
-          text-align: center;
-          padding: 0.5rem 1.5rem;
-          border-right: 1px solid colors.$season-table-column-border-color;
-
-          > * {
-            vertical-align: middle;
-          }
-        }
-
-        td:last-of-type {
-          border-right: none;
-        }
-      }
-
-      tbody {
-        border: 1px solid colors.$season-table-column-border-color;
-        background: colors.$season-table-bg-color;
-
-        tr:nth-child(even) {
-          background: colors.$season-table-even-row-color;
-        }
-      }
-    }
-
     hr.template-item-separator {
       margin: 2rem 0 1.5rem;
     }
