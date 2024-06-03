@@ -1,7 +1,7 @@
 @use '../common/colors';
 
 #season-sub-page {
-  // Bracket list page
+  // Brackets list page
   ul {
     margin: 1rem 0;
     padding: 0 1rem;
@@ -9,53 +9,22 @@
 
   // Bracket detail page
   #bracket-detail-page {
-    #bracket-title {
-      font-size: 1.8rem;
-      margin: 1rem 0.5rem;
+    span.race-scheduled-text {
+      color: colors.$mellow-text-color;
     }
 
-    hr#bracket-title-separator {
-      background-color: colors.$season-table-header-color;
+    span.race-not-scheduled-text {
+      font-size: 0.97rem;
     }
 
-    .bracket-round-container {
-      margin: 1rem 0 2rem;
+    span.race-complete-text {
+      font-style: italic;
+      font-weight: bold;
+      color: colors.$race-complete-text-color;
+    }
 
-      .bracket-round-number {
-        font-size: 1.4rem;
-        margin: 1rem 0.5rem;
-      }
-
-      td.winner-cell {
-        background-color: colors.$winner-cell-bg-color;
-      }
-
-      td.loser-cell {
-        background-color: colors.$loser-cell-bg-color;
-      }
-
-      span.race-time {
-        font-size: 0.97rem;
-        color: colors.$mellow-text-color;
-      }
-
-      span.race-scheduled-text {
-        color: colors.$mellow-text-color;
-      }
-
-      span.race-not-scheduled-text {
-        font-size: 0.97rem;
-      }
-
-      span.race-complete-text {
-        font-style: italic;
-        font-weight: bold;
-        color: colors.$race-complete-text-color;
-      }
-
-      span.empty-restream-link {
-        color: colors.$subdued-text-color;
-      }
+    span.empty-restream-link {
+      color: colors.$subdued-text-color;
     }
   }
 }

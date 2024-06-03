@@ -3,6 +3,7 @@
 @use 'common/icon';
 @use 'common/page-containers';
 @use 'common/table';
+@use 'common/race-details';
 
 @use 'nav';
 @use 'home';
@@ -11,3 +12,4 @@
 @use 'seasons/brackets';
 @use 'seasons/standings';
 @use 'seasons/qualifiers';
+@use 'player-detail';

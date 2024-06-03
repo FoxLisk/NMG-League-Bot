@@ -1,0 +1,15 @@
+/* Common set of styles for race related info in tables meant to be shared between brackets and users pages */
+@use 'colors';
+
+td.winner-cell {
+  background-color: colors.$winner-cell-bg-color;
+}
+
+td.loser-cell {
+  background-color: colors.$loser-cell-bg-color;
+}
+
+span.race-time {
+  font-size: 0.97rem;
+  color: colors.$mellow-text-color;
+}

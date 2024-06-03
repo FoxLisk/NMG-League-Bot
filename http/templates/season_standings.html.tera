@@ -55,7 +55,7 @@
             </tbody>
         </table>
     </div>
-    <hr class="template-item-separator" />
+    <hr class="subsection-separator" />
     {% endfor %}
 </div>
 {% else %}
