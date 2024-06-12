@@ -8,11 +8,14 @@
         <div class="title">{{ player.name }}</div>
 
         {% if player.twitch_user_login %}
-            {% set url = "https://twitch.tv/<name>" | replace(from="<name>", to=player.twitch_user_login) %}
-            <div>{{ macros::external_link(href=url, text="Twitch stream") }}</div>
+        {% set url = "https://twitch.tv/<name>" | replace(from="<name>", to=player.twitch_user_login) %}
+        <div>{{ macros::external_link(href=url, text="Twitch stream") }}</div>
         {% endif %}
         {% if player.racetime_username %}
-            <div>Racetime username: {{ player.racetime_username }}</div>
+        <div>Racetime username: {{ player.racetime_username }}</div>
+        {% endif %}
+        {% if pfp %}
+        <img src="{{pfp}}" />
         {% endif %}
     </div>
 

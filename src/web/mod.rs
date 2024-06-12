@@ -671,9 +671,10 @@ async fn season_history(
     Ok(Template::render("season_history", ctx))
 }
 
-fn render_player_detail<F>(
+async fn render_player_detail<F>(
     func: F,
     admin: Option<Admin>,
+    state: &Arc<DiscordState>,
     db: &mut SqliteConnection,
 ) -> Result<Template, Status>
 where
@@ -781,7 +782,7 @@ where
                     return;
                 }
                 Err(e) => {
-                    warn!("Error fetching race outcoming, skipping: {e}");
+                    warn!("Error fetching race outcome, skipping: {e}");
                     return;
                 }
             };
@@ -870,30 +871,49 @@ where
             None
         }
     };
+    let pfp = match state.get_player_pfp(&player).await {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Error fetching pfp: {e}");
+            None
+        }
+    };
+
     let ctx = context! {
         base_context: bc,
-        player: player,
-        player_history: player_history,
+        player,
+        player_history,
+        pfp
     };
     Ok(Template::render("player_detail", ctx))
 }
 
+// TODO: having both a State (that could get a diesel cxn) and a db straight from the request guard
+//       is pretty bad form
 #[get("/player/<id>")]
 async fn player_detail_by_id(
     id: i32,
     admin: Option<Admin>,
+    state: &State<Arc<DiscordState>>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
-    render_player_detail(|db| Player::get_by_id(id, db), admin, db.deref_mut())
+    render_player_detail(|db| Player::get_by_id(id, db), admin, state, db.deref_mut()).await
 }
 
 #[get("/player/<name>", rank = 2)]
 async fn player_detail(
     name: String,
     admin: Option<Admin>,
+    state: &State<Arc<DiscordState>>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
-    render_player_detail(|db| Player::get_by_name(&name, db), admin, db.deref_mut())
+    render_player_detail(
+        |db| Player::get_by_name(&name, db),
+        admin,
+        state,
+        db.deref_mut(),
+    )
+    .await
 }
 
 #[get("/")]
@@ -904,6 +924,7 @@ async fn home(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Tem
     ))
 }
 
+/// this function is for use in templates
 fn option_default(
     v: &Value,
     h: &HashMap<String, Value>,

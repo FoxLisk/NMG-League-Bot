@@ -127,7 +127,7 @@ async fn maybe_do_race_stuff(
         if let Err(e) = trigger_race_finish(
             opts,
             conn.deref_mut(),
-            Some(&state.client),
+            Some(&state.discord_client),
             &state.channel_config,
         )
         .await

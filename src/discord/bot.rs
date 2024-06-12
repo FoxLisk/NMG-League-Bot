@@ -99,10 +99,11 @@ async fn run_bot(
 
     let cfg = Config::builder(token.clone(), intents).build();
 
-    let mut shards = stream::create_recommended(&state.client, cfg, |_, builder| builder.build())
-        .await
-        .unwrap()
-        .collect::<Vec<_>>();
+    let mut shards =
+        stream::create_recommended(&state.discord_client, cfg, |_, builder| builder.build())
+            .await
+            .unwrap()
+            .collect::<Vec<_>>();
 
     // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
     // convince the compiler that i have an iterator of mutable references in a simpler way
