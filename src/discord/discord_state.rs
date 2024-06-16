@@ -279,9 +279,10 @@ impl DiscordState {
         let disc_id = p.discord_id()?;
         let user_info = self.discord_client.user(disc_id).await?;
         let user = user_info.model().await?;
-        Ok(user
-            .avatar
-            .map(|i| format!("https://cdn.discordapp.com/avatars/{disc_id}/{i}.png")))
+        Ok(user.avatar.map(|i| {
+            let ext = if i.is_animated() { ".gif" } else { ".png" };
+            format!("https://cdn.discordapp.com/avatars/{disc_id}/{i}{ext}?size=128")
+        }))
     }
 
     /// gets the player's PFP. returns an URL to the image if found, None if player doesnt have a pfp,
