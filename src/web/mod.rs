@@ -16,7 +16,7 @@ use crate::web::auth::{Admin, OauthClient};
 use crate::web::session_manager::SessionManager as _SessionManager;
 use bb8::{Pool, PooledConnection};
 use diesel::prelude::*;
-use log::{info, warn};
+use log::{debug, info, warn};
 use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
@@ -448,14 +448,14 @@ fn get_display_bracket(
     Ok(DisplayBracket { bracket, rounds })
 }
 
-#[get("/season/<season_id>/bracket/<bracket_id>")]
+#[get("/season/<season_ordinal>/bracket/<bracket_id>")]
 async fn bracket_detail(
-    season_id: i32,
+    season_ordinal: i32,
     bracket_id: i32,
     admin: Option<Admin>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
-    let szn = match Season::get_by_id(season_id, &mut db) {
+    let szn = match Season::get_by_ordinal(season_ordinal, &mut db) {
         Ok(s) => Ok(s),
         Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
 
@@ -480,13 +480,13 @@ async fn bracket_detail(
     Ok(Template::render("bracket_detail", ctx))
 }
 
-#[get("/season/<id>/brackets")]
+#[get("/season/<season_ordinal>/brackets")]
 async fn season_brackets(
-    id: i32,
+    season_ordinal: i32,
     mut db: ConnectionWrapper<'_>,
     admin: Option<Admin>,
 ) -> Result<Template, Status> {
-    let szn = match Season::get_by_id(id, &mut db) {
+    let szn = match Season::get_by_ordinal(season_ordinal, &mut db) {
         Ok(s) => Ok(s),
         Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
 
@@ -510,7 +510,7 @@ async fn season_brackets(
         .map(|b| BracketInfo {
             id: b.id,
             name: b.name,
-            url: format!("/season/{}/bracket/{}", szn.id, b.id),
+            url: format!("/season/{}/bracket/{}", szn.ordinal, b.id),
         })
         .collect::<Vec<_>>();
     let ctx = context! {
@@ -620,13 +620,13 @@ fn get_standings_context(
     })
 }
 
-#[get("/season/<id>/standings")]
+#[get("/season/<season_ordinal>/standings")]
 async fn season_standings(
-    id: i32,
+    season_ordinal: i32,
     admin: Option<Admin>,
     mut db: ConnectionWrapper<'_>,
 ) -> Result<Template, Status> {
-    let szn = match Season::get_by_id(id, &mut db) {
+    let szn = match Season::get_by_ordinal(season_ordinal, &mut db) {
         Ok(s) => Ok(s),
         Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -637,13 +637,13 @@ async fn season_standings(
     Ok(Template::render("season_standings", ctx))
 }
 
-#[get("/season/<id>/qualifiers")]
+#[get("/season/<season_ordinal>/qualifiers")]
 async fn season_qualifiers(
-    id: i32,
+    season_ordinal: i32,
     mut db: ConnectionWrapper<'_>,
     admin: Option<Admin>,
 ) -> Result<Template, Status> {
-    let szn = match Season::get_by_id(id, &mut db) {
+    let szn = match Season::get_by_ordinal(season_ordinal, &mut db) {
         Ok(s) => Ok(s),
         Err(diesel::result::Error::NotFound) => Err(Status::NotFound),
         Err(_) => Err(Status::InternalServerError),
@@ -655,9 +655,9 @@ async fn season_qualifiers(
     ))
 }
 
-#[get("/season/<id>")]
-async fn season_redirect(id: i32) -> Redirect {
-    Redirect::to(uri!(season_brackets(id = id)))
+#[get("/season/<season_ordinal>")]
+async fn season_redirect(season_ordinal: i32) -> Redirect {
+    Redirect::to(uri!(season_brackets(season_ordinal = season_ordinal)))
 }
 
 #[get("/seasons")]
@@ -708,7 +708,7 @@ where
     struct SeasonInfo {
         url: String,
         title: String,
-        season_id: i32,
+        season_ordinal: i32,
     }
 
     #[derive(Debug, Serialize)]
@@ -720,7 +720,7 @@ where
         fn new(season: Season, bracket: Bracket) -> Self {
             let title = format!("{} ({})", season.format, bracket.name);
             let url = uri!(bracket_detail(
-                season_id = season.id,
+                season_ordinal = season.ordinal,
                 bracket_id = bracket.id
             ))
             .to_string();
@@ -728,7 +728,7 @@ where
                 season: SeasonInfo {
                     title,
                     url,
-                    season_id: season.id,
+                    season_ordinal: season.ordinal,
                 },
                 races: Default::default(),
             }
@@ -745,7 +745,7 @@ where
                 Ok(s) => match s {
                     BracketRaceState::Finished => {}
                     _ => {
-                        info!("Race {} not finished, skipping.", race.id);
+                        debug!("Race {} not finished, skipping.", race.id);
                     }
                 },
                 Err(e) => {
@@ -856,7 +856,7 @@ where
             history.add_race(race, round, id, &player_map);
         }
         let mut histories: Vec<SeasonHistory> = season_histories.into_values().collect();
-        histories.sort_by_key(|s| s.season.season_id);
+        histories.sort_by_key(|s| s.season.season_ordinal);
         Ok(PlayerHistory { seasons: histories })
     }
 

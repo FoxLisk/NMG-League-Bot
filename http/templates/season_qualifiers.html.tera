@@ -33,6 +33,7 @@
 {% endblock %}
 
 {% block season_body %}
+{# N.B. this one is DB ID instead of ordinal on purpose #}
 <div id="qualifiers" data-season-id="{{ season.id }}">
     <div id="qualifiers-wrapper" class="stats-container hidden">
         <div id="qualifiers-title-container">

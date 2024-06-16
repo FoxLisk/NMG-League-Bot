@@ -1,7 +1,7 @@
 import { Page, ACTIVE_NAV_CLASS_NAME } from './constants.js';
 
 const TOP_NAV_SELECTOR = '#top-nav';
-const currentSeasonNumber: string = (document.querySelector(TOP_NAV_SELECTOR) as HTMLElement)?.dataset.currentSeasonId ?? '-1';
+const currentSeasonNumber: string = (document.querySelector(TOP_NAV_SELECTOR) as HTMLElement)?.dataset.currentSeasonOrdinal ?? '-1';
 
 const TOPNAV_PAGES: Page[] = [
   // Home

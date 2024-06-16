@@ -2,22 +2,22 @@
 
 {% import "macros" as macros %}
 
-{% block pagename %}{{season.format}} Brackets{% endblock %}
+{% block pagename %}Season {{season.ordinal}}: {{season.format}} Brackets{% endblock %}
 {% block season_body %}
 
 {% if brackets %}
-  <ul class="list-disc">
-    {% for bracket in brackets %}
-    <li title="Bracket id#{{ bracket.id }}">
-      {{ macros::link(href=bracket.url, text=bracket.name) }}
-    </li>
-    {% endfor %}
-  </ul>
+<ul class="list-disc">
+  {% for bracket in brackets %}
+  <li title="Bracket id#{{ bracket.id }}">
+    {{ macros::link(href=bracket.url, text=bracket.name) }}
+  </li>
+  {% endfor %}
+</ul>
 
 {% else %}
-  <div class="placeholder-message-banner subdued-text">
-    Brackets have not yet been created for this season
-  </div>
+<div class="placeholder-message-banner subdued-text">
+  Brackets have not yet been created for this season
+</div>
 {% endif %}
 
 {% endblock %}

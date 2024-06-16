@@ -18,7 +18,6 @@ use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
-use rocket::futures::SinkExt;
 use std::future::Future;
 
 use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -487,7 +486,7 @@ fn handle_schedule_race_autocomplete(
 }
 
 async fn handle_commentator_autocomplete(
-    ac: Box<CommandData>,
+    _ac: Box<CommandData>,
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
@@ -1109,7 +1108,7 @@ async fn handle_add_player_to_bracket_submit(
         .find(|b| b.name == bracket_name)
         .ok_or(format!(
             "Cannot find bracket {} in Season {}",
-            bracket_name, szn.id
+            bracket_name, szn.ordinal
         ))?;
 
     let npbe = NewPlayerBracketEntry::new(&bracket, &player);
@@ -1446,12 +1445,13 @@ async fn handle_set_season_state(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let sid = get_opt!("season_id", &mut ac.options, Integer)?;
+    let season_ordinal = get_opt!("season_ordinal", &mut ac.options, Integer)?;
     let new_state_raw = get_opt!("new_state", &mut ac.options, String)?;
     let new_state: SeasonState =
         serde_json::from_str(&new_state_raw).map_err(|e| format!("Error parsing state: {e}"))?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let mut season = Season::get_by_id(sid as i32, cxn.deref_mut()).map_err_to_string()?;
+    let mut season =
+        Season::get_by_ordinal(season_ordinal as i32, cxn.deref_mut()).map_err_to_string()?;
     season
         .set_state(new_state, cxn.deref_mut())
         .map_err_to_string()?;
@@ -1466,13 +1466,13 @@ async fn handle_create_season(
     let format = get_opt!("format", &mut ac.options, String)?;
     let category = get_opt!("rtgg_category_name", &mut ac.options, String)?;
     let goal = get_opt!("rtgg_goal_name", &mut ac.options, String)?;
-
-    let ns = NewSeason::new(format, category, goal);
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let ns = NewSeason::new(format, category, goal, cxn.deref_mut()).map_err_to_string()?;
+
     let s = ns.save(cxn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response(format!(
         "Season {} created!",
-        s.id
+        s.ordinal
     )))
 }
 
@@ -1534,11 +1534,12 @@ async fn handle_create_bracket(
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     let name = get_opt!("name", &mut ac.options, String)?;
-    let season_id = get_opt!("season_id", &mut ac.options, Integer)?;
     let bracket_type = get_opt!("bracket_type", &mut ac.options, String)?;
     let bt: BracketType = serde_json::from_str(&bracket_type).map_err_to_string()?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let szn = Season::get_by_id(season_id as i32, conn.deref_mut()).map_err_to_string()?;
+    let szn = Season::get_active_season(conn.deref_mut())
+        .and_then(|os| os.ok_or(diesel::result::Error::NotFound))
+        .map_err_to_string()?;
     let nb = NewBracket::new(&szn, name, bt);
     nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
     Ok(plain_interaction_response("Bracket created!"))
@@ -1677,8 +1678,14 @@ async fn handle_generate_pairings(
             return Err(e.to_string());
         }
     };
+    // i hate this for a couple reasons, but I am pacifying myself by remembering that a query of a sqlite table
+    // with 6 rows is not actually a big performance issue
+    let szn = Season::get_by_id(b.season_id, cxn.deref_mut()).map_err_to_string()?;
 
-    let url = crate::uri!(bracket_detail(season_id = b.season_id, bracket_id = b.id));
+    let url = crate::uri!(bracket_detail(
+        season_ordinal = szn.ordinal,
+        bracket_id = b.id
+    ));
     match b.generate_pairings(cxn.deref_mut()) {
         Ok(()) => Ok(plain_interaction_response(format!(
             "Pairings generated! See them at {}{url}",

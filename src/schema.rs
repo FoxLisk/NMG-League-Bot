@@ -130,6 +130,7 @@ diesel::table! {
         started -> BigInt,
         finished -> Nullable<BigInt>,
         format -> Text,
+        ordinal -> Integer,
         state -> Text,
         rtgg_category_name -> Text,
         rtgg_goal_name -> Text,

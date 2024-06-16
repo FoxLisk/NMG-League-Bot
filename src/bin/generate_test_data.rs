@@ -22,7 +22,7 @@ async fn main() -> anyhow::Result<()> {
         return Err(anyhow::anyhow!("Test data already generated"));
     }
 
-    let nsn = NewSeason::new("Test NMG", "alttp", "Any% NMG");
+    let nsn = NewSeason::new("Test NMG", "alttp", "Any% NMG", &mut db)?;
     let sn = nsn.save(&mut db).unwrap();
 
     generate_bracket(&sn, 1, BracketType::Swiss, &mut db)?;
