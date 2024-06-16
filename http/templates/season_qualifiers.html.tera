@@ -38,7 +38,7 @@
     <div id="qualifiers-wrapper" class="stats-container hidden">
         <div id="qualifiers-title-container">
             <h2 id="qualifiers-title">Qualifiers</h2>
-            <button type="button" id="toggle-obsolete-button" class="hidden">Show obsolete</button>
+            <button type="button" id="toggle-obsolete-button" class="hidden button">Show obsolete</button>
         </div>
 
         <table id="qualifiers_table" class="hidden">

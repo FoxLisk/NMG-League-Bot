@@ -2,10 +2,11 @@
 
 // Common
 $text-color: #e5e7eb;
-$mellow-text-color: #{$text-color}e4;
+$mellow-text-color: #{$text-color}d8;
 $subdued-text-color: #{$text-color}99;
 $body-bg-color: #465876;
 $faint-black-box-shadow-color: #00000055;
+$medium-black-box-shadow-color: #00000099;
 $page-content-container-bg-color: #374151;
 $hr-color: #2f3442;
 $highlight-color: #10b981;
@@ -32,6 +33,10 @@ $race-complete-text-color: #80a5e1;
 
 // Qualifiers
 $obsolete-qualifier-row-color: #fecaca18;
-$toggle-button-bg-color: #{$highlight-color}88;
-$toggle-button_hover-bg-color: #{$highlight-color}71;
-$toggle-button_active-bg-color: #{$highlight-color}55;
+$toggle-button-bg-color: #{$highlight-color}99;
+
+// Player detail page
+$pfp-bg-color: #cbd5e1;
+$twitch-icon-color: #8b44f7;
+$racetime-icon-gradient-top: #36393f;
+$racetime-icon-gradient-bottom: #25272c;
