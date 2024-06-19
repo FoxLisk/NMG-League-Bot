@@ -27,20 +27,20 @@
         <div class="previous-season-item">
             <h3 class="season-title">Season 4</h3>
             For Season 4 we went with Vanilla Preset, and the event was spearheaded by relkin. We hosted
-            {{ macros::link(href="/season/3", text="three brackets here") }}, and one more
+            {{ macros::link(href="/season/4", text="three brackets here") }}, and one more
             {{ macros::external_link(href="https://challonge.com/p7og5bef", text="on Challonge") }}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 3</h3>
-            Season 3 can be found on this site {{ macros::link(href="/season/2", text="here") }}.
+            Season 3 can be found on this site {{ macros::link(href="/season/3", text="here") }}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 2</h3>
-            Season 2 is mostly available on this site {{ macros::link(href="/season/1", text="here") }}.
+            Season 2 is mostly available on this site {{ macros::link(href="/season/2", text="here") }}.
             You can find the Rain State info in
             {{ macros::external_link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit", text="this google sheet") }}.
         </div>

@@ -39,6 +39,7 @@ fn get_qualifiers(id: i32, db: &mut SqliteConnection) -> Result<Vec<Qualifier>, 
         .load(db)?)
 }
 
+// N.B. this one really should be season.id to make the SQL query simpler/faster
 #[get("/season/<id>/qualifiers")]
 async fn qualifiers(
     id: i32,

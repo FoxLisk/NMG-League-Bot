@@ -139,11 +139,11 @@ pub fn application_command_definitions() -> Vec<Command> {
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
     .option(CommandOption {
-        description: "The Season's id".to_string(),
+        description: "The Season's ordinal".to_string(),
         description_localizations: None,
         max_value: None,
         min_value: Some(CommandOptionValue::Integer(1)),
-        name: "season_id".to_string(),
+        name: "season_ordinal".to_string(),
         name_localizations: None,
         required: Some(true),
         kind: CommandOptionType::Integer,
@@ -151,7 +151,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .option(CommandOption {
         choices: Some(possible_states),
-        description: "Set a season's state".to_string(),
+        description: "The new state of the season".to_string(),
         description_localizations: None,
         max_length: None,
         min_length: None,
@@ -173,7 +173,7 @@ pub fn application_command_definitions() -> Vec<Command> {
 
     let create_bracket = CommandBuilder::new(
         CREATE_BRACKET_CMD.to_string(),
-        "Create a new bracket".to_string(),
+        "Create a new bracket in the current season".to_string(),
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
@@ -186,17 +186,6 @@ pub fn application_command_definitions() -> Vec<Command> {
         name_localizations: None,
         required: Some(true),
         kind: CommandOptionType::String,
-        ..command_option_default()
-    })
-    .option(CommandOption {
-        description: "Season ID".to_string(),
-        description_localizations: None,
-        max_value: None,
-        min_value: None,
-        name: "season_id".to_string(),
-        name_localizations: None,
-        required: Some(true),
-        kind: CommandOptionType::Integer,
         ..command_option_default()
     })
     .option(CommandOption {

@@ -10,7 +10,7 @@ use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{AllowedMentions, Embed, MentionType, ReactionType};
 use twilight_model::channel::Message;
 use twilight_model::gateway::payload::incoming::{ReactionAdd, ReactionRemove};
-use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
+use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
 
@@ -252,8 +252,6 @@ async fn create_restream_request_post(
         .await
         .map_err(From::from)
 }
-
-
 
 async fn handle_commentary_signup(
     mut info: BracketRaceInfo,

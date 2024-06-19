@@ -29,7 +29,7 @@ async fn main() -> anyhow::Result<()> {
     let sn = match Season::get_active_season(&mut db)? {
         Some(s) => s,
         None => {
-            let s = NewSeason::new("my great format", "alttp", "Any% NMG");
+            let s = NewSeason::new("my great format", "alttp", "Any% NMG", &mut db)?;
             s.save(&mut db)?
         }
     };

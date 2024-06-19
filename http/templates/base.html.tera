@@ -11,11 +11,12 @@
 {% endblock skeleton_head %}
 
 {% block skeleton_body %}
-<nav id="top-nav" {% if base_context.current_season %} data-current-season-id="{{base_context.current_season.id}}"
-    {% endif %}>
+<nav id="top-nav" {% if base_context.current_season %}
+    data-current-season-ordinal="{{base_context.current_season.ordinal}}" {% endif %}>
     <a id="home-link" class="nav-item nav-main-logo" href="/">NMG League</a>
     {% if base_context.current_season %}
-    <a id="current-season-link" class="nav-item nav-generic-item" href="/season/{{base_context.current_season.id}}">
+    <a id="current-season-link" class="nav-item nav-generic-item"
+        href="/season/{{base_context.current_season.ordinal}}">
         <span>Current Season</span>
     </a>
     {% endif %}

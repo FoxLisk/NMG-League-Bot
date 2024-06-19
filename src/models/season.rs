@@ -26,8 +26,8 @@ pub struct Season {
     /// this is called 'started' but it should be called 'created'
     started: i64,
     finished: Option<i64>,
-    /// this is called "format" but it's really just, like, the name of the season
     pub format: String,
+    pub ordinal: i32,
     state: String,
     /// rt.gg calls games "categories"; this is e.g. alttp (or alttpr)
     pub rtgg_category_name: String,
@@ -38,10 +38,22 @@ pub struct Season {
 
 impl Season {
     /// gets Season with this id (returns error if no season exists)
+    ///
+    /// You should VERY STRONGLY prefer [`get_by_ordinal`] in most use cases
     pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         use crate::schema::seasons::dsl::*;
         use diesel::prelude::*;
         seasons.filter(id.eq(id_)).first(conn)
+    }
+
+    /// gets Season with this ordinal (returns error if no season exists)
+    pub fn get_by_ordinal(
+        ordinal_: i32,
+        conn: &mut SqliteConnection,
+    ) -> Result<Self, diesel::result::Error> {
+        use crate::schema::seasons::dsl::*;
+        use diesel::prelude::*;
+        seasons.filter(ordinal.eq(ordinal_)).first(conn)
     }
 
     pub fn get_active_season(
@@ -234,18 +246,31 @@ pub struct NewSeason {
     pub state: String,
     pub rtgg_category_name: String,
     pub rtgg_goal_name: String,
+    pub ordinal: i32,
 }
 
 impl NewSeason {
-    pub fn new<S: Into<String>>(format: S, rtgg_category_name: S, rtgg_goal_name: S) -> Self {
-        Self {
+    pub fn new<S: Into<String>>(
+        format: S,
+        rtgg_category_name: S,
+        rtgg_goal_name: S,
+        conn: &mut SqliteConnection,
+    ) -> Result<Self, diesel::result::Error> {
+        use diesel::dsl::max;
+        let ordinal: i32 = (seasons::table
+            .select(max(schema::seasons::dsl::ordinal))
+            .first::<Option<i32>>(conn)?)
+        .unwrap_or(0)
+            + 1;
+        Ok(Self {
             format: format.into(),
             started: epoch_timestamp() as i64,
             // TODO: unwrap
             state: serde_json::to_string(&SeasonState::Created).unwrap(),
             rtgg_category_name: rtgg_category_name.into(),
             rtgg_goal_name: rtgg_goal_name.into(),
-        }
+            ordinal,
+        })
     }
     save_fn!(seasons::table, Season);
 }
@@ -255,6 +280,7 @@ impl Season {
     pub fn new(id: i32, goal: &str) -> Self {
         Season {
             id,
+            ordinal: id,
             started: 0,
             finished: None,
             format: "".to_string(),

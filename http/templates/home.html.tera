@@ -8,14 +8,17 @@
     <h1 id="title">LttP NMG League</h1>
     <div class="px-8">
         <div id="text-container">
-            <div>Welcome! This site hosts the brackets, standings and qualifier info {% if base_context.current_season %} for the current season and {% endif %} for all the past seasons of the Link to the Past NMG League.</div>
+            <div>Welcome! This site hosts the brackets, standings and qualifier info
+                {% if base_context.current_season %} for the current season and {% endif %} for all the past seasons of
+                the Link to the Past NMG League.</div>
             <div>
                 {% if base_context.current_season %}
-                    {% set url = "/season/<id>" | replace(from="<id>", to=base_context.current_season.id|as_str) %}
-                    To see details for the ongoing season, {{ macros::link(href=url, text="click here") }}.
+                {% set url = "/season/<ordinal>" | replace(from="<ordinal>", to=base_context.current_season.ordinal|as_str) %}
+                To see details for the ongoing season, {{ macros::link(href=url, text="click here") }}.
                 {% endif %}
                 To view seasonal history, {{ macros::link(href="/seasons", text="click here") }}.
-                To participate in league races, signup for commentary, or get updates for upcoming races, be sure to {{ macros::external_link(href="https://discord.gg/exrgFbna7d", text="join our discord") }}.
+                To participate in league races, signup for commentary, or get updates for upcoming races, be sure to
+                {{ macros::external_link(href="https://discord.gg/exrgFbna7d", text="join our discord") }}.
                 It's almost league!!!
             </div>
         </div>
