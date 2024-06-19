@@ -2,7 +2,6 @@ use crate::models::brackets::Bracket;
 use chrono::{Duration, Utc};
 use diesel::prelude::*;
 use diesel::{RunQueryDsl, SqliteConnection};
-use log::debug;
 use serde::Serialize;
 
 use crate::models::bracket_race_infos::BracketRaceInfo;

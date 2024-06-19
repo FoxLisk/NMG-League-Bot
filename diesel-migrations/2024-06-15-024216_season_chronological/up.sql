@@ -14,7 +14,8 @@ CREATE TABLE __new_seasons
 );
 
 INSERT INTO __new_seasons(id, started, finished, format, ordinal, state, rtgg_category_name, rtgg_goal_name)
-SELECT                    id, started, finished, format, id,      state, rtgg_category_name, rtgg_goal_name
+-- we're doing id + 10 so we dont get unique constraint violations when we set them to the *actual* proper values
+SELECT                    id, started, finished, format, id + 10,      state, rtgg_category_name, rtgg_goal_name
 FROM seasons;
 
 
