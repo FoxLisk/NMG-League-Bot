@@ -718,7 +718,10 @@ where
     }
     impl SeasonHistory {
         fn new(season: Season, bracket: Bracket) -> Self {
-            let title = format!("{} ({})", season.format, bracket.name);
+            let title = format!(
+                "Season {}: {} ({})",
+                season.ordinal, season.format, bracket.name
+            );
             let url = uri!(bracket_detail(
                 season_ordinal = season.ordinal,
                 bracket_id = bracket.id
