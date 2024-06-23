@@ -34,13 +34,14 @@
         </h2>
         <hr class="section-title-separator">
 
-        {% for season in player_history.seasons %}
+        {% for season in player_history.seasons | reverse %}
         <div class="subsection-container">
             <h2 class="subsection-title">{{ macros::link(href=season.season.url, text=season.season.title)}}</h2>
             <div id="race-history-container">
                 <table>
                     <thead>
                         <tr>
+                            <td>Round</td>
                             <td>Player</td>
                             <td>Opponent</td>
                         </tr>
@@ -48,6 +49,9 @@
                     <tbody>
                         {% for race in season.races %}
                         <tr>
+                            <td>
+                                <span>{{ loop.index }}</span>
+                            </td>
                             <td class="{% if race.outcome == 'win' %} winner-cell {% elif race.outcome == 'loss' %} loser-cell {% endif %}">
                                 <span>{{ player.name }}</span>
                                 <span class="race-time {% if race.time == 'Forfeit' -%} subdued-text {%- endif %}">
