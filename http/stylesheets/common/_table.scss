@@ -3,11 +3,23 @@
 table {
   width: 100%;
   border: 1px solid colors.$season-table-header-color;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+  border-radius: 5px;
   box-shadow: 1px 1px 5px colors.$faint-black-box-shadow-color;
 
   thead {
     background: colors.$season-table-header-color;
+
+    tr:first-child {
+      td:first-child {
+        border-top-left-radius: 3px;
+      }
+
+      td:last-child {
+        border-top-right-radius: 3px;
+      }
+    }
   }
 
   tr {
@@ -34,6 +46,16 @@ table {
 
     tr:nth-child(even) {
       background: colors.$season-table-even-row-color;
+    }
+
+    tr:last-child {
+      td:first-child {
+        border-bottom-left-radius: 4px;
+      }
+
+      td:last-child {
+        border-bottom-right-radius: 4px;
+      }
     }
   }
 }
