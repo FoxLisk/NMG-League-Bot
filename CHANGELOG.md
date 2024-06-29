@@ -5,6 +5,7 @@
 * Feature: `/update_user_info` now tolerant to users putting their twitch URL instead of their twitch username
 * Feature: Season 6 history blurb
 * Enhancement: URLs now use Season ordinals instead of database IDs, making them more obvious to end users
+* Enhancement: Player history pages now look nice
 
 # Season 6
 
