@@ -1151,11 +1151,13 @@ async fn handle_create_player(
         }
     };
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    // TODO: do some validation/lookups here? or centralize that logic?
     let np = NewPlayer::new(
         name,
         discord_user.to_string(),
         Some(rt_un),
         Some(twitch_name),
+        None,
     );
 
     match np.save(cxn.deref_mut()) {

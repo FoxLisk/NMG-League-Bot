@@ -2,6 +2,7 @@ use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
+use crate::models::season::Season;
 use crate::save_fn;
 use crate::schema::bracket_races;
 use crate::update_fn;
@@ -313,15 +314,15 @@ impl BracketRace {
 #[derive(Insertable, Debug)]
 #[diesel(table_name=bracket_races)]
 pub struct NewBracketRace {
-    bracket_id: i32,
-    round_id: i32,
+    pub bracket_id: i32,
+    pub round_id: i32,
     pub player_1_id: i32,
     pub player_2_id: i32,
-    async_race_id: Option<i32>,
-    state: String,
-    player_1_result: Option<String>,
-    player_2_result: Option<String>,
-    outcome: Option<String>,
+    pub async_race_id: Option<i32>,
+    pub state: String,
+    pub player_1_result: Option<String>,
+    pub player_2_result: Option<String>,
+    pub outcome: Option<String>,
 }
 
 pub fn insert_bulk(
@@ -353,4 +354,5 @@ impl NewBracketRace {
         }
     }
 
+    save_fn!(bracket_races::table, BracketRace);
 }
