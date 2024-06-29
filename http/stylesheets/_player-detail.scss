@@ -1,0 +1,66 @@
+@use 'common/colors';
+
+#player-detail-page {
+  width: 80%;
+
+  .page-title-container {
+    display: flex;
+    padding: 1.5rem 2.25rem;
+
+    #player-name {
+      font-size: 2.125rem;
+    }
+
+    #pfp {
+      width: 7rem;
+      height: 7rem;
+      border-radius: 50%;
+      box-shadow: 0 3px 8px colors.$medium-black-box-shadow-color;
+
+      // Background for transparent images
+      background-color: colors.$pfp-bg-color;
+      background-size: cover;
+    }
+
+    #player-info-container {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 0.25rem;
+      margin-left: 1.5rem;
+    }
+
+    #player-info-badges-container {
+      display: flex;
+      gap: 0.625rem;
+
+      .player-icon {
+        width: 2.375rem;
+        height: 2.375rem;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+
+        user-select: none;
+        -webkit-user-drag: none;
+
+        .player-icon-image {
+          width: 1.5rem;
+          -webkit-user-drag: none;
+        }
+      }
+
+      .twitch-icon {
+        background-color: colors.$twitch-icon-color;
+      }
+
+      .racetime-icon {
+        background: linear-gradient(colors.$racetime-icon-gradient-top, colors.$racetime-icon-gradient-bottom);
+
+        .player-icon-image {
+        width: 1.875rem;
+        }
+      }
+    }
+  }
+}

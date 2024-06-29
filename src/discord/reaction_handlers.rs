@@ -200,7 +200,7 @@ async fn handle_commentary_confirmation(
         }
     }
     if let Err(e) =
-        clear_commportunities_message(&mut info, &state.client, &state.channel_config).await
+        clear_commportunities_message(&mut info, &state.discord_client, &state.channel_config).await
     {
         warn!("Error clearing commportunities state: {e}");
     }
@@ -229,7 +229,7 @@ async fn create_tentative_commentary_discussion_post(
         video: None,
     }];
     state
-        .client
+        .discord_client
         .create_message(state.channel_config.commentary_discussion.clone())
         .embeds(&embeds)?
         .await?
@@ -244,7 +244,7 @@ async fn create_restream_request_post(
 ) -> Result<Message, ReactionAddError> {
     let embeds = vec![embed_with_title(fields, "Restream Channel Request")];
     state
-        .client
+        .discord_client
         .create_message(state.channel_config.zsr.clone())
         .embeds(&embeds)?
         .await?
@@ -322,7 +322,7 @@ async fn create_commentator_signup_post(
     }];
 
     state
-        .client
+        .discord_client
         .create_message(state.channel_config.sirius_inbox.clone())
         .embeds(&embeds)?
         .await?
@@ -405,7 +405,7 @@ async fn handle_restream_request_reaction(
     pings.push(p2.mention_or_name());
 
     match state
-        .client
+        .discord_client
         .create_message(state.channel_config.commentary_discussion)
         .embeds(&embeds)?
         .content(&pings.join(" "))?
@@ -433,7 +433,7 @@ async fn handle_restream_request_reaction(
 
     if let Err(e) = clear_tentative_commentary_assignment_message(
         &mut info,
-        &state.client,
+        &state.discord_client,
         &state.channel_config,
     )
     .await

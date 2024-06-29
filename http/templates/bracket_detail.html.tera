@@ -6,13 +6,13 @@
 {% block season_body %}
 
 <div id="bracket-detail-page" class="stats-container">
-    <h2 id="bracket-title" title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</h2>
-    <hr id="bracket-title-separator" />
+    <h2 class="section-title" title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</h2>
+    <hr class="section-title-separator" />
 
     {% for round in bracket.rounds %}
-    <div class="bracket-round-container">
-        <h3 class="bracket-round-number">Round {{ round.round_num }}</h3>
-        <table class="bracket-round">
+    <div class="subsection-container">
+        <h3 class="subsection-title">Round {{ round.round_num }}</h3>
+        <table>
             <thead>
                 <tr>
                     <td>
@@ -43,7 +43,7 @@
                     <td class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}">
                         <span>{{ macros::player_detail(name=race.player_2.name) }}</span>
 
-                        {% if race.player_1.status %}
+                        {% if race.player_2.status %}
                         <span class="race-time {% if race.player_2.status == 'Forfeit' -%} subdued-text {%- endif %}">
                             ({{ race.player_2.status }})
                         </span>
@@ -70,7 +70,7 @@
             </tbody>
         </table>
     </div>
-    <hr class="template-item-separator" />
+    <hr class="subsection-separator" />
     {% endfor %}
 </div>
 {% endblock %}

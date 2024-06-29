@@ -1,15 +1,7 @@
 @use '../common/colors';
 
 #season-container {
-  width: 90%;
-
   .page-title-container {
-    padding: 0 3rem;
-
-    .title {
-      font-size: 3rem;
-    }
-
     nav#season-nav {
       display: flex;
 
@@ -20,9 +12,8 @@
   }
 
   #season-sub-page {
-    padding: 1px 3rem;
-
     div.stats-container {
+      // Adds proper margin to the bottom of the standings and quals pages
       margin: 1rem 0 2rem;
     }
 
@@ -30,50 +21,6 @@
       margin: 1.2rem 0;
       font-size: 1.2rem;
       text-align: center;
-    }
-
-    table {
-      width: 100%;
-      border: 1px solid colors.$season-table-header-color;
-      border-collapse: collapse;
-      box-shadow: 1px 1px 5px colors.$faint-black-box-shadow-color;
-
-      thead {
-        background: colors.$season-table-header-color;
-      }
-
-      tr {
-        td {
-          text-align: center;
-          padding: 0.5rem 1.5rem;
-          border-right: 1px solid colors.$season-table-column-border-color;
-
-          > * {
-            vertical-align: middle;
-          }
-        }
-
-        td:last-of-type {
-          border-right: none;
-        }
-      }
-
-      tbody {
-        border: 1px solid colors.$season-table-column-border-color;
-        background: colors.$season-table-bg-color;
-
-        tr:nth-child(even) {
-          background: colors.$season-table-even-row-color;
-        }
-      }
-    }
-
-    hr.template-item-separator {
-      margin: 2rem 0 1.5rem;
-    }
-
-    hr.template-item-separator:last-of-type {
-      display: none;
     }
   }
 }

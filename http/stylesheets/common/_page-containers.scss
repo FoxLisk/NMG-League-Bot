@@ -1,6 +1,7 @@
 @use 'colors';
 
 .page-container {
+  width: 90%;
   margin: 3.5rem auto;
   box-shadow: 1px 1px 6px black;
 
@@ -10,13 +11,43 @@
 
 .page-title-container {
   background-color: colors.$page-content-container-bg-color;
+  padding: 0 3rem;
 
   .title {
     display: inline-block;
     margin: 1rem 0;
+    font-size: 3rem;
   }
 }
 
 .page-content-container {
+  padding: 1px 3rem;
   background-color: colors.$season-sub-page-bg-color;
+
+  // Section and sub-section styles used in bracket detail and user detail pages
+  .section-title {
+    font-size: 1.75rem;
+    margin: 1rem 0.5rem;
+  }
+
+  hr.section-title-separator {
+    background-color: colors.$season-table-header-color;
+  }
+
+  .subsection-container {
+    margin: 1rem 0 2rem;
+
+    .subsection-title {
+      font-size: 1.375rem;
+      margin: 1.2rem 0.5rem;
+    }
+  }
+
+  hr.subsection-separator {
+    margin-top: 2rem;
+  }
+
+  hr.subsection-separator:last-of-type {
+    display: none;
+  }
 }

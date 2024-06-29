@@ -392,7 +392,7 @@ async fn initial_setup(
     let p2_m = p2.mention_or_name();
     ctx.global_state
         .discord_state
-        .client
+        .discord_client
         .create_message(CONFIG.racetime_room_posting_channel_id)
         .content(&format!(
             "{p1_m} {p2_m} your race room is ready! {}",

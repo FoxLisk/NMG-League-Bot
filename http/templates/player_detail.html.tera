@@ -3,51 +3,78 @@
 {% import "macros" as macros %}
 {% block pagename %}{% if player %}{{ player.name }} Detail{% else %}Player not found{% endif %}{% endblock %}
 {% block body %}
-<div>
-    <span>{{ player.name }}</span>
-    {% if player.twitch_user_login %}
-    {% set url = "https://twitch.tv/<name>" | replace(from="<name>", to=player.twitch_user_login) %}
-    <div>{{ macros::external_link(href=url, text="Twitch stream") }}</div>
-    {% endif %}
-    {% if player.racetime_username %}
-    <div>Racetime username: {{ player.racetime_username }}</div>
-    {% endif %}
-    {% if player_history %}
-    <hr />
-    <div class="text-xl">
-        Race History
-    </div>
-    {% for season in player_history.seasons %}
+<div id="player-detail-page" class="page-container">
+    <div class="page-title-container">
+        {% if pfp %}
+            {% set pfp_url = pfp %}
+        {% else %}
+            {% set pfp_url = "/static/images/placeholder-pfp.jpg" %}
+        {% endif %}
+        <div role="img" aria-label="User profile picture" id="pfp" style="background-image: url({{pfp_url}})"></div>
 
-    <h2>{{ macros::link(href=season.season.url, text=season.season.title)}}</h2>
-    <div class="races">
-        <table>
-            <thead>
-                <tr>
-                    <td>Outcome</td>
-                    <td>Time</td>
-                    <td>
-                        Opponent
-                    </td>
-                    <td>
-                        Opponent's Time
-                    </td>
-                </tr>
-            </thead>
-            <tbody>
-                {% for race in season.races %}
-                <tr>
-                    <td>{{race.outcome}}</td>
-                    <td>{{race.time}}</td>
-                    <td>{{race.opponent}}</td>
-                    <td>{{race.opponent_time}}</td>
-                </tr>
-                {% endfor %}
-
-            </tbody>
-        </table>
+        <div id="player-info-container">
+            <div id="player-name">{{ player.name }}</div>
+            <div id="player-info-badges-container">
+                {% if player.twitch_user_login %}
+                    <a href="https://twitch.tv/{{player.twitch_user_login}}" class="button player-icon twitch-icon">
+                        <img class="player-icon-image" src="/static/images/twitch-icon.png">
+                    </a>
+                {% endif %}
+                {% if player.racetime_username %}
+                    <a href="https://racetime.gg/user/{{player.racetime_user_id}}" class="button player-icon racetime-icon">
+                        <img class="player-icon-image" src="/static/images/racetime-icon.png">
+                    </a>
+                {% endif %}
+            </div>
+        </div>
     </div>
-    {% endfor %}
-    {% endif%}
+
+    <div class="page-content-container">
+        {% if player_history %}
+        <h2 class="section-title">
+            Race History
+        </h2>
+        <hr class="section-title-separator">
+
+        {% for season in player_history.seasons | reverse %}
+        <div class="subsection-container">
+            <h2 class="subsection-title">{{ macros::link(href=season.season.url, text=season.season.title)}}</h2>
+            <div id="race-history-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <td>Round</td>
+                            <td>Player</td>
+                            <td>Opponent</td>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for race in season.races %}
+                        <tr>
+                            <td>
+                                <span>{{ loop.index }}</span>
+                            </td>
+                            <td class="{% if race.outcome == 'win' %} winner-cell {% elif race.outcome == 'loss' %} loser-cell {% endif %}">
+                                <span>{{ player.name }}</span>
+                                <span class="race-time {% if race.time == 'Forfeit' -%} subdued-text {%- endif %}">
+                                    ({{ race.time }})
+                                </span>
+                            </td>
+                            <td class="{% if race.outcome == 'loss' %} winner-cell {% elif race.outcome == 'win' %} loser-cell {% endif %}">
+                                <span>{{ macros::player_detail(name=race.opponent) }}</span>
+                                <span class="race-time {% if race.opponent_time == 'Forfeit' -%} subdued-text {%- endif %}">
+                                    ({{ race.opponent_time }})
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <hr class="subsection-separator" />
+        {% endfor %}
+        {% endif%}
+    </div>
 </div>
 {% endblock %}

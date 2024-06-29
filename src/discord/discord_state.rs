@@ -8,7 +8,7 @@ use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::ResultErrToString;
-use nmg_league_bot::ChannelConfig;
+use nmg_league_bot::{ChannelConfig, NMGLeagueBotError};
 use racetime_api::client::RacetimeClient;
 use std::fmt::Display;
 use std::ops::DerefMut;
@@ -29,7 +29,7 @@ use twilight_standby::Standby;
 
 pub struct DiscordState {
     pub cache: InMemoryCache,
-    pub client: Arc<Client>,
+    pub discord_client: Arc<Client>,
     diesel_pool: Pool<DieselConnectionManager>,
     pub webhooks: Webhooks,
     pub standby: Arc<Standby>,
@@ -67,7 +67,7 @@ impl DiscordState {
 
         Self {
             cache,
-            client,
+            discord_client: client,
             diesel_pool,
             webhooks,
             standby,
@@ -87,7 +87,7 @@ impl DiscordState {
     }
 
     pub fn interaction_client(&self) -> InteractionClient {
-        self.client.interaction(self.application_id.clone())
+        self.discord_client.interaction(self.application_id.clone())
     }
 
     pub async fn get_private_channel(
@@ -99,7 +99,7 @@ impl DiscordState {
         }
 
         let created = self
-            .client
+            .discord_client
             .create_private_channel(user.clone())
             .await
             .map_err(|e| e.to_string())?;
@@ -269,5 +269,27 @@ impl DiscordState {
         // return Err(RunError::User(ConnectionError::BadConnection("asdf".to_string())));
         let pc = self.diesel_pool.get().await;
         pc
+    }
+
+    /// Returns Some(URL) if the user has a pfp, otherwise None or an error
+    pub async fn get_player_discord_pfp(
+        &self,
+        p: &Player,
+    ) -> Result<Option<String>, NMGLeagueBotError> {
+        let disc_id = p.discord_id()?;
+        let user_info = self.discord_client.user(disc_id).await?;
+        let user = user_info.model().await?;
+        Ok(user.avatar.map(|i| {
+            let ext = if i.is_animated() { ".gif" } else { ".png" };
+            format!("https://cdn.discordapp.com/avatars/{disc_id}/{i}{ext}?size=128")
+        }))
+    }
+
+    /// gets the player's PFP. returns an URL to the image if found, None if player doesnt have a pfp,
+    /// error if there's an error
+    ///
+    /// in principle this might someday check discord and also twitch but right now it only checks discord
+    pub async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError> {
+        self.get_player_discord_pfp(p).await
     }
 }

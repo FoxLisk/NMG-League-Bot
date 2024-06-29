@@ -128,7 +128,7 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
     );
 
     let resp = state
-        .client
+        .discord_client
         .create_message(dm)
         .components(&[Component::ActionRow(ActionRow {
             components: vec![interactions_utils::button_component(
@@ -304,7 +304,7 @@ async fn schedule_race<Tz: TimeZone>(
             &p1,
             &p2,
             CONFIG.guild_id,
-            &state.client,
+            &state.discord_client,
         )
         .await
         {
@@ -320,15 +320,19 @@ async fn schedule_race<Tz: TimeZone>(
         // TODO: parallelize? this method on its own is gonna come close to hitting discord API
         //       limits, so maybe don't bother lol
 
-        if let Err(e) =
-            clear_commportunities_message(&mut new_info, &state.client, &state.channel_config).await
+        if let Err(e) = clear_commportunities_message(
+            &mut new_info,
+            &state.discord_client,
+            &state.channel_config,
+        )
+        .await
         {
             warn!("Error clearing old commportunities message upon rescheduling: {e}");
         }
 
         if let Err(e) = clear_tentative_commentary_assignment_message(
             &mut new_info,
-            &state.client,
+            &state.discord_client,
             &state.channel_config,
         )
         .await
@@ -399,7 +403,7 @@ async fn create_commportunities_post(
         video: None,
     }];
     let msg = state
-        .client
+        .discord_client
         .create_message(state.channel_config.commportunities.clone())
         .embeds(&embeds)
         .map_err_to_string()?
@@ -409,7 +413,7 @@ async fn create_commportunities_post(
     let m = msg.model().await.map_err_to_string()?;
     let emojum = RequestReactionType::Unicode { name: "🎙" };
     if let Err(e) = state
-        .client
+        .discord_client
         .create_reaction(m.channel_id, m.id, &emojum)
         .await
     {
@@ -549,7 +553,9 @@ async fn update_scheduled_event(
     restream_channel: Option<String>,
     state: &Arc<DiscordState>,
 ) -> Result<(), NMGLeagueBotError> {
-    let mut req = state.client.update_guild_scheduled_event(gid, gse_id);
+    let mut req = state
+        .discord_client
+        .update_guild_scheduled_event(gid, gse_id);
     let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
 
     if let Some(comm_str) = thingy.as_ref() {
