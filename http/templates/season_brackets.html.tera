@@ -2,7 +2,7 @@
 
 {% import "macros" as macros %}
 
-{% block pagename %}Season {{season.ordinal}}: {{season.format}} Brackets{% endblock %}
+{% block pagename %}Season {{season.ordinal}} Brackets ({{season.format}}){% endblock %}
 {% block season_body %}
 
 {% if brackets %}

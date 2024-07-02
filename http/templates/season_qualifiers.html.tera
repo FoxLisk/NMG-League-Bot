@@ -5,7 +5,7 @@
 <script type="module" src="/static/js/compiled/season-nav-highlights.js"></script>
 <script defer type="text/javascript" src="/static/js/season_qualifiers.js"></script>
 {% endblock %}
-{% block pagename %}{{season.format}} Qualifiers{% endblock %}
+{% block pagename %}Season {{season.ordinal}} Qualifiers ({{season.format}}){% endblock %}
 
 {% block templates %}
 <template id="qualifier_submission">
