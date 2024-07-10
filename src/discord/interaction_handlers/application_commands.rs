@@ -42,7 +42,7 @@ use nmg_league_bot::{utils, NMGLeagueBotError};
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_http::request::application::interaction::UpdateResponse;
@@ -829,8 +829,11 @@ fn format_player(content: Option<String>, player: &Player) -> InteractionRespons
 /// this will attempt to turn `https://twitch.tv/foxlisk` into `foxlisk`
 /// if it doesn't look like the first form, it just returns the original string
 fn tolerate_twitch_links(link: &str) -> String {
-    static URL_REGEX: Lazy<Result<Regex, regex::Error>> =
-        Lazy::new(|| Regex::new(r"^(?:https?://)?twitch.tv/(?<username>\w+?)$"));
+    static URL_REGEX: Lazy<Result<Regex, regex::Error>> = Lazy::new(|| {
+        RegexBuilder::new(r"^(?:https?://)?(?:www\.)?twitch.tv/(?<username>\w+?)$")
+            .case_insensitive(true)
+            .build()
+    });
     if let Some(m) = URL_REGEX
         .as_ref()
         .ok()
@@ -1748,6 +1751,9 @@ mod tests {
             ("https://twitch.tv/foxlisk", "foxlisk"),
             ("twitch.tv/foxlisk", "foxlisk"),
             ("http://twitch.tv/asdf_12345", "asdf_12345"),
+            ("https://www.twitch.tv/shkoople", "shkoople"),
+            ("www.twitch.tv/shkoople", "shkoople"),
+            ("Twitch.tv/Cen7ipede", "Cen7ipede"),
         ] {
             assert_eq!(tolerate_twitch_links(input), expected.to_string())
         }
