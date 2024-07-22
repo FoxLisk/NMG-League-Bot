@@ -1,5 +1,6 @@
 pub mod race {
-    use crate::models::asyncs::race_run::{NewAsyncRaceRun, AsyncRaceRun, RaceRunState};
+    use crate::models::asyncs::race_run::{AsyncRaceRun, NewAsyncRaceRun, RaceRunState};
+    use crate::save_fn;
     use crate::schema::races;
     use crate::utils::{epoch_timestamp, uuid_string};
     use diesel::prelude::{AsChangeset, Identifiable, Insertable, Queryable};
@@ -9,7 +10,6 @@ pub mod race {
     use serde::Serialize;
     use twilight_model::id::marker::UserMarker;
     use twilight_model::id::Id;
-    use crate::save_fn;
 
     #[derive(Debug, Serialize, PartialEq, Clone, DieselEnum, AsExpression)]
     #[allow(non_camel_case_types)]
@@ -27,7 +27,7 @@ pub mod race {
         uuid: String,
         created: i64,
         state: String,
-        on_start_message: Option<String>
+        on_start_message: Option<String>,
     }
 
     #[derive(Queryable, Clone, Identifiable)]
@@ -66,12 +66,13 @@ pub mod race {
 
     // statics
     impl AsyncRace {
-        pub fn get_by_id(id_: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
+        pub fn get_by_id(
+            id_: i32,
+            conn: &mut SqliteConnection,
+        ) -> Result<Self, diesel::result::Error> {
             use crate::schema::races::dsl::*;
             use diesel::prelude::*;
-            races
-                .filter(id.eq(id_))
-                .first(conn)
+            races.filter(id.eq(id_)).first(conn)
         }
     }
 
@@ -166,24 +167,24 @@ pub mod race {
 }
 
 pub mod race_run {
+    use crate::models::asyncs::race::AsyncRace;
     use crate::schema::race_runs;
     use crate::utils::epoch_timestamp;
     use crate::utils::uuid_string;
     use crate::utils::{format_duration_hms, time_delta_lifted, timestamp_to_naivedatetime};
     use chrono::NaiveDateTime;
     use diesel::prelude::*;
+    use diesel::sql_types::Text;
+    use diesel::AsExpression;
     use diesel_enum_derive::DieselEnum;
     use lazy_static::lazy_static;
     use rand::rngs::ThreadRng;
-    use rand::{Rng, thread_rng};
+    use rand::{thread_rng, Rng};
     use serde::Serialize;
     use std::fmt::Formatter;
     use std::str::FromStr;
     use twilight_model::id::marker::{MessageMarker, UserMarker};
     use twilight_model::id::Id;
-    use diesel::AsExpression;
-    use diesel::sql_types::Text;
-    use crate::models::asyncs::race::AsyncRace;
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
             regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
@@ -243,7 +244,7 @@ pub mod race_run {
             Self { one, three, four }
         }
 
-        fn new_random() -> Self {
+        pub fn new_random() -> Self {
             loop {
                 let f = Self::_new_random();
                 if f._validate() {
@@ -453,7 +454,6 @@ pub mod race_run {
                 .map_err(|e| e.to_string())?;
             Ok(runs.pop())
         }
-
     }
 
     // instance
@@ -554,10 +554,12 @@ pub mod race_run {
             self.message_id = Some(message_id.to_string());
         }
 
-        pub fn get_race(&self, conn: &mut SqliteConnection) -> Result<AsyncRace, diesel::result::Error> {
+        pub fn get_race(
+            &self,
+            conn: &mut SqliteConnection,
+        ) -> Result<AsyncRace, diesel::result::Error> {
             AsyncRace::get_by_id(self.race_id, conn)
         }
-
     }
 
     // It is impossible in Rust to `impl Into<String> for Id<UserMarker>`
