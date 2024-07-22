@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use diesel::SqliteConnection;
 use log::{debug, error, info, warn};
 use nmg_league_bot::config::CONFIG;
+use nmg_league_bot::models::asyncs::race_run::Filenames;
 use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
@@ -360,7 +361,7 @@ async fn initial_setup(
     // and let them know about it in discord
     let mut success = true;
 
-    for player in vec![&p1, &p2] {
+    for player in [&p1, &p2] {
         match &player.racetime_user_id {
             Some(id) => {
                 if let Err(e) = ctx.invite_user(id).await {
@@ -376,7 +377,7 @@ async fn initial_setup(
     let rd = ctx.data().await;
 
     if !success {
-        // oh this just fails if the *send* fails, it doesn't wait for a response.
+        // this fails if the *send* fails, it doesn't wait for a response.
         // see Self::error for error handling such as it is
         if let Err(_e) = ctx.set_open().await {
             // retry once i guess?
@@ -399,7 +400,19 @@ async fn initial_setup(
             url_from_slug(&rd.slug)
         ))?
         .await?;
-    info!("Discord message sent");
+
+    for player in [&p1, &p2] {
+        let filenames = Filenames::new_random();
+        if let Err(e) = ctx
+            .send_message(&format!(
+                "{}: please use the filenames {filenames}",
+                player.name
+            ))
+            .await
+        {
+            warn!("{e}");
+        }
+    }
     Ok(())
 }
 
