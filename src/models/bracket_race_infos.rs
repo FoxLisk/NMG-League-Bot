@@ -32,6 +32,9 @@ pub struct BracketRaceInfo {
 }
 
 impl BracketRaceInfo {
+    pub fn get_id(&self) -> BracketRaceInfoId {
+        BracketRaceInfoId(self.id)
+    }
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         bracket_race_infos::table
             .filter(bracket_race_infos::id.eq(id))
