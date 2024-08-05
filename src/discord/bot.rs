@@ -36,6 +36,7 @@ use crate::discord::constants::{
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interaction_handlers::application_commands::handle_application_interaction;
 use crate::discord::interactions_utils::{

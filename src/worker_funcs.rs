@@ -2,13 +2,12 @@
 this shitty module is stuff for workers::* to call so that I can also call it from test code
  */
 
-use crate::config::CONFIG;
 use crate::models::bracket_race_infos::BracketRaceInfo;
-use crate::models::bracket_races::{BracketRace, BracketRaceStateError, Outcome, PlayerResult};
+use crate::models::bracket_races::{BracketRace, Outcome, PlayerResult};
 use crate::models::player::Player;
 use crate::models::season::Season;
 use crate::racetime_types::{Entrant, RacetimeRace};
-use crate::{ChannelConfig, NMGLeagueBotError};
+use crate::{BracketRaceStateError, ChannelConfig, NMGLeagueBotError};
 use diesel::SqliteConnection;
 use log::{debug, info, warn};
 use std::collections::HashMap;
@@ -17,7 +16,6 @@ use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_model::channel::message::embed::{Embed, EmbedField};
 use twilight_model::channel::Message;
-use twilight_model::guild::scheduled_event::Status;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twilight_validate::message::MessageValidationError;
@@ -221,18 +219,6 @@ pub async fn trigger_race_finish(
                 options.bracket_race.id
             );
         }
-        if let Some(eid) = options.info.get_scheduled_event_id() {
-            if let Err(e) = c
-                .update_guild_scheduled_event(CONFIG.guild_id, eid)
-                .status(Status::Completed)
-                .await
-            {
-                warn!(
-                    "Error ending scheduled event for race {}: {e}",
-                    options.bracket_race.id
-                );
-            }
-        }
 
         // TODO: maybe clear other messages? under some circumstances?
     }
@@ -416,7 +402,6 @@ mod tests {
             id,
             bracket_race_id,
             scheduled_for,
-            scheduled_event_id: None,
             commportunities_message_id: None,
             restream_request_message_id: None,
             racetime_gg_url: None,

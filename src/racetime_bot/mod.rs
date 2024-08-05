@@ -1,6 +1,6 @@
 mod token;
-
 use crate::discord::constants::UPDATE_USER_INFO_CMD;
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::shutdown::Shutdown;
 use async_trait::async_trait;

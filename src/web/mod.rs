@@ -35,7 +35,7 @@ use std::ops::{Deref, DerefMut};
 use tokio::sync::mpsc::Sender;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
-
+use crate::discord::discord_state::DiscordOperations;
 mod api;
 mod auth;
 mod internal_api;

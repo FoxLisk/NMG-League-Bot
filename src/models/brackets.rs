@@ -1,11 +1,11 @@
 use crate::models::bracket_races::{
-    insert_bulk, BracketRace, BracketRaceStateError, MatchResultError, NewBracketRace, Outcome,
+    insert_bulk, BracketRace, MatchResultError, NewBracketRace, Outcome,
 };
 use crate::models::bracket_rounds::{BracketRound, NewBracketRound};
 use crate::models::player::Player;
 use crate::models::season::Season;
 use crate::schema::brackets;
-use crate::{save_fn, update_fn, NMGLeagueBotError};
+use crate::{save_fn, update_fn, BracketRaceStateError, NMGLeagueBotError};
 use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
@@ -36,7 +36,7 @@ pub enum BracketType {
     RoundRobin,
 }
 
-#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize)]
+#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Selectable)]
 #[allow(unused)]
 pub struct Bracket {
     pub id: i32,

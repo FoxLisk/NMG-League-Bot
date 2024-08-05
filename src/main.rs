@@ -72,6 +72,7 @@ async fn main() {
     .expect("Couldn't construct twitch client");
 
     // setup some channels
+    #[allow(unused)]
     let (upcoming_races_tx, upcoming_races_rx) =
         tokio::sync::mpsc::channel::<BracketRaceInfoId>(100);
     let state = discord::bot::launch(
@@ -106,6 +107,11 @@ async fn main() {
     ));
 
     tokio::spawn(workers::forfeit_own_races::cron(
+        shutdown_send.subscribe(),
+        state.clone(),
+    ));
+
+    tokio::spawn(workers::race_event_status_worker::cron(
         shutdown_send.subscribe(),
         state.clone(),
     ));

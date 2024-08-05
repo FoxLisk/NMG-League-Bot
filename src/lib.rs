@@ -87,6 +87,22 @@ pub enum RaceTimeBotError {
     HandlerDisconnect,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum RaceEventError {
+    #[error("Missing player with id {0}")]
+    MissingPlayer(i32),
+}
+
+#[derive(Debug, Error)]
+pub enum BracketRaceStateError {
+    #[error("Invalid state")]
+    InvalidState,
+    #[error("Deserialization error: {0}")]
+    ParseError(#[from] serde_json::Error),
+    #[error("Database error: {0}")]
+    DatabaseError(#[from] diesel::result::Error),
+}
+
 #[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
@@ -134,6 +150,12 @@ pub enum NMGLeagueBotError {
     #[cfg(feature = "racetime_bot")]
     #[error("{0}")]
     RaceTimeBotError(#[from] RaceTimeBotError),
+
+    #[error("Error managing race event: {0}")]
+    RaceEventError(#[from] RaceEventError),
+
+    #[error("Error with a BracketRaceState: {0}")]
+    RaceStateError(#[from] BracketRaceStateError),
 }
 
 #[cfg(feature = "racetime_bot")]

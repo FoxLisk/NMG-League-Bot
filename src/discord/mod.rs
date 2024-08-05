@@ -1,34 +1,31 @@
 extern crate rand;
 extern crate tokio;
 
+use crate::discord::discord_state::DiscordOperations;
+use bb8::RunError;
+use chrono::{DateTime, TimeZone};
+use diesel::{ConnectionError, SqliteConnection};
+use log::{info, warn};
 use std::env::VarError;
 use std::fmt::{Display, Formatter};
 use std::ops::DerefMut;
 use std::sync::Arc;
-
-use bb8::RunError;
-use chrono::{DateTime, Duration, TimeZone, Utc};
-use diesel::{ConnectionError, SqliteConnection};
-use itertools::Itertools as _;
-use log::{info, warn};
 use twilight_http::request::channel::reaction::RequestReactionType;
-use twilight_http::Client;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
 use twilight_model::application::command::CommandOptionType;
 use twilight_model::application::interaction::application_command::CommandDataOption;
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::Message;
-use twilight_model::id::marker::{GuildMarker, ScheduledEventMarker, UserMarker};
+use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
-use twilight_model::util::Timestamp as ModelTimestamp;
 use twilight_util::builder::embed::EmbedFooterBuilder;
 
 use crate::discord::constants::CUSTOM_ID_START_RUN;
 use nmg_league_bot::models::asyncs::race::AsyncRace;
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, BracketRaceStateError};
+use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState};
 use nmg_league_bot::models::player::{MentionOptional, Player};
 use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
 
@@ -36,11 +33,10 @@ use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::worker_funcs::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
-use nmg_league_bot::NMGLeagueBotError;
+use nmg_league_bot::BracketRaceStateError;
 use thiserror::Error;
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::channel::message::{Component, Embed};
-use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::guild::Permissions;
 pub(crate) use webhooks::Webhooks;
 
@@ -292,30 +288,7 @@ async fn schedule_race<Tz: TimeZone>(
     let p2_name = p2r
         .mention_maybe()
         .unwrap_or("Error finding player".to_string());
-    if let (Ok(Some(p1)), Ok(Some(p2))) = (p1r, p2r) {
-        let bracket_name = the_race
-            .bracket(conn)
-            .map(|b| b.name)
-            .unwrap_or("".to_string());
-        match create_or_update_event(
-            bracket_name,
-            &old_info,
-            &new_info,
-            &p1,
-            &p2,
-            CONFIG.guild_id,
-            &state.discord_client,
-        )
-        .await
-        {
-            Ok(evt) => {
-                new_info.set_scheduled_event_id(evt.id);
-            }
-            Err(e) => {
-                warn!("Error creating Discord event: {}", e);
-            }
-        };
-
+    if let (Ok(Some(_p1)), Ok(Some(_p2))) = (p1r, p2r) {
         // clear some old stuff up
         // TODO: parallelize? this method on its own is gonna come close to hitting discord API
         //       limits, so maybe don't bother lol
@@ -425,68 +398,9 @@ async fn create_commportunities_post(
     Ok(m)
 }
 
-async fn create_or_update_event(
-    bracket_name: String,
-    old_info: &BracketRaceInfo,
+pub async fn comm_ids_and_names<D: DiscordOperations>(
     info: &BracketRaceInfo,
-    p1: &Player,
-    p2: &Player,
-    gid: Id<GuildMarker>,
-    client: &Client,
-) -> Result<GuildScheduledEvent, NMGLeagueBotError> {
-    let event_name = format!("{bracket_name}: {} vs {}", p1.name, p2.name);
-    // this relies on the database being in sync with discord correctly. if you have
-    // a race that's `scheduled()` for the future, but with a scheduled event ID that is
-    // in the past, this function won't work correctly.
-
-    // i'm not worried enough about it to add the extra complexity & web requests to check
-    // discord's state every time
-    let is_past = if let Some(was) = old_info.scheduled() {
-        let now = Utc::now();
-        let is_past = was < now;
-        if is_past {
-            info!("I believe that race {event_name} is in the past, so I will not be updating its event");
-        }
-        is_past
-    } else {
-        false
-    };
-    let when = info
-        .scheduled()
-        .ok_or(NMGLeagueBotError::MissingTimestamp)?;
-    let start = ModelTimestamp::from_secs(when.timestamp())?;
-    let end = ModelTimestamp::from_secs((when.clone() + Duration::minutes(100)).timestamp())?;
-
-    let resp = if let (false, Some(existing_id)) = (is_past, info.get_scheduled_event_id()) {
-        client
-            .update_guild_scheduled_event(gid, existing_id)
-            .scheduled_start_time(&start)
-            .scheduled_end_time(Some(&end))
-            .await
-    } else {
-        client
-            .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
-            .external(&event_name, &multistream_link(p1, p2), &start, &end)?
-            .await
-    };
-    resp?.model().await.map_err(From::from)
-}
-
-fn multistream_link(p1: &Player, p2: &Player) -> String {
-    format!(
-        "https://multistre.am/{}/{}/layout4/",
-        p1.twitch_user_login
-            .clone()
-            .unwrap_or("<unknown>".to_string()),
-        p2.twitch_user_login
-            .clone()
-            .unwrap_or("<unknown>".to_string()),
-    )
-}
-
-async fn comm_ids_and_names(
-    info: &BracketRaceInfo,
-    state: &Arc<DiscordState>,
+    state: &Arc<D>,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<(Id<UserMarker>, String)>, diesel::result::Error> {
     let comms = info.commentator_signups(conn)?;
@@ -544,27 +458,4 @@ pub fn generate_invite_link() -> Result<String, VarError> {
         | Permissions::USE_SLASH_COMMANDS;
     let permissions = permissions.bits() | (1 << 44); // this is CREATE_EVENTS, an undocumented(?) new(?) permission
     Ok(format!("https://discord.com/oauth2/authorize?client_id={client_id}&permissions={permissions}&scope=bot%20applications.commands"))
-}
-
-async fn update_scheduled_event(
-    gid: Id<GuildMarker>,
-    gse_id: Id<ScheduledEventMarker>,
-    commentators: Option<&Vec<String>>,
-    restream_channel: Option<String>,
-    state: &Arc<DiscordState>,
-) -> Result<(), NMGLeagueBotError> {
-    let mut req = state
-        .discord_client
-        .update_guild_scheduled_event(gid, gse_id);
-    let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
-
-    if let Some(comm_str) = thingy.as_ref() {
-        req = req.description(Some(comm_str))?;
-    }
-
-    if let Some(chan) = restream_channel.as_ref() {
-        req = req.location(Some(chan));
-    }
-    req.await?;
-    Ok(())
 }

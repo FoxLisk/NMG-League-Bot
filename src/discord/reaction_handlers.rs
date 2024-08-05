@@ -1,3 +1,4 @@
+use crate::discord::discord_state::DiscordOperations;
 use diesel::ConnectionError;
 use itertools::Itertools;
 use log::{debug, warn};
@@ -21,7 +22,7 @@ use crate::discord::{
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::utils::race_to_nice_embeds;
 
-use super::{comm_ids_and_names, embed_with_title, update_scheduled_event};
+use super::{comm_ids_and_names, embed_with_title};
 
 pub async fn handle_reaction_remove(reaction: Box<ReactionRemove>, state: &Arc<DiscordState>) {
     debug!("Handling reaction removed: {:?}", reaction);
@@ -159,19 +160,11 @@ async fn handle_commentary_confirmation(
 ) -> Result<(), ReactionAddError> {
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
-    let names = comm_ids_and_names(&info, state, conn)
+    let names: Vec<String> = comm_ids_and_names(&info, state, conn)
         .await?
         .into_iter()
         .map(|(_, name)| name)
         .collect();
-    if let Some(gse) = info.get_scheduled_event_id() {
-        // gsus let me live
-        if let Some(gid) = _reaction.guild_id {
-            if let Err(e) = update_scheduled_event(gid, gse, Some(&names), None, state).await {
-                warn!("Error updating scheduled event: {:?}", e);
-            }
-        }
-    }
 
     // we're sending almost identical messages to zsr & commentary-discussion
     let mut fields = race_to_nice_embeds(&info, conn)?;
@@ -348,21 +341,7 @@ async fn handle_restream_request_reaction(
 
     let mut cxn = state.diesel_cxn().await?;
     let conn = cxn.deref_mut();
-    let comms = comm_ids_and_names(&info, state, conn)
-        .await?
-        .into_iter()
-        .map(|(_, n)| n)
-        .collect::<Vec<_>>();
-    if let Some(gse_id) = info.get_scheduled_event_id() {
-        // TODO: if the event somehow *doesn't* exist, we should probably create it, yeah?
-        if let Some(gid) = reaction.guild_id {
-            if let Err(e) =
-                update_scheduled_event(gid, gse_id, Some(&comms), Some(url), state).await
-            {
-                warn!("Error updating scheduled event: {:?}", e);
-            }
-        }
-    }
+
     let (comm_ids, comm_names): (Vec<Id<UserMarker>>, Vec<String>) =
         comm_ids_and_names(&info, state, conn)
             .await?

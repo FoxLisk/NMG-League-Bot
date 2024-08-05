@@ -16,7 +16,7 @@ use twilight_model::id::Id;
 #[derive(Debug, Clone)]
 pub struct BracketRaceInfoId(pub i32);
 
-#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone)]
+#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone, Selectable)]
 #[diesel(treat_none_as_null = true)]
 pub struct BracketRaceInfo {
     pub id: i32,

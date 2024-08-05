@@ -6,13 +6,15 @@ use crate::discord::constants::{
     SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
     UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
+
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
     autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_data,
     plain_interaction_response, update_resp_to_plain_content,
 };
 use crate::discord::{
-    comm_ids_and_names, notify_racer, update_scheduled_event, ErrorResponse, ScheduleRaceError,
+notify_racer, ErrorResponse, ScheduleRaceError,
 };
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
@@ -28,8 +30,7 @@ use either::Either;
 use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_races::{
-    get_current_round_race_for_player, BracketRace, BracketRaceState, BracketRaceStateError,
-    PlayerResult,
+    get_current_round_race_for_player, BracketRace, BracketRaceState, PlayerResult,
 };
 use nmg_league_bot::models::brackets::{Bracket, BracketType, NewBracket};
 use nmg_league_bot::models::player::{NewPlayer, Player};
@@ -38,7 +39,7 @@ use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
 use nmg_league_bot::utils::{ResultCollapse, ResultErrToString};
 use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishError, RaceFinishOptions};
-use nmg_league_bot::{utils, NMGLeagueBotError};
+use nmg_league_bot::{utils, BracketRaceStateError, NMGLeagueBotError};
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
@@ -584,21 +585,6 @@ async fn handle_commentator_command(
             }
             _ => {}
         },
-    }
-    let comms = comm_ids_and_names(&info, state, &mut conn)
-        .await
-        .map_err_to_string()?
-        .into_iter()
-        .map(|(_, n)| n)
-        .collect::<Vec<_>>();
-    if let Some(gse_id) = info.get_scheduled_event_id() {
-        if let Err(e) =
-            update_scheduled_event(CONFIG.guild_id.clone(), gse_id, Some(&comms), None, state).await
-        {
-            state
-                .submit_error(format!("Error updating scheduled event: {e}"))
-                .await;
-        }
     }
 
     // it would be nice to also update the restream request message
