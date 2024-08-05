@@ -15,7 +15,6 @@ use nmg_league_bot::{
     schema, NMGLeagueBotError, RaceEventError,
 };
 use tokio::sync::broadcast::Receiver;
-use twilight_http::request::scheduled_event::{GetGuildScheduledEvents, UpdateGuildScheduledEvent};
 use twilight_model::{
     guild::scheduled_event::{GuildScheduledEvent, Status},
     id::{marker::ScheduledEventMarker, Id},
@@ -113,7 +112,7 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
             None
         };
 
-        match do_update_stuff(&bundle, new_status, existing_event, state).await {
+        match do_update_stuff(new_status, existing_event, state).await {
             Ok(Some(e)) => {
                 bundle.bri.set_scheduled_event_id(e.id);
                 if let Err(e) = bundle.bri.update(conn) {
@@ -147,17 +146,13 @@ async fn get_existing_events_by_id<D: DiscordOperations>(
 /// returns a GuildScheduledEvent if one is created (for persistence reasons)
 // N.B. bundle parameter should probably be removed, the logging isnt really worth it
 async fn do_update_stuff<D: DiscordOperations>(
-    bundle: &RaceInfoBundle,
     new_status: RaceEventContentAndStatus,
     existing_event: Option<GuildScheduledEvent>,
     state: &Arc<D>,
 ) -> Result<Option<GuildScheduledEvent>, NMGLeagueBotError> {
-    let RaceInfoBundle { race, bri, bracket } = bundle;
-
     match (existing_event, new_status) {
         (Some(event), RaceEventContentAndStatus::Completed) => {
             // end event (if it's not ended)
-            println!("Ending event for race {}", race.id);
             let e = state
                 .update_scheduled_event(CONFIG.guild_id, event.id)
                 .status(Status::Completed)
@@ -166,13 +161,11 @@ async fn do_update_stuff<D: DiscordOperations>(
         }
         (None, RaceEventContentAndStatus::Completed) => {
             // nothing to do
-            println!("race {} is already (correctly) completed", race.id);
             Ok(None)
         }
         (Some(event), RaceEventContentAndStatus::Event(new_status)) => {
             // update the event (if necessary)
             if events_match(&event, &new_status)? {
-                println!("Race {} already matches event!", new_status.name);
                 Ok(None)
             } else {
                 state
@@ -293,37 +286,6 @@ async fn get_event_content<D: DiscordOperations>(
     }))
 }
 
-/*
-    let resp = if let (false, Some(existing_id)) = (is_past, info.get_scheduled_event_id()) {
-        client
-            .update_guild_scheduled_event(gid, existing_id)
-            .scheduled_start_time(&start)
-            .scheduled_end_time(Some(&end))
-            .await
-    } else {
-        client
-            .create_guild_scheduled_event(gid, PrivacyLevel::GuildOnly)
-            .external(&event_name, &multistream_link(p1, p2), &start, &end)?
-            .await
-    };
-*/
-
-/*
-let mut req = state
-        .discord_client
-        .update_guild_scheduled_event(gid, gse_id);
-    let thingy = commentators.map(|comms| format!(" with comms by {}", comms.iter().join(" and ")));
-
-    if let Some(comm_str) = thingy.as_ref() {
-        req = req.description(Some(comm_str))?;
-    }
-
-    if let Some(chan) = restream_channel.as_ref() {
-        req = req.location(Some(chan));
-    }
-    req.await?;
-    Ok(()) */
-
 /// retrieves every race that has a BRI in the current season (i.e. every race that has been scheduled)
 /// This includes completed races and races from completed rounds.
 fn get_season_race_info(
@@ -381,7 +343,6 @@ mod tests {
             brackets::{Bracket, BracketType, NewBracket},
             player::{NewPlayer, Player},
             player_bracket_entries::NewPlayerBracketEntry,
-            race_event_statuses::RaceEventContentAndStatus,
             season::{NewSeason, Season, SeasonState},
         },
         schema,
@@ -391,7 +352,7 @@ mod tests {
     use crate::{
         discord::discord_state::MockDiscordOperations,
         workers::race_event_status_worker::{
-            get_event_content, RaceEventContent, RaceEventStatus, RaceInfoBundle,
+            get_event_content, RaceEventContent, RaceEventContentAndStatus,
         },
     };
 
@@ -605,11 +566,4 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_equality_stuff_to_build_my_confidence() {
-        // let eq_cases = [
-        //     (RaceEventContentAndStatus::Completed)
-        //     (Some())
-        // ];
-    }
 }
