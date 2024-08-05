@@ -1,3 +1,11 @@
+//! Worker to sync Discord event status with DB race scheduling information
+//!
+//! This periodically scans the DB for interesting races, compares them with the
+//! set of scheduled events in the Discord, and resolves discrepancies by creating or
+//! updating events as necessary.
+//!
+//! This means that events will get reliably updated on any relevant change, including
+//! small things like players changing their nicknames.
 use std::{collections::HashMap, ops::DerefMut, sync::Arc, time::Duration};
 
 use diesel::SqliteConnection;
@@ -27,15 +35,17 @@ use crate::{
     shutdown::Shutdown,
 };
 
+/// describe the fields that should be populated in an event
 #[derive(Debug)]
-pub struct RaceEventContent {
-    pub name: String,
-    pub location: String,
+struct RaceEventContent {
+    name: String,
+    location: String,
     /// races without commentators have no description
-    pub description: Option<String>,
-    /// secs from a DateTime.timestamp(), can be converted to twilight_model::util::Timestamp
-    pub start: i64,
-    pub end: i64,
+    description: Option<String>,
+    /// use [self.start_timestamp()] instead of this
+    start: i64,
+    /// use [self.end_timestamp()] instead of this
+    end: i64,
 }
 
 impl RaceEventContent {
@@ -48,8 +58,9 @@ impl RaceEventContent {
     }
 }
 
+/// Information about what an event should look like
 #[derive(Debug)]
-pub enum RaceEventContentAndStatus {
+enum RaceEventContentAndStatus {
     /// indicates that, if there's an event, we should complete it, and if there's not we don't create one
     Completed,
     /// indicates that we should create or update an existing event to the state defined here
@@ -112,6 +123,13 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
             None
         };
 
+        // since this uses *actual* events that match the event_id on the BRI,
+        // this will have some weird behaviours if the DB is out of sync with the events -
+        // i think if we created an event and then somehow changed BRI.scheduled_event_id to a wrong value,
+        // we'd create a new duplicated event with the same info and set the BRI's event id to that value.
+        //
+        // in practice idk how that would ever happen.
+        // it has the nice side effect that it handles testing cases nicely when I copy the DB from prod lol
         match do_update_stuff(new_status, existing_event, state).await {
             Ok(Some(e)) => {
                 bundle.bri.set_scheduled_event_id(e.id);
@@ -144,7 +162,6 @@ async fn get_existing_events_by_id<D: DiscordOperations>(
 /// does any discord updates that are necessary (creating or updating events)
 ///
 /// returns a GuildScheduledEvent if one is created (for persistence reasons)
-// N.B. bundle parameter should probably be removed, the logging isnt really worth it
 async fn do_update_stuff<D: DiscordOperations>(
     new_status: RaceEventContentAndStatus,
     existing_event: Option<GuildScheduledEvent>,
@@ -152,7 +169,7 @@ async fn do_update_stuff<D: DiscordOperations>(
 ) -> Result<Option<GuildScheduledEvent>, NMGLeagueBotError> {
     match (existing_event, new_status) {
         (Some(event), RaceEventContentAndStatus::Completed) => {
-            // end event (if it's not ended)
+            // race is over; end event (if it's not ended)
             let e = state
                 .update_scheduled_event(CONFIG.guild_id, event.id)
                 .status(Status::Completed)
@@ -160,11 +177,11 @@ async fn do_update_stuff<D: DiscordOperations>(
             Ok(Some(e.model().await?))
         }
         (None, RaceEventContentAndStatus::Completed) => {
-            // nothing to do
+            // race is over, event is already ended; nothing to do
             Ok(None)
         }
         (Some(event), RaceEventContentAndStatus::Event(new_status)) => {
-            // update the event (if necessary)
+            // race details have changed; update the event (if necessary)
             if events_match(&event, &new_status)? {
                 Ok(None)
             } else {
@@ -180,7 +197,7 @@ async fn do_update_stuff<D: DiscordOperations>(
             }
         }
         (None, RaceEventContentAndStatus::Event(new_status)) => {
-            // create
+            // race has been scheduled but there's no event yet; create one
             let resp = state
                 .create_scheduled_event(CONFIG.guild_id)
                 .external(
@@ -231,7 +248,6 @@ fn multistream_link(p1: &Player, p2: &Player) -> String {
 /// from the main discord for comms who aren't also signed up as players
 async fn get_event_content<D: DiscordOperations>(
     bundle: &RaceInfoBundle,
-
     players: &HashMap<i32, Player>,
     state: &Arc<D>,
     conn: &mut SqliteConnection,
@@ -565,5 +581,4 @@ mod tests {
             )),
         }
     }
-
 }

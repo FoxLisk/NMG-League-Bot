@@ -72,7 +72,6 @@ async fn main() {
     .expect("Couldn't construct twitch client");
 
     // setup some channels
-    #[allow(unused)]
     let (upcoming_races_tx, upcoming_races_rx) =
         tokio::sync::mpsc::channel::<BracketRaceInfoId>(100);
     let state = discord::bot::launch(
