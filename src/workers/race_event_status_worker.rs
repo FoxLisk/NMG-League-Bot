@@ -8,6 +8,7 @@
 //! small things like players changing their nicknames.
 use std::{collections::HashMap, ops::DerefMut, sync::Arc, time::Duration};
 
+use chrono::Utc;
 use diesel::SqliteConnection;
 use itertools::Itertools as _;
 use log::{info, warn};
@@ -100,7 +101,6 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
     let mut conn_o = state.diesel_cxn().await?;
     let conn = conn_o.deref_mut();
     let (race_infos, players) = get_season_race_info(conn)?;
-    println!("Race infos: {race_infos:?}");
     let mut existing_events = get_existing_events_by_id(state).await?;
     for e in existing_events.values() {
         println!("Existing event: {} - status {:?}", e.name, e.status);
@@ -130,7 +130,7 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
         //
         // in practice idk how that would ever happen.
         // it has the nice side effect that it handles testing cases nicely when I copy the DB from prod lol
-        match do_update_stuff(new_status, existing_event, state).await {
+        match do_update_stuff(new_status, existing_event.as_ref(), state).await {
             Ok(Some(e)) => {
                 bundle.bri.set_scheduled_event_id(e.id);
                 if let Err(e) = bundle.bri.update(conn) {
@@ -142,7 +142,10 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
             }
             Ok(None) => {}
             Err(e) => {
-                warn!("Error managing event for race {}: {e}", bundle.race.id);
+                warn!(
+                    "Error managing event for race {}: {e} - existing event is {existing_event:?}",
+                    bundle.race.id
+                );
             }
         }
     }
@@ -164,15 +167,20 @@ async fn get_existing_events_by_id<D: DiscordOperations>(
 /// returns a GuildScheduledEvent if one is created (for persistence reasons)
 async fn do_update_stuff<D: DiscordOperations>(
     new_status: RaceEventContentAndStatus,
-    existing_event: Option<GuildScheduledEvent>,
+    existing_event: Option<&GuildScheduledEvent>,
     state: &Arc<D>,
 ) -> Result<Option<GuildScheduledEvent>, NMGLeagueBotError> {
     match (existing_event, new_status) {
         (Some(event), RaceEventContentAndStatus::Completed) => {
+            let new_event_status = match event.status {
+                // active races must be completed; all others must be cancelled
+                Status::Active => Status::Completed,
+                _ => Status::Cancelled,
+            };
             // race is over; end event (if it's not ended)
             let e = state
                 .update_scheduled_event(CONFIG.guild_id, event.id)
-                .status(Status::Completed)
+                .status(new_event_status)
                 .await?;
             Ok(Some(e.model().await?))
         }
@@ -181,7 +189,7 @@ async fn do_update_stuff<D: DiscordOperations>(
             Ok(None)
         }
         (Some(event), RaceEventContentAndStatus::Event(new_status)) => {
-            // race details have changed; update the event (if necessary)
+            // race is scheduled; compare details and update if necessary
             if events_match(&event, &new_status)? {
                 Ok(None)
             } else {
@@ -197,6 +205,10 @@ async fn do_update_stuff<D: DiscordOperations>(
             }
         }
         (None, RaceEventContentAndStatus::Event(new_status)) => {
+            if new_status.start < Utc::now().timestamp() {
+                // a race was scheduled for the past somehow - creating events in the past gives us a discord API error, so let's not do that
+                return Ok(None);
+            }
             // race has been scheduled but there's no event yet; create one
             let resp = state
                 .create_scheduled_event(CONFIG.guild_id)
