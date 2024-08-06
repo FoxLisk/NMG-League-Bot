@@ -13,16 +13,14 @@ use crate::discord::interactions_utils::{
     autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_data,
     plain_interaction_response, update_resp_to_plain_content,
 };
-use crate::discord::{
-notify_racer, ErrorResponse, ScheduleRaceError,
-};
+use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
 use std::future::Future;
 
-use chrono::{DateTime, Duration, TimeZone, Utc};
+use chrono::{DateTime, Duration, TimeDelta, TimeZone, Utc};
 
 use diesel::result::Error;
 use diesel::SqliteConnection;
@@ -472,10 +470,10 @@ fn handle_schedule_race_autocomplete(
 ) -> Result<InteractionResponse, String> {
     get_focused_opt!("day", &mut ac.options, String)?;
 
-    let today = Utc::now().date().with_timezone(&chrono_tz::US::Eastern);
+    let today = Utc::now().with_timezone(&chrono_tz::US::Eastern);
     let mut options = Vec::with_capacity(7);
     for i in 0..7 {
-        let dur = Duration::days(i);
+        let dur = TimeDelta::days(i);
         let day = today.clone() + dur;
         options.push(CommandOptionChoice {
             name: day.format("%A, %B %d").to_string(),
