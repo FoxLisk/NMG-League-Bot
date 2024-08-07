@@ -6,6 +6,7 @@ use crate::models::season::Season;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
+use crate::BracketRaceStateError;
 use crate::NMGLeagueBotError;
 use chrono::{DateTime, Duration, TimeZone};
 use diesel::prelude::*;
@@ -15,23 +16,12 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
-use thiserror::Error;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
 pub enum BracketRaceState {
     New,
     Scheduled,
     Finished,
-}
-
-#[derive(Debug, Error)]
-pub enum BracketRaceStateError {
-    #[error("Invalid state")]
-    InvalidState,
-    #[error("Deserialization error: {0}")]
-    ParseError(#[from] serde_json::Error),
-    #[error("Database error: {0}")]
-    DatabaseError(#[from] diesel::result::Error),
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -70,7 +60,7 @@ pub enum Outcome {
     P2Win,
 }
 
-#[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone)]
+#[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone, Selectable)]
 pub struct BracketRace {
     pub id: i32,
     pub bracket_id: i32,
@@ -194,9 +184,9 @@ impl BracketRace {
         Ok((prior, info))
     }
 
-    /// only works on runs in the New or Scheduled state unless force is true
-    /// will overwrite existing partial results with new results but won't set them to null
-    /// updates state & outcome to finished if that is the case
+    /// only works on runs in the New or Scheduled state unless force is true  
+    /// will overwrite existing partial results with new results but won't set them to null  
+    /// updates state & outcome to finished if that is the case  
     pub fn add_results(
         &mut self,
         p1: Option<&PlayerResult>,

@@ -8,6 +8,7 @@ use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use std::ops::DerefMut;
 use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
+use crate::discord::discord_state::DiscordOperations;
 
 async fn sweep(state: &Arc<DiscordState>) {
     let user = match state.cache.current_user() {

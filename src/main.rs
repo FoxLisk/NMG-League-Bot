@@ -110,6 +110,11 @@ async fn main() {
         state.clone(),
     ));
 
+    tokio::spawn(workers::race_event_status_worker::cron(
+        shutdown_send.subscribe(),
+        state.clone(),
+    ));
+
     #[cfg(feature = "racetime_bot")]
     {
         tokio::spawn(workers::upcoming_races_worker::cron(

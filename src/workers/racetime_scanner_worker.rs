@@ -7,7 +7,7 @@ use itertools::Itertools;
 use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceStateError};
+use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
@@ -15,6 +15,7 @@ use nmg_league_bot::utils::racetime_base_url;
 use nmg_league_bot::worker_funcs::{
     interesting_race, races_by_player_rtgg, trigger_race_finish, RaceFinishOptions,
 };
+use nmg_league_bot::BracketRaceStateError;
 use racetime_api::client::RacetimeClient;
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::{PastCategoryRaces, PastCategoryRacesBuilder};
@@ -25,6 +26,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
+use crate::discord::discord_state::DiscordOperations;
 
 #[derive(Error, Debug)]
 enum ScanError {

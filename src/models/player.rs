@@ -32,6 +32,9 @@ impl Player {
         Id::<UserMarker>::from_str(&self.discord_id)
     }
 
+    /// Returns a map of { id: Player }
+    /// 
+    /// Filtered to the specified users if the `ids` paramater is provided.
     pub fn by_id(
         ids: Option<Vec<i32>>,
         conn: &mut SqliteConnection,

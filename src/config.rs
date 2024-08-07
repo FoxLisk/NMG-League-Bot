@@ -30,6 +30,7 @@ const CANCEL_RACE_TIMEOUT_VAR: &str = "CANCEL_RACE_TIMEOUT";
 
 const CRON_TICKS_VAR: &str = "CRON_TICK_SECS";
 const RACETIME_TICK_SECS: &str = "RACETIME_TICK_SECS";
+const RACE_EVENT_WORKER_TICK_SECS_VAR: &str = "RACE_EVENT_WORKER_TICK_SECS";
 
 const GUILD_ID_VAR: &str = "LEAGUE_GUILD_ID";
 
@@ -87,6 +88,7 @@ pub struct Config {
     pub cancel_race_timeout: u64,
     pub cron_tick_seconds: u64,
     pub racetime_tick_secs: u64,
+    pub race_event_worker_tick_secs: u64,
 
     pub guild_id: Id<GuildMarker>,
 
@@ -152,6 +154,7 @@ impl Config {
             cancel_race_timeout: parse(CANCEL_RACE_TIMEOUT_VAR),
             cron_tick_seconds: parse(CRON_TICKS_VAR),
             racetime_tick_secs: parse(RACETIME_TICK_SECS),
+            race_event_worker_tick_secs: parse(RACE_EVENT_WORKER_TICK_SECS_VAR),
             guild_id: id_from_env(GUILD_ID_VAR),
             website_url: env_var(WEBSITE_URL_VAR),
             internal_api_secret: env_var(INTERNAL_API_SECRET_VAR),
