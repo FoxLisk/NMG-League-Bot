@@ -101,9 +101,6 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
     let conn = conn_o.deref_mut();
     let (race_infos, players) = get_season_race_info(conn)?;
     let mut existing_events = get_existing_events_by_id(state).await?;
-    for e in existing_events.values() {
-        println!("Existing event: {} - status {:?}", e.name, e.status);
-    }
 
     for mut bundle in race_infos {
         let new_status = match get_event_content(&bundle, &players, state, conn).await {
