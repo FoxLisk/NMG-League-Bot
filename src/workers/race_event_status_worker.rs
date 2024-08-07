@@ -76,8 +76,7 @@ struct RaceInfoBundle {
 }
 
 pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
-    // TODO: probably 2 minutes?
-    let mut intv = tokio::time::interval(Duration::from_secs(30));
+    let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
     loop {
         tokio::select! {
             _sd = sd.recv() => {
