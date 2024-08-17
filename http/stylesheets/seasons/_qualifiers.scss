@@ -21,8 +21,8 @@
     }
 
     table tbody {
-      tr {
-        border: 1px solid colors.$season-table-column-border-color;
+      tr td {
+        border-top: 1px solid colors.$season-table-column-border-color;
       }
 
       // Override alternating colors since half of the rows are obsolete and hidden by default
@@ -34,11 +34,18 @@
         background-color: colors.$obsolete-qualifier-row-color;
         font-size: 0.8rem;
         font-style: italic;
-        border: none;
+
+        td {
+          border-top: none;
+        }
 
         td.time {
           text-decoration: line-through;
         }
+      }
+
+      tr:not(.obsolete-qualifier-times) + tr.obsolete-qualifier-times td {
+        border-top: 1px solid colors.$season-table-column-border-color;
       }
     }
   }
