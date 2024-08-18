@@ -2,6 +2,7 @@
 
 * Internals: Discord event management is now asynchronous. This means there will be a slight delay after scheduling
   a race before it appears in the schedule.
+* Feature: Season 7 history blurb
 
 # Season 7
 

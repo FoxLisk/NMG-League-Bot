@@ -9,7 +9,12 @@
         <h1 class="title">Previous Seasons</h1>
     </div>
     <div class="page-content-container">
-
+        <div class="previous-season-item">
+            <h3 class="season-title">Season 7</h3>
+            Another season of Any% NMG, this time with
+            {{macros::link(href="/season/7", text="three swiss brackets")}}.
+        </div>
+        <hr class="season-separator" />
         <div class="previous-season-item">
             <h3 class="season-title">Season 6</h3>
             Season 6 was once again vanilla Any% NMG, this time with
