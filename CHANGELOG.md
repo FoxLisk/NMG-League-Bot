@@ -1,3 +1,8 @@
+# Season 8
+
+* Internals: Discord event management is now asynchronous. This means there will be a slight delay after scheduling
+  a race before it appears in the schedule.
+
 # Season 7
 
 * Feature: `/commentators {add,remove}` - admin-only commands to update commentators on races that have

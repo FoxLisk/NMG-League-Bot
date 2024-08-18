@@ -56,10 +56,7 @@ async fn start_race_for(
     mut conn: ConnectionWrapper<'_>,
 ) -> Json<Result<(), String>> {
     let res = match BracketRaceInfo::get_by_id(bracket_race_info_id, conn.deref_mut()) {
-        Ok(bri) => sender
-            .send(BracketRaceInfoId(bri.id))
-            .await
-            .map_err_to_string(),
+        Ok(bri) => sender.send(bri.get_id()).await.map_err_to_string(),
         Err(e) => Err(format!("Error getting BRI: {e}")),
     };
     Json(res)

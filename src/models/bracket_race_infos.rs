@@ -16,7 +16,7 @@ use twilight_model::id::Id;
 #[derive(Debug, Clone)]
 pub struct BracketRaceInfoId(pub i32);
 
-#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone)]
+#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone, Selectable)]
 #[diesel(treat_none_as_null = true)]
 pub struct BracketRaceInfo {
     pub id: i32,
@@ -32,6 +32,9 @@ pub struct BracketRaceInfo {
 }
 
 impl BracketRaceInfo {
+    pub fn get_id(&self) -> BracketRaceInfoId {
+        BracketRaceInfoId(self.id)
+    }
     pub fn get_by_id(id: i32, conn: &mut SqliteConnection) -> Result<Self, diesel::result::Error> {
         bracket_race_infos::table
             .filter(bracket_race_infos::id.eq(id))

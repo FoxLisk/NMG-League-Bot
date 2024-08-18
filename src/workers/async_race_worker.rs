@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
+use crate::discord::discord_state::DiscordOperations;
 
 fn format_finisher(run: &AsyncRaceRun) -> String {
     match run.state {

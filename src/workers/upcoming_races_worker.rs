@@ -1,3 +1,4 @@
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::shutdown::Shutdown;
 use chrono::{Duration, Utc};
@@ -29,7 +30,7 @@ async fn run_once(
         cur_szn.get_unfinished_races_starting_before(when.timestamp(), conn.deref_mut())?;
     for (bri, _) in upcoming {
         if bri.racetime_gg_url.is_none() {
-            let id = BracketRaceInfoId(bri.id);
+            let id = bri.get_id();
             if let Err(e) = upcoming_race_tx.send(id.clone()).await {
                 warn!("Error sending upcoming race: {e}");
             }

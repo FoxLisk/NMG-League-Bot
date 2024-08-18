@@ -1,5 +1,5 @@
 use crate::Webhooks;
-use bb8::{Pool, RunError};
+use bb8::{Pool, PooledConnection, RunError};
 use dashmap::DashMap;
 use diesel::ConnectionError;
 use log::warn;
@@ -11,17 +11,21 @@ use nmg_league_bot::utils::ResultErrToString;
 use nmg_league_bot::{ChannelConfig, NMGLeagueBotError};
 use racetime_api::client::RacetimeClient;
 use std::fmt::Display;
-use std::ops::DerefMut;
 use std::sync::Arc;
 use thiserror::Error;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
+use twilight_http::request::scheduled_event::{
+    CreateGuildScheduledEvent, UpdateGuildScheduledEvent,
+};
 use twilight_http::Client;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
+use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::guild::Role;
 use twilight_model::http::interaction::InteractionResponse;
 use twilight_model::id::marker::{
-    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker, UserMarker,
+    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker,
+    ScheduledEventMarker, UserMarker,
 };
 use twilight_model::id::Id;
 use twilight_model::user::User;
@@ -52,6 +56,81 @@ pub enum DiscordStateError {
     },
 }
 
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+pub trait DiscordOperations {
+    async fn submit_error<S: Display + Send + 'static>(&self, error: S);
+
+    fn interaction_client<'a>(&'a self) -> InteractionClient<'a>;
+
+    async fn get_private_channel(&self, user: Id<UserMarker>) -> Result<Id<ChannelMarker>, String>;
+
+    async fn has_admin_role(
+        &self,
+        user_id: Id<UserMarker>,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<bool, DiscordStateError>;
+
+    async fn has_nmg_league_admin_role(
+        &self,
+        user_id: Id<UserMarker>,
+    ) -> Result<bool, DiscordStateError>;
+
+    async fn has_nmg_league_role_by_name(
+        &self,
+        user_id: Id<UserMarker>,
+        role_name: &str,
+    ) -> Result<bool, DiscordStateError>;
+
+    async fn has_any_nmg_league_role<'a>(
+        &self,
+        user_id: Id<UserMarker>,
+        role_names: &[&'a str],
+    ) -> bool;
+    /// convenience method for getting a user's info from the twilight cache
+    fn get_user(&self, user_id: Id<UserMarker>) -> Option<User>;
+
+    async fn best_name_for(&self, user_id: Id<UserMarker>) -> String;
+
+    async fn create_response(
+        &self,
+        interaction_id: Id<InteractionMarker>,
+        token: &str,
+        resp: &InteractionResponse,
+    ) -> Result<(), twilight_http::Error>;
+
+    async fn application_command_run_by_admin(
+        &self,
+        ac: &Box<InteractionCreate>,
+    ) -> Result<bool, String>;
+
+    async fn create_response_err_to_str(
+        &self,
+        interaction_id: Id<InteractionMarker>,
+        token: &str,
+        resp: &InteractionResponse,
+    ) -> Result<(), String>;
+
+    // this method should be removed when i manage diesel connections per-event better
+    async fn diesel_cxn<'a>(
+        &'a self,
+    ) -> Result<PooledConnection<'a, DieselConnectionManager>, RunError<ConnectionError>>;
+
+    async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError>;
+
+    async fn get_guild_scheduled_events(
+        &self,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<Vec<GuildScheduledEvent>, NMGLeagueBotError>;
+
+    fn update_scheduled_event(
+        &self,
+        guild_id: Id<GuildMarker>,
+        event_id: Id<ScheduledEventMarker>,
+    ) -> UpdateGuildScheduledEvent<'_>;
+    fn create_scheduled_event(&self, guild_id: Id<GuildMarker>) -> CreateGuildScheduledEvent<'_>;
+}
+
 impl DiscordState {
     pub fn new(
         cache: InMemoryCache,
@@ -76,42 +155,6 @@ impl DiscordState {
             channel_config,
             racetime_client,
             twitch_client_bundle,
-        }
-    }
-
-    pub async fn submit_error<S: Display>(&self, error: S) {
-        let msg = format!("{error}");
-        if let Err(e) = self.webhooks.message_error(&msg).await {
-            warn!("Error sending message {msg} to error channel: {e}");
-        }
-    }
-
-    pub fn interaction_client(&self) -> InteractionClient {
-        self.discord_client.interaction(self.application_id.clone())
-    }
-
-    pub async fn get_private_channel(
-        &self,
-        user: Id<UserMarker>,
-    ) -> Result<Id<ChannelMarker>, String> {
-        if let Some(id) = self.private_channels.get(&user) {
-            return Ok(id.clone());
-        }
-
-        let created = self
-            .discord_client
-            .create_private_channel(user.clone())
-            .await
-            .map_err(|e| e.to_string())?;
-        if created.status().is_success() {
-            let chan = created.model().await.map_err(|e| e.to_string())?;
-            self.private_channels.insert(user, chan.id.clone());
-            Ok(chan.id)
-        } else {
-            Err(format!(
-                "Error result creating private channel: {}",
-                created.status()
-            ))
         }
     }
 
@@ -159,8 +202,58 @@ impl DiscordState {
         self.has_role(user_id, guild_id, role.id)
     }
 
+    /// Returns Some(URL) if the user has a pfp, otherwise None or an error
+    async fn get_player_discord_pfp(
+        &self,
+        p: &Player,
+    ) -> Result<Option<String>, NMGLeagueBotError> {
+        let disc_id = p.discord_id()?;
+        let user_info = self.discord_client.user(disc_id).await?;
+        let user = user_info.model().await?;
+        Ok(user.avatar.map(|i| {
+            let ext = if i.is_animated() { ".gif" } else { ".png" };
+            format!("https://cdn.discordapp.com/avatars/{disc_id}/{i}{ext}?size=128")
+        }))
+    }
+}
+
+#[async_trait::async_trait]
+impl DiscordOperations for DiscordState {
+    async fn submit_error<S: Display + Send>(&self, error: S) {
+        let msg = format!("{error}");
+        if let Err(e) = self.webhooks.message_error(&msg).await {
+            warn!("Error sending message {msg} to error channel: {e}");
+        }
+    }
+
+    fn interaction_client(&self) -> InteractionClient {
+        self.discord_client.interaction(self.application_id.clone())
+    }
+
+    async fn get_private_channel(&self, user: Id<UserMarker>) -> Result<Id<ChannelMarker>, String> {
+        if let Some(id) = self.private_channels.get(&user) {
+            return Ok(id.clone());
+        }
+
+        let created = self
+            .discord_client
+            .create_private_channel(user.clone())
+            .await
+            .map_err(|e| e.to_string())?;
+        if created.status().is_success() {
+            let chan = created.model().await.map_err(|e| e.to_string())?;
+            self.private_channels.insert(user, chan.id.clone());
+            Ok(chan.id)
+        } else {
+            Err(format!(
+                "Error result creating private channel: {}",
+                created.status()
+            ))
+        }
+    }
+
     // making this async now so when i inevitably add an actual HTTP request fallback it's already async
-    pub async fn has_admin_role(
+    async fn has_admin_role(
         &self,
         user_id: Id<UserMarker>,
         guild_id: Id<GuildMarker>,
@@ -169,14 +262,14 @@ impl DiscordState {
     }
 
     // convenience for website which i have negative interest in adding guild info to
-    pub async fn has_nmg_league_admin_role(
+    async fn has_nmg_league_admin_role(
         &self,
         user_id: Id<UserMarker>,
     ) -> Result<bool, DiscordStateError> {
         self.has_admin_role(user_id, CONFIG.guild_id.clone()).await
     }
 
-    pub async fn has_nmg_league_role_by_name(
+    async fn has_nmg_league_role_by_name(
         &self,
         user_id: Id<UserMarker>,
         role_name: &str,
@@ -184,10 +277,10 @@ impl DiscordState {
         self.has_role_by_name(user_id, CONFIG.guild_id.clone(), role_name)
     }
 
-    pub async fn has_any_nmg_league_role(
+    async fn has_any_nmg_league_role<'a>(
         &self,
         user_id: Id<UserMarker>,
-        role_names: &[&str],
+        role_names: &[&'a str],
     ) -> bool {
         for role_name in role_names {
             if let Ok(true) = self.has_nmg_league_role_by_name(user_id, role_name).await {
@@ -197,13 +290,19 @@ impl DiscordState {
         false
     }
 
-    /// convenience method for getting a user's info from the twilight cache
-    pub fn get_user(&self, user_id: Id<UserMarker>) -> Option<User> {
+    fn get_user(&self, user_id: Id<UserMarker>) -> Option<User> {
         self.cache.user(user_id).map(|u| u.value().clone())
     }
 
     /// gets best available name for this user (without hitting the discord http api)
-    pub async fn best_name_for(&self, user_id: Id<UserMarker>) -> String {
+    ///
+    /// order of preference:
+    ///
+    /// 1. the name the player set for themself
+    /// 2. the player's nickname in the NMG League server
+    /// 3. the player's global nickname on discord
+    /// 4. the player's discord username
+    async fn best_name_for(&self, user_id: Id<UserMarker>) -> String {
         // maybe would be good to like care about errors in here?
         if let Ok(mut conn) = self.diesel_cxn().await {
             if let Ok(Some(p)) = Player::get_by_discord_id(&user_id.to_string(), &mut conn) {
@@ -224,7 +323,7 @@ impl DiscordState {
         "unknown".to_string()
     }
 
-    pub async fn create_response(
+    async fn create_response(
         &self,
         interaction_id: Id<InteractionMarker>,
         token: &str,
@@ -236,7 +335,7 @@ impl DiscordState {
             .map(|_| ())
     }
 
-    pub async fn application_command_run_by_admin(
+    async fn application_command_run_by_admin(
         &self,
         ac: &Box<InteractionCreate>,
     ) -> Result<bool, String> {
@@ -251,7 +350,7 @@ impl DiscordState {
     }
 
     /// creates a response and maps any errors to String
-    pub async fn create_response_err_to_str(
+    async fn create_response_err_to_str(
         &self,
         interaction_id: Id<InteractionMarker>,
         token: &str,
@@ -262,34 +361,44 @@ impl DiscordState {
             .map_err(|e| e.to_string())
     }
 
-    pub async fn diesel_cxn<'a>(
+    async fn diesel_cxn<'a>(
         &'a self,
-    ) -> Result<impl DerefMut<Target = diesel::SqliteConnection> + 'a, RunError<ConnectionError>>
-    {
+    ) -> Result<PooledConnection<DieselConnectionManager>, RunError<ConnectionError>> {
         // return Err(RunError::User(ConnectionError::BadConnection("asdf".to_string())));
         let pc = self.diesel_pool.get().await;
         pc
-    }
-
-    /// Returns Some(URL) if the user has a pfp, otherwise None or an error
-    pub async fn get_player_discord_pfp(
-        &self,
-        p: &Player,
-    ) -> Result<Option<String>, NMGLeagueBotError> {
-        let disc_id = p.discord_id()?;
-        let user_info = self.discord_client.user(disc_id).await?;
-        let user = user_info.model().await?;
-        Ok(user.avatar.map(|i| {
-            let ext = if i.is_animated() { ".gif" } else { ".png" };
-            format!("https://cdn.discordapp.com/avatars/{disc_id}/{i}{ext}?size=128")
-        }))
     }
 
     /// gets the player's PFP. returns an URL to the image if found, None if player doesnt have a pfp,
     /// error if there's an error
     ///
     /// in principle this might someday check discord and also twitch but right now it only checks discord
-    pub async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError> {
+    async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError> {
         self.get_player_discord_pfp(p).await
+    }
+
+    async fn get_guild_scheduled_events(
+        &self,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<Vec<GuildScheduledEvent>, NMGLeagueBotError> {
+        let req = self.discord_client.guild_scheduled_events(guild_id);
+        let resp = req.await?;
+
+        let data = resp.models().await?;
+        Ok(data)
+    }
+
+    fn update_scheduled_event(
+        &self,
+        guild_id: Id<GuildMarker>,
+        event_id: Id<ScheduledEventMarker>,
+    ) -> UpdateGuildScheduledEvent<'_> {
+        self.discord_client
+            .update_guild_scheduled_event(guild_id, event_id)
+    }
+
+    fn create_scheduled_event(&self, guild_id: Id<GuildMarker>) -> CreateGuildScheduledEvent<'_> {
+        self.discord_client
+            .create_guild_scheduled_event(guild_id, PrivacyLevel::GuildOnly)
     }
 }
