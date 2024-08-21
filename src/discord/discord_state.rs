@@ -15,17 +15,12 @@ use std::sync::Arc;
 use thiserror::Error;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
-use twilight_http::request::scheduled_event::{
-    CreateGuildScheduledEvent, UpdateGuildScheduledEvent,
-};
 use twilight_http::Client;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
-use twilight_model::guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel};
 use twilight_model::guild::Role;
 use twilight_model::http::interaction::InteractionResponse;
 use twilight_model::id::marker::{
-    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker,
-    ScheduledEventMarker, UserMarker,
+    ApplicationMarker, ChannelMarker, GuildMarker, InteractionMarker, RoleMarker, UserMarker,
 };
 use twilight_model::id::Id;
 use twilight_model::user::User;
@@ -117,22 +112,6 @@ pub trait DiscordOperations {
     ) -> Result<PooledConnection<'a, DieselConnectionManager>, RunError<ConnectionError>>;
 
     async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError>;
-}
-
-#[cfg_attr(test, mockall::automock)]
-#[async_trait::async_trait]
-pub trait EventManager {
-    async fn get_guild_scheduled_events(
-        &self,
-        guild_id: Id<GuildMarker>,
-    ) -> Result<Vec<GuildScheduledEvent>, NMGLeagueBotError>;
-
-    fn update_scheduled_event(
-        &self,
-        guild_id: Id<GuildMarker>,
-        event_id: Id<ScheduledEventMarker>,
-    ) -> UpdateGuildScheduledEvent<'_>;
-    fn create_scheduled_event(&self, guild_id: Id<GuildMarker>) -> CreateGuildScheduledEvent<'_>;
 }
 
 impl DiscordState {
@@ -379,33 +358,5 @@ impl DiscordOperations for DiscordState {
     /// in principle this might someday check discord and also twitch but right now it only checks discord
     async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError> {
         self.get_player_discord_pfp(p).await
-    }
-}
-
-#[async_trait::async_trait]
-impl EventManager for DiscordState {
-    async fn get_guild_scheduled_events(
-        &self,
-        guild_id: Id<GuildMarker>,
-    ) -> Result<Vec<GuildScheduledEvent>, NMGLeagueBotError> {
-        let req = self.discord_client.guild_scheduled_events(guild_id);
-        let resp = req.await?;
-
-        let data = resp.models().await?;
-        Ok(data)
-    }
-
-    fn update_scheduled_event(
-        &self,
-        guild_id: Id<GuildMarker>,
-        event_id: Id<ScheduledEventMarker>,
-    ) -> UpdateGuildScheduledEvent<'_> {
-        self.discord_client
-            .update_guild_scheduled_event(guild_id, event_id)
-    }
-
-    fn create_scheduled_event(&self, guild_id: Id<GuildMarker>) -> CreateGuildScheduledEvent<'_> {
-        self.discord_client
-            .create_guild_scheduled_event(guild_id, PrivacyLevel::GuildOnly)
     }
 }

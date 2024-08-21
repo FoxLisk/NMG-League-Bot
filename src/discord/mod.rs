@@ -48,6 +48,7 @@ mod webhooks;
 mod application_command_definitions;
 mod components;
 pub(crate) mod discord_state;
+pub(crate) mod event_manager;
 mod interaction_handlers;
 mod interactions_utils;
 mod reaction_handlers;

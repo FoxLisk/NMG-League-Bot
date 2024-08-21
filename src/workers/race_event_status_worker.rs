@@ -30,7 +30,10 @@ use twilight_model::{
     util::Timestamp,
 };
 
-use crate::discord::discord_state::{DiscordOperations, EventManager};
+use crate::discord::{
+    discord_state::DiscordOperations,
+    event_manager::{EventClient, EventManager},
+};
 use crate::{
     discord::{comm_ids_and_names, discord_state::DiscordState},
     shutdown::Shutdown,
@@ -77,6 +80,7 @@ struct RaceInfoBundle {
 
 pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
+    let e = EventClient::new();
     loop {
         tokio::select! {
             _sd = sd.recv() => {
@@ -85,7 +89,7 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
             _ = intv.tick() => {
 
                 let t = tokio::time::Instant::now();
-                if let Err(e) = sync_race_status(&state).await {
+                if let Err(e) = sync_race_status(&state, &e).await {
                     warn!("Error syncing race events: {e}");
                 }
                 let t2 = tokio::time::Instant::now() - t;
@@ -96,11 +100,14 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     warn!("Race event worker quit");
 }
 
-async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotError> {
+async fn sync_race_status<E: EventManager>(
+    state: &Arc<DiscordState>,
+    event_manager: &E,
+) -> Result<(), NMGLeagueBotError> {
     let mut conn_o = state.diesel_cxn().await?;
     let conn = conn_o.deref_mut();
     let (race_infos, players) = get_season_race_info(conn)?;
-    let mut existing_events = get_existing_events_by_id(state).await?;
+    let mut existing_events = get_existing_events_by_id(event_manager).await?;
 
     for mut bundle in race_infos {
         let new_status = match get_event_content(&bundle, &players, state, conn).await {
@@ -126,7 +133,7 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
         //
         // in practice idk how that would ever happen.
         // it has the nice side effect that it handles testing cases nicely when I copy the DB from prod lol
-        match do_update_stuff(new_status, existing_event.as_ref(), state).await {
+        match do_update_stuff(new_status, existing_event.as_ref(), event_manager).await {
             Ok(Some(e)) => {
                 bundle.bri.set_scheduled_event_id(e.id);
                 if let Err(e) = bundle.bri.update(conn) {
@@ -149,7 +156,7 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
 }
 
 async fn get_existing_events_by_id<E: EventManager>(
-    state: &Arc<E>,
+    state: &E,
 ) -> Result<HashMap<Id<ScheduledEventMarker>, GuildScheduledEvent>, NMGLeagueBotError> {
     let events = state.get_guild_scheduled_events(CONFIG.guild_id).await?;
     Ok(events
@@ -164,7 +171,7 @@ async fn get_existing_events_by_id<E: EventManager>(
 async fn do_update_stuff<E: EventManager>(
     new_status: RaceEventContentAndStatus,
     existing_event: Option<&GuildScheduledEvent>,
-    event_manager: &Arc<E>,
+    event_manager: &E,
 ) -> Result<Option<GuildScheduledEvent>, NMGLeagueBotError> {
     match (existing_event, new_status) {
         (Some(event), RaceEventContentAndStatus::Completed) => {

@@ -114,6 +114,9 @@ pub struct Config {
 
     #[cfg(feature = "racetime_bot")]
     pub racetime_room_creation_lead_time_minutes: i64,
+
+    pub helper_bot_application_id: Id<ApplicationMarker>,
+    pub helper_bot_discord_token: String,
 }
 
 fn id_from_env<T>(k: &str) -> Id<T> {
@@ -176,6 +179,8 @@ impl Config {
             racetime_room_posting_channel_id: parse(RACETIME_ROOM_POSTING_CHANNEL_ID_VAR),
             #[cfg(feature = "racetime_bot")]
             racetime_bot_name: parse(RACETIME_BOT_NAME_VAR),
+            helper_bot_application_id: parse("HELPER_BOT_APPLICATION_ID"),
+            helper_bot_discord_token: parse("HELPER_BOT_DISCORD_TOKEN"),
         }
     }
 }
