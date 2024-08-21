@@ -8,25 +8,41 @@
 //! small things like players changing their nicknames.
 use std::{collections::HashMap, ops::DerefMut, sync::Arc, time::Duration};
 
+use bb8::Pool;
 use chrono::Utc;
 use diesel::SqliteConnection;
 use itertools::Itertools as _;
 use log::{info, warn};
 use nmg_league_bot::{
     config::CONFIG,
+    db::DieselConnectionManager,
     models::{
         bracket_race_infos::BracketRaceInfo,
         bracket_races::{BracketRace, BracketRaceState},
         brackets::Bracket,
         player::Player,
+        race_events::{NewRaceEvent, RaceEvent},
         season::SeasonState,
     },
     schema, NMGLeagueBotError, RaceEventError,
 };
 use tokio::sync::broadcast::Receiver;
+use tokio_stream::StreamExt;
+use twilight_cache_inmemory::InMemoryCache;
+use twilight_gateway::{
+    stream::{self, ShardEventStream},
+    Config, Event, Intents,
+};
+use twilight_http::{
+    request::scheduled_event::{CreateGuildScheduledEvent, UpdateGuildScheduledEvent},
+    Client,
+};
 use twilight_model::{
-    guild::scheduled_event::{GuildScheduledEvent, Status},
-    id::{marker::ScheduledEventMarker, Id},
+    guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel, Status},
+    id::{
+        marker::{GuildMarker, ScheduledEventMarker},
+        Id,
+    },
     util::Timestamp,
 };
 
@@ -62,8 +78,8 @@ impl RaceEventContent {
 /// Information about what an event should look like
 #[derive(Debug)]
 enum RaceEventContentAndStatus {
-    /// indicates that, if there's an event, we should complete it, and if there's not we don't create one
-    Completed,
+    /// indicates that, if there's an event, we should end or cancel it, and if there's not we don't create one
+    NoEvent,
     /// indicates that we should create or update an existing event to the state defined here
     Event(RaceEventContent),
 }
@@ -73,10 +89,107 @@ struct RaceInfoBundle {
     race: BracketRace,
     bri: BracketRaceInfo,
     bracket: Bracket,
+    race_event: Option<RaceEvent>,
 }
 
-pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
+struct HelperBot {
+    cache: InMemoryCache,
+    client: Client,
+    diesel_pool: Pool<DieselConnectionManager>,
+}
+
+impl HelperBot {
+    fn new(diesel_pool: Pool<DieselConnectionManager>) -> Self {
+        let cache = InMemoryCache::new();
+        let client = Client::new(CONFIG.helper_bot_discord_token.clone());
+        Self {
+            cache,
+            client,
+            diesel_pool,
+        }
+    }
+
+    // TODO: use this instead of the event_manager, which i think is never going to exist in merged code lol
+    async fn get_guild_scheduled_events(
+        &self,
+        guild_id: Id<GuildMarker>,
+    ) -> Result<Vec<GuildScheduledEvent>, NMGLeagueBotError> {
+        let req = self.client.guild_scheduled_events(guild_id);
+        let resp = req.await?;
+
+        let data = resp.models().await?;
+        Ok(data)
+    }
+
+    fn update_scheduled_event(
+        &self,
+        guild_id: Id<GuildMarker>,
+        event_id: Id<ScheduledEventMarker>,
+    ) -> UpdateGuildScheduledEvent<'_> {
+        self.client.update_guild_scheduled_event(guild_id, event_id)
+    }
+
+    fn create_scheduled_event(&self, guild_id: Id<GuildMarker>) -> CreateGuildScheduledEvent<'_> {
+        self.client
+            .create_guild_scheduled_event(guild_id, PrivacyLevel::GuildOnly)
+    }
+
+    async fn run(bot: Arc<Self>, mut shutdown: Receiver<Shutdown>) {
+        // i *think* all I care about out are what guilds I'm in
+        let intents = Intents::GUILDS;
+
+        let cfg = Config::builder(CONFIG.helper_bot_discord_token.clone(), intents).build();
+
+        let mut shards = stream::create_recommended(&bot.client, cfg, |_, builder| builder.build())
+            .await
+            // TODO: surface this unwrap? idk
+            .unwrap()
+            .collect::<Vec<_>>();
+
+        // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
+        // convince the compiler that i have an iterator of mutable references in a simpler way
+        let mut events = ShardEventStream::new(shards.iter_mut());
+
+        loop {
+            tokio::select! {
+                Some((_shard_id, evt)) = events.next() => {
+                    match evt {
+                        Ok(event) => {
+                            bot.cache.update(&event);
+                            bot.handle_event(event).await;
+                        }
+                        Err(e) => {
+                            warn!("Got error receiving discord event: {e}");
+                            if e.is_fatal() {
+                                info!("Helper bot shutting down due to fatal error");
+                                break;
+                            }
+                        }
+                    }
+                },
+
+                _sd = shutdown.recv() => {
+                    info!("Helper bot shutting down...");
+                    break;
+                }
+            }
+        }
+        info!("Helper bot done");
+    }
+
+    async fn handle_event(&self, event: Event) {
+        println!("helper bot got event {event:?}");
+    }
+}
+
+pub async fn cron(
+    mut sd: Receiver<Shutdown>,
+    state: Arc<DiscordState>,
+    pool: Pool<DieselConnectionManager>,
+) {
     let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
+    let bot = Arc::new(HelperBot::new(pool));
+    tokio::spawn(HelperBot::run(bot.clone(), sd.resubscribe()));
     loop {
         tokio::select! {
             _sd = sd.recv() => {
@@ -85,7 +198,7 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
             _ = intv.tick() => {
 
                 let t = tokio::time::Instant::now();
-                if let Err(e) = sync_race_status(&state).await {
+                if let Err(e) = sync_race_status(&state, &bot).await {
                     warn!("Error syncing race events: {e}");
                 }
                 let t2 = tokio::time::Instant::now() - t;
@@ -96,13 +209,16 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
     warn!("Race event worker quit");
 }
 
-async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotError> {
+async fn sync_race_status(
+    state: &Arc<DiscordState>,
+    helper_bot: &Arc<HelperBot>,
+) -> Result<(), NMGLeagueBotError> {
     let mut conn_o = state.diesel_cxn().await?;
     let conn = conn_o.deref_mut();
     let (race_infos, players) = get_season_race_info(conn)?;
-    let mut existing_events = get_existing_events_by_id(state).await?;
+    let mut existing_events = get_existing_events_by_id(helper_bot).await?;
 
-    for mut bundle in race_infos {
+    for bundle in race_infos {
         let new_status = match get_event_content(&bundle, &players, state, conn).await {
             Ok(status) => status,
             Err(e) => {
@@ -113,7 +229,17 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
                 continue;
             }
         };
-        let existing_event = if let Some(gse_id) = bundle.bri.get_scheduled_event_id() {
+        let RaceInfoBundle {
+            race,
+            bri,
+            bracket: _bracket,
+            race_event,
+        } = bundle;
+        let existing_event = if let Some(gse_id) = race_event
+            .as_ref()
+            .map(|re| re.get_scheduled_event_id())
+            .flatten()
+        {
             existing_events.remove(&gse_id)
         } else {
             None
@@ -126,21 +252,29 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
         //
         // in practice idk how that would ever happen.
         // it has the nice side effect that it handles testing cases nicely when I copy the DB from prod lol
-        match do_update_stuff(new_status, existing_event.as_ref(), state).await {
+        info!("calling update_discord_events for race {}", race.id);
+        match update_discord_events(new_status, existing_event.as_ref(), helper_bot).await {
             Ok(Some(e)) => {
-                bundle.bri.set_scheduled_event_id(e.id);
-                if let Err(e) = bundle.bri.update(conn) {
-                    warn!(
-                        "Error updating BRI {} after creating event: {e}",
-                        bundle.bri.id
-                    );
+                if let Some(mut re) = race_event {
+                    re.set_scheduled_event_id(e.id);
+                    if let Err(e) = re.update(conn) {
+                        warn!(
+                            "Error updating RaceEvent {} after creating event: {e}",
+                            re.id
+                        );
+                    }
+                } else {
+                    let nre = NewRaceEvent::new(CONFIG.guild_id.clone(), &bri, e.id);
+                    if let Err(e) = nre.save(conn) {
+                        warn!("Error creating new RaceEvent after creating event: {e}");
+                    }
                 }
             }
             Ok(None) => {}
             Err(e) => {
                 warn!(
                     "Error managing event for race {}: {e} - existing event is {existing_event:?}",
-                    bundle.race.id
+                    race.id
                 );
             }
         }
@@ -148,10 +282,10 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
     Ok(())
 }
 
-async fn get_existing_events_by_id<D: DiscordOperations>(
-    state: &Arc<D>,
+async fn get_existing_events_by_id(
+    bot: &Arc<HelperBot>,
 ) -> Result<HashMap<Id<ScheduledEventMarker>, GuildScheduledEvent>, NMGLeagueBotError> {
-    let events = state.get_guild_scheduled_events(CONFIG.guild_id).await?;
+    let events = bot.get_guild_scheduled_events(CONFIG.guild_id).await?;
     Ok(events
         .into_iter()
         .map(|gse| (gse.id, gse))
@@ -161,26 +295,26 @@ async fn get_existing_events_by_id<D: DiscordOperations>(
 /// does any discord updates that are necessary (creating or updating events)
 ///
 /// returns a GuildScheduledEvent if one is created (for persistence reasons)
-async fn do_update_stuff<D: DiscordOperations>(
+async fn update_discord_events(
     new_status: RaceEventContentAndStatus,
     existing_event: Option<&GuildScheduledEvent>,
-    state: &Arc<D>,
+    helper_bot: &Arc<HelperBot>,
 ) -> Result<Option<GuildScheduledEvent>, NMGLeagueBotError> {
     match (existing_event, new_status) {
-        (Some(event), RaceEventContentAndStatus::Completed) => {
+        (Some(event), RaceEventContentAndStatus::NoEvent) => {
             let new_event_status = match event.status {
                 // active races must be completed; all others must be cancelled
                 Status::Active => Status::Completed,
                 _ => Status::Cancelled,
             };
             // race is over; end event (if it's not ended)
-            let e = state
+            let e = helper_bot
                 .update_scheduled_event(CONFIG.guild_id, event.id)
                 .status(new_event_status)
                 .await?;
             Ok(Some(e.model().await?))
         }
-        (None, RaceEventContentAndStatus::Completed) => {
+        (None, RaceEventContentAndStatus::NoEvent) => {
             // race is over, event is already ended; nothing to do
             Ok(None)
         }
@@ -189,7 +323,7 @@ async fn do_update_stuff<D: DiscordOperations>(
             if events_match(&event, &new_status)? {
                 Ok(None)
             } else {
-                state
+                helper_bot
                     .update_scheduled_event(CONFIG.guild_id, event.id)
                     .description(new_status.description.as_ref().map(|s| s.as_str()))?
                     .name(&new_status.name)?
@@ -206,7 +340,7 @@ async fn do_update_stuff<D: DiscordOperations>(
                 return Ok(None);
             }
             // race has been scheduled but there's no event yet; create one
-            let resp = state
+            let resp = helper_bot
                 .create_scheduled_event(CONFIG.guild_id)
                 .external(
                     &new_status.name,
@@ -261,7 +395,7 @@ async fn get_event_content<D: DiscordOperations>(
     conn: &mut SqliteConnection,
 ) -> Result<RaceEventContentAndStatus, NMGLeagueBotError> {
     if bundle.race.state()? != BracketRaceState::Scheduled {
-        return Ok(RaceEventContentAndStatus::Completed);
+        return Ok(RaceEventContentAndStatus::NoEvent);
     }
     let when = bundle
         .bri
@@ -313,7 +447,7 @@ async fn get_event_content<D: DiscordOperations>(
 /// retrieves every race that has a BRI in the current season (i.e. every race that has been scheduled)
 /// This includes completed races and races from completed rounds.
 fn get_season_race_info(
-    db: &mut SqliteConnection,
+    conn: &mut SqliteConnection,
 ) -> Result<(Vec<RaceInfoBundle>, HashMap<i32, Player>), NMGLeagueBotError> {
     use diesel::prelude::*;
     let season_started_state = serde_json::to_string(&SeasonState::Started)?;
@@ -323,20 +457,28 @@ fn get_season_race_info(
 
     // N.B. if it mattered it might be worth testing if it's faster to do 1 query and pull the Bracket table every time, or
     // do a separate query for the brackets like we are doing for players
+
     let races = schema::bracket_race_infos::table
         .inner_join(
             schema::bracket_races::table
                 .inner_join(schema::brackets::table.inner_join(schema::seasons::table)),
         )
+        .left_join(schema::race_events::table)
         .select((
             BracketRace::as_select(),
             BracketRaceInfo::as_select(),
             Bracket::as_select(),
+            Option::<RaceEvent>::as_select(),
         ))
         .filter(schema::seasons::dsl::state.eq(season_started_state))
-        .load(db)?
+        .load(conn)?
         .into_iter()
-        .map(|(race, bri, bracket)| RaceInfoBundle { race, bri, bracket })
+        .map(|(race, bri, bracket, race_event)| RaceInfoBundle {
+            race,
+            bri,
+            bracket,
+            race_event,
+        })
         .collect::<Vec<_>>();
 
     let players = Player::by_id(
@@ -347,7 +489,7 @@ fn get_season_race_info(
                 .flatten()
                 .collect::<_>(),
         ),
-        db,
+        conn,
     )?;
 
     Ok((races, players))
@@ -458,7 +600,7 @@ mod tests {
         let res = get_event_content(&bundle, &player_map, &Arc::new(mock_state), &mut c).await?;
 
         match res {
-            RaceEventContentAndStatus::Completed => {
+            RaceEventContentAndStatus::NoEvent => {
                 return Err(anyhow::anyhow!("Race isn't supposed to be completed!"));
             }
             RaceEventContentAndStatus::Event(RaceEventContent {
@@ -526,7 +668,7 @@ mod tests {
         let res = get_event_content(&bundle, &player_map, &Arc::new(mock_state), &mut c).await?;
 
         match res {
-            RaceEventContentAndStatus::Completed => {
+            RaceEventContentAndStatus::NoEvent => {
                 return Err(anyhow::anyhow!("Race isn't supposed to be completed!"));
             }
             RaceEventContentAndStatus::Event(RaceEventContent {
@@ -583,7 +725,7 @@ mod tests {
         let res = get_event_content(&bundle, &player_map, &Arc::new(mock_state), &mut c).await?;
 
         match res {
-            RaceEventContentAndStatus::Completed => Ok(()),
+            RaceEventContentAndStatus::NoEvent => Ok(()),
             RaceEventContentAndStatus::Event(rec) => Err(anyhow::anyhow!(
                 "Got RaceEventContent for completed race: {rec:?}"
             )),

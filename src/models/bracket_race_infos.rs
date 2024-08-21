@@ -10,8 +10,10 @@ use diesel::SqliteConnection;
 use serde::Serialize;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
-use twilight_model::id::marker::{MessageMarker, ScheduledEventMarker, UserMarker};
+use twilight_model::id::marker::{MessageMarker, UserMarker};
 use twilight_model::id::Id;
+
+use super::attr_id_to_real_id;
 
 #[derive(Debug, Clone)]
 pub struct BracketRaceInfoId(pub i32);
@@ -22,7 +24,6 @@ pub struct BracketRaceInfo {
     pub id: i32,
     pub bracket_race_id: i32,
     pub scheduled_for: Option<i64>,
-    pub scheduled_event_id: Option<String>,
     pub commportunities_message_id: Option<String>,
     pub restream_request_message_id: Option<String>,
     pub racetime_gg_url: Option<String>,
@@ -114,16 +115,6 @@ impl BracketRaceInfo {
             &mut self.scheduled_for,
             Some(when.timestamp()),
         ))
-    }
-
-    pub fn get_scheduled_event_id(&self) -> Option<Id<ScheduledEventMarker>> {
-        attr_id_to_real_id(&self.scheduled_event_id)
-    }
-
-    /// Returns the old scheduled event ID, if any
-    /// (it's a string b/c sqlite)
-    pub fn set_scheduled_event_id(&mut self, id: Id<ScheduledEventMarker>) -> Option<String> {
-        std::mem::replace(&mut self.scheduled_event_id, Some(id.to_string()))
     }
 
     pub fn get_commportunities_message_id(&self) -> Option<Id<MessageMarker>> {
@@ -222,18 +213,13 @@ impl BracketRaceInfo {
     update_fn! {}
 }
 
-fn attr_id_to_real_id<T>(id: &Option<String>) -> Option<Id<T>> {
-    id.as_ref()
-        .map(|id| Id::from_str(id.as_str()).ok())
-        .flatten()
-}
+
 
 #[derive(Insertable)]
 #[diesel(table_name=bracket_race_infos)]
 pub struct NewBracketRaceInfo {
     bracket_race_id: i32,
     scheduled_for: Option<i64>,
-    scheduled_event_id: Option<String>,
     commportunities_message_id: Option<String>,
     restream_request_message_id: Option<String>,
     racetime_gg_url: Option<String>,
@@ -247,7 +233,6 @@ impl NewBracketRaceInfo {
         Self {
             bracket_race_id: bracket_race.id,
             scheduled_for: None,
-            scheduled_event_id: None,
             commportunities_message_id: None,
             restream_request_message_id: None,
             racetime_gg_url: None,
