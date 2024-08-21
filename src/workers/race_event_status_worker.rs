@@ -30,7 +30,7 @@ use twilight_model::{
     util::Timestamp,
 };
 
-use crate::discord::discord_state::DiscordOperations;
+use crate::discord::discord_state::{DiscordOperations, EventManager};
 use crate::{
     discord::{comm_ids_and_names, discord_state::DiscordState},
     shutdown::Shutdown,
@@ -148,8 +148,8 @@ async fn sync_race_status(state: &Arc<DiscordState>) -> Result<(), NMGLeagueBotE
     Ok(())
 }
 
-async fn get_existing_events_by_id<D: DiscordOperations>(
-    state: &Arc<D>,
+async fn get_existing_events_by_id<E: EventManager>(
+    state: &Arc<E>,
 ) -> Result<HashMap<Id<ScheduledEventMarker>, GuildScheduledEvent>, NMGLeagueBotError> {
     let events = state.get_guild_scheduled_events(CONFIG.guild_id).await?;
     Ok(events
@@ -161,10 +161,10 @@ async fn get_existing_events_by_id<D: DiscordOperations>(
 /// does any discord updates that are necessary (creating or updating events)
 ///
 /// returns a GuildScheduledEvent if one is created (for persistence reasons)
-async fn do_update_stuff<D: DiscordOperations>(
+async fn do_update_stuff<E: EventManager>(
     new_status: RaceEventContentAndStatus,
     existing_event: Option<&GuildScheduledEvent>,
-    state: &Arc<D>,
+    event_manager: &Arc<E>,
 ) -> Result<Option<GuildScheduledEvent>, NMGLeagueBotError> {
     match (existing_event, new_status) {
         (Some(event), RaceEventContentAndStatus::Completed) => {
@@ -174,7 +174,7 @@ async fn do_update_stuff<D: DiscordOperations>(
                 _ => Status::Cancelled,
             };
             // race is over; end event (if it's not ended)
-            let e = state
+            let e = event_manager
                 .update_scheduled_event(CONFIG.guild_id, event.id)
                 .status(new_event_status)
                 .await?;
@@ -189,7 +189,7 @@ async fn do_update_stuff<D: DiscordOperations>(
             if events_match(&event, &new_status)? {
                 Ok(None)
             } else {
-                state
+                event_manager
                     .update_scheduled_event(CONFIG.guild_id, event.id)
                     .description(new_status.description.as_ref().map(|s| s.as_str()))?
                     .name(&new_status.name)?
@@ -206,7 +206,7 @@ async fn do_update_stuff<D: DiscordOperations>(
                 return Ok(None);
             }
             // race has been scheduled but there's no event yet; create one
-            let resp = state
+            let resp = event_manager
                 .create_scheduled_event(CONFIG.guild_id)
                 .external(
                     &new_status.name,

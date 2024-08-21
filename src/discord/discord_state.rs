@@ -117,7 +117,11 @@ pub trait DiscordOperations {
     ) -> Result<PooledConnection<'a, DieselConnectionManager>, RunError<ConnectionError>>;
 
     async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError>;
+}
 
+#[cfg_attr(test, mockall::automock)]
+#[async_trait::async_trait]
+pub trait EventManager {
     async fn get_guild_scheduled_events(
         &self,
         guild_id: Id<GuildMarker>,
@@ -376,7 +380,10 @@ impl DiscordOperations for DiscordState {
     async fn get_player_pfp(&self, p: &Player) -> Result<Option<String>, NMGLeagueBotError> {
         self.get_player_discord_pfp(p).await
     }
+}
 
+#[async_trait::async_trait]
+impl EventManager for DiscordState {
     async fn get_guild_scheduled_events(
         &self,
         guild_id: Id<GuildMarker>,
