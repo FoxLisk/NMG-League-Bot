@@ -45,24 +45,24 @@ use crate::discord::interactions_utils::{
 use crate::discord::reaction_handlers::{handle_reaction_add, handle_reaction_remove};
 use crate::discord::ErrorResponse;
 use crate::{Shutdown, Webhooks};
-use nmg_league_bot::db::get_diesel_pool;
+use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::models::asyncs::race::AsyncRace;
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::ResultErrToString;
 
-pub(crate) async fn launch(
+pub(crate) fn launch(
     client: Arc<Client>,
     webhooks: Webhooks,
     racetime_client: RacetimeClient,
     twitch_client_bundle: TwitchClientBundle,
+    diesel_pool: bb8::Pool<DieselConnectionManager>,
     shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) -> Arc<DiscordState> {
     let aid = CONFIG.discord_application_id;
 
     let cache = InMemoryCache::builder().build();
     let standby = Arc::new(Standby::new());
-    let diesel_pool = get_diesel_pool().await;
     let state = Arc::new(DiscordState::new(
         cache,
         client,
