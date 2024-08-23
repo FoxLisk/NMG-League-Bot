@@ -28,6 +28,9 @@ pub struct Season {
     finished: Option<i64>,
     pub format: String,
     pub ordinal: i32,
+    #[cfg(feature = "testing")]
+    pub state: String,
+    #[cfg(not(feature = "testing"))]
     state: String,
     /// rt.gg calls games "categories"; this is e.g. alttp (or alttpr)
     pub rtgg_category_name: String,
