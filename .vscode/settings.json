@@ -7,5 +7,9 @@
             "database": "${workspaceFolder:NMG-League-Bot}/db/sqlite.db3"
         }
     ],
-    "sqltools.useNodeRuntime": true
+    "sqltools.useNodeRuntime": true,
+    "rust-analyzer.cargo.features": [
+        "testing",
+        "racetime_bot",
+    ]
 }
