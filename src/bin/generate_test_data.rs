@@ -3,11 +3,11 @@ use nmg_league_bot::db::{raw_diesel_cxn_from_env, run_migrations};
 use nmg_league_bot::models::brackets::{BracketType, NewBracket};
 use nmg_league_bot::models::player::NewPlayer;
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
-use nmg_league_bot::models::season::{NewSeason, Season};
+use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
 
 extern crate dotenv;
 
-const PLAYERS_PER_BRACKET: i32 = 16;
+const PLAYERS_PER_BRACKET: i32 = 8;
 
 // Generates season, bracket, and 16 players, including 1 for me and 1 for my alt
 
@@ -23,10 +23,13 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let nsn = NewSeason::new("Test NMG", "alttp", "Any% NMG", &mut db)?;
-    let sn = nsn.save(&mut db).unwrap();
+    let mut sn = nsn.save(&mut db).unwrap();
+    sn.state = serde_json::to_string(&SeasonState::Started).unwrap();
+    sn.update(&mut db)?;
 
     generate_bracket(&sn, 1, BracketType::Swiss, &mut db)?;
-    generate_bracket(&sn, 2, BracketType::Swiss, &mut db)?;
+
+    //generate_bracket(&sn, 2, BracketType::Swiss, &mut db)?;
     Ok(())
 }
 
@@ -38,7 +41,7 @@ fn generate_bracket(
 ) -> Result<(), diesel::result::Error> {
     let nb = NewBracket::new(season, format!("Test Bracket {id}"), bt);
     let b = nb.save(conn)?;
-    println!("season: {:?}, bracket: {:?}", season, b);
+    println!("season: {season:?}, bracket: {b:?}");
     for np in get_players(PLAYERS_PER_BRACKET * id, id == 1) {
         let p = np.save(conn)?;
         let entry = NewPlayerBracketEntry::new(&b, &p);
@@ -50,7 +53,11 @@ fn generate_bracket(
 
 fn get_players(start: i32, add_me: bool) -> Vec<NewPlayer> {
     let mut players = vec![];
-    let end = if add_me { start + 14 } else { start + 16 };
+    let end = if add_me {
+        start + PLAYERS_PER_BRACKET - 2
+    } else {
+        start + PLAYERS_PER_BRACKET
+    };
     for i in start..end {
         let name = format!("player_{i}");
         let discord_id = format!("{i}");
