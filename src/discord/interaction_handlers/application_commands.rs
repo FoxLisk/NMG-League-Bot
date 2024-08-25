@@ -20,7 +20,7 @@ use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
 use std::future::Future;
 
-use chrono::{DateTime, Duration, TimeDelta, TimeZone, Utc};
+use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 
 use diesel::result::Error;
 use diesel::SqliteConnection;
