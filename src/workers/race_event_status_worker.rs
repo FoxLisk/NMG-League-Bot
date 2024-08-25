@@ -24,7 +24,8 @@ use nmg_league_bot::{
         race_events::{NewRaceEvent, RaceEvent},
         season::SeasonState,
     },
-    schema, NMGLeagueBotError, RaceEventError,
+    schema::{self},
+    NMGLeagueBotError, RaceEventError,
 };
 use tokio::sync::broadcast::Receiver;
 use tokio_stream::StreamExt;
@@ -89,6 +90,20 @@ struct RaceInfoBundle {
     race: BracketRace,
     bri: BracketRaceInfo,
     status: RaceEventContentAndStatus,
+}
+
+struct GuildEventConfig {
+    guild_id: Id<GuildMarker>,
+    #[allow(unused)]
+    // very useful in debugging but not necessarily logged outside of development, so allow unused
+    guild_name: String,
+}
+
+impl GuildEventConfig {
+    /// is this guild interested in tracking this race?
+    fn should_sync_race(&self, _race: &BracketRace) -> bool {
+        true
+    }
 }
 
 struct HelperBot {
@@ -176,6 +191,35 @@ impl HelperBot {
         info!("Helper bot done");
     }
 
+    /// gets a [GuildEventConfig] for each guild we're currently in
+    ///
+    /// the CONFIG.guild_id guild will be first
+    fn guild_event_configs(&self) -> Vec<GuildEventConfig> {
+        let mut guild_ids = self
+            .cache
+            .iter()
+            .guilds()
+            .map(|guild| (guild.key().clone(), guild.value().name().to_string()))
+            .collect::<HashMap<_, _>>();
+        let mut out = Vec::with_capacity(guild_ids.len());
+
+        if let Some((guild_id, guild_name)) = guild_ids.remove_entry(&CONFIG.guild_id) {
+            out.push(GuildEventConfig {
+                guild_id,
+                guild_name,
+            });
+        }
+        out.extend(
+            guild_ids
+                .into_iter()
+                .map(|(guild_id, guild_name)| GuildEventConfig {
+                    guild_id,
+                    guild_name,
+                }),
+        );
+        out
+    }
+
     async fn handle_event(&self, event: Event) {
         match event {
             Event::GuildCreate(gc) => {
@@ -186,7 +230,7 @@ impl HelperBot {
     }
 }
 
-pub async fn cron(
+pub async fn launch(
     mut sd: Receiver<Shutdown>,
     state: Arc<DiscordState>,
     pool: Pool<DieselConnectionManager>,
@@ -194,6 +238,7 @@ pub async fn cron(
     let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
     let bot = Arc::new(HelperBot::new(pool));
     tokio::spawn(HelperBot::run(bot.clone(), sd.resubscribe()));
+
     loop {
         tokio::select! {
             _sd = sd.recv() => {
@@ -239,30 +284,29 @@ async fn sync_race_status(
         })
         .collect::<HashMap<_, _>>();
 
-    if let Err(e) = sync_events_in_a_guild(
-        CONFIG.guild_id,
-        helper_bot,
-        &race_infos,
-        race_events_by_guild
-            .remove(&CONFIG.guild_id.to_string())
-            .unwrap_or(HashMap::new()),
-        conn,
-    )
-    .await
-    {
-        warn!("Error syncing events in a guild: {e}");
+    for gev in helper_bot.guild_event_configs() {
+        let race_events_by_bri_id = race_events_by_guild
+            .remove(&gev.guild_id.to_string())
+            .unwrap_or(HashMap::new());
+
+        if let Err(e) =
+            sync_events_in_a_guild(gev, helper_bot, &race_infos, race_events_by_bri_id, conn).await
+        {
+            warn!("Error syncing events in a guild: {e}");
+        }
     }
     Ok(())
 }
 
 async fn sync_events_in_a_guild(
-    guild_id: Id<GuildMarker>,
+    guild_event_config: GuildEventConfig,
     helper_bot: &Arc<HelperBot>,
     race_infos: &[RaceInfoBundle],
     mut race_events_by_bri_id: HashMap<i32, RaceEvent>,
     conn: &mut SqliteConnection,
 ) -> Result<(), NMGLeagueBotError> {
-    let mut existing_events = get_existing_events_by_id(guild_id, helper_bot).await?;
+    let mut existing_events =
+        get_existing_events_by_id(guild_event_config.guild_id, helper_bot).await?;
 
     for bundle in race_infos {
         let race_event = race_events_by_bri_id.remove(&bundle.bri.id);
@@ -276,6 +320,16 @@ async fn sync_events_in_a_guild(
             None
         };
 
+        let empty_status = RaceEventContentAndStatus::NoEvent;
+
+        let desired_status = if guild_event_config.should_sync_race(&bundle.race) {
+            &bundle.status
+        } else {
+            // if the race isn't meant to be synced to this discord, we just pass in NoEvent to indicate that it should be
+            // either ignored or deleted
+            &empty_status
+        };
+
         // since this uses *actual* events that match the event_id on the BRI,
         // this will have some weird behaviours if the DB is out of sync with the events -
         // i think if we created an event and then somehow changed BRI.scheduled_event_id to a wrong value,
@@ -283,17 +337,16 @@ async fn sync_events_in_a_guild(
         //
         // in practice idk how that would ever happen.
         // it has the nice side effect that it handles testing cases nicely when I copy the DB from prod lol
+
         match update_discord_events(
-            guild_id,
-            &bundle.status,
+            guild_event_config.guild_id,
+            desired_status,
             existing_event.as_ref(),
             helper_bot,
         )
         .await
         {
             Ok(Some(e)) => {
-                // N.B. why does this not give me a "possible use of moved value" error?
-                // i expected it to complain that i needed a `ref` or something
                 if let Some(mut re) = race_event {
                     re.set_scheduled_event_id(e.id);
                     if let Err(e) = re.update(conn) {
@@ -303,7 +356,7 @@ async fn sync_events_in_a_guild(
                         );
                     }
                 } else {
-                    let nre = NewRaceEvent::new(guild_id.clone(), &bundle.bri, e.id);
+                    let nre = NewRaceEvent::new(guild_event_config.guild_id, &bundle.bri, e.id);
                     if let Err(e) = nre.save(conn) {
                         warn!("Error creating new RaceEvent after creating event: {e}");
                     }
@@ -505,7 +558,6 @@ async fn get_season_race_info(
             schema::bracket_races::table
                 .inner_join(schema::brackets::table.inner_join(schema::seasons::table)),
         )
-        .left_join(schema::race_events::table)
         .select((
             BracketRace::as_select(),
             BracketRaceInfo::as_select(),

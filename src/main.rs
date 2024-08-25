@@ -37,8 +37,8 @@ extern crate twilight_validate;
 use crate::discord::generate_invite_link;
 use discord::Webhooks;
 use nmg_league_bot::config::{CONFIG, LOG4RS_CONF_FILE_VAR};
+use nmg_league_bot::db::get_diesel_pool;
 use nmg_league_bot::db::run_migrations;
-use nmg_league_bot::db::{get_diesel_pool};
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfoId;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
 use nmg_league_bot::utils::{env_var, racetime_base_url};
@@ -115,7 +115,7 @@ async fn main() {
         state.clone(),
     ));
 
-    tokio::spawn(workers::race_event_status_worker::cron(
+    tokio::spawn(workers::race_event_status_worker::launch(
         shutdown_send.subscribe(),
         state.clone(),
         diesel_pool.clone(),
