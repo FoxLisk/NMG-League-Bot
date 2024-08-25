@@ -3,6 +3,7 @@
 * Internals: Discord event management is now asynchronous. This means there will be a slight delay after scheduling
   a race before it appears in the schedule.
 * Feature: Season 7 history blurb
+* Feature: New "Helper Bot" to allow users to get Discord Events synced to their own servers
 
 # Season 7
 
