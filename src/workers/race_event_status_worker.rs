@@ -123,7 +123,6 @@ impl HelperBot {
         }
     }
 
-    // TODO: use this instead of the event_manager, which i think is never going to exist in merged code lol
     async fn get_guild_scheduled_events(
         &self,
         guild_id: Id<GuildMarker>,
@@ -264,12 +263,17 @@ async fn sync_race_status(
 ) -> Result<(), NMGLeagueBotError> {
     let mut conn_o = state.diesel_cxn().await?;
     let conn = conn_o.deref_mut();
+    // grab the current state of races: this is the scheduled races + the status of what their events
+    // should look like. this will be the same across guilds, so we grab it up front
     let race_infos = get_season_race_info(state, conn).await?;
     let bri_ids = race_infos
         .iter()
         .map(|bundle| bundle.bri.get_id())
         .collect::<Vec<_>>();
 
+    // { guild_id: { bracket_race_info_id: RaceEvent }}
+    // this is every RaceEvent, grouped by guild, so that in a moment we know what existing state to
+    // look for
     let mut race_events_by_guild = RaceEvent::get_for_bri_ids(&bri_ids, conn)?
         .into_iter()
         .group_by(|re| re.guild_id.clone())
@@ -284,6 +288,8 @@ async fn sync_race_status(
         })
         .collect::<HashMap<_, _>>();
 
+    // for each guild we're syncing events to, do the syncing
+    // the list of guilds to sync is just "whichever ones the bot is currently added to"
     for gev in helper_bot.guild_event_configs() {
         let race_events_by_bri_id = race_events_by_guild
             .remove(&gev.guild_id.to_string())
@@ -298,6 +304,12 @@ async fn sync_race_status(
     Ok(())
 }
 
+/// this looks at `race_infos`, which describe what the events for current races *should* look like,
+/// and compares it with the actually-existing events in a guild, and tries to reconcile the differences.
+///
+/// The `race_events_by_bri_id` allow us to track existing events for races through changes
+// XXX probably we could include race id #s in the event info somewhere and use that to track them over time...
+// that would be very vulnerable to users modifying events, though.
 async fn sync_events_in_a_guild(
     guild_event_config: GuildEventConfig,
     helper_bot: &Arc<HelperBot>,
@@ -330,7 +342,7 @@ async fn sync_events_in_a_guild(
             &empty_status
         };
 
-        // since this uses *actual* events that match the event_id on the BRI,
+        // since this uses *actual* events that match the event_id on the RaceEvent,
         // this will have some weird behaviours if the DB is out of sync with the events -
         // i think if we created an event and then somehow changed BRI.scheduled_event_id to a wrong value,
         // we'd create a new duplicated event with the same info and set the BRI's event id to that value.
@@ -549,6 +561,7 @@ async fn get_season_race_info(
     // i think that "every race that already has a BRI and is in the current season" is the correct
     // set to look at
     // this will pick up prior round races that we'll have to look at repeatedly but i think that's not a big deal
+    // and we have to pick up recently-completed races to close out events
 
     // N.B. if it mattered it might be worth testing if it's faster to do 1 query and pull the Bracket table every time, or
     // do a separate query for the brackets like we are doing for players
