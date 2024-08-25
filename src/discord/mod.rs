@@ -43,6 +43,7 @@ pub(crate) use webhooks::Webhooks;
 use crate::discord::discord_state::DiscordState;
 
 pub(crate) mod bot;
+pub mod helper_bot;
 mod webhooks;
 
 mod application_command_definitions;
