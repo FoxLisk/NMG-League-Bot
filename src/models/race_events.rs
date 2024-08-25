@@ -9,7 +9,7 @@ use twilight_model::id::{
 
 use crate::{save_fn, schema::race_events, update_fn};
 
-use super::{bracket_race_infos::BracketRaceInfo};
+use super::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone, Selectable)]
 #[diesel(treat_none_as_null = true)]
@@ -18,6 +18,23 @@ pub struct RaceEvent {
     pub guild_id: String,
     pub bracket_race_info_id: i32,
     pub scheduled_event_id: String,
+}
+
+impl RaceEvent {
+    /// returns all `RaceEvent`s associated with any of these BRI Ids
+    ///
+    /// result is sorted by guild id
+    pub fn get_for_bri_ids(
+        ids: &[BracketRaceInfoId],
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<Self>, diesel::result::Error> {
+        race_events::table
+            .filter(
+                race_events::dsl::bracket_race_info_id.eq_any(ids.iter().map(|bri_id| bri_id.0)),
+            )
+            .order_by(race_events::dsl::guild_id)
+            .load(conn)
+    }
 }
 
 impl RaceEvent {
