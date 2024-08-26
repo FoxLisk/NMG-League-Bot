@@ -118,6 +118,7 @@ async fn main() {
     tokio::spawn(helper_bot::launch(
         shutdown_send.subscribe(),
         state.clone(),
+        webhooks.clone(),
         diesel_pool.clone(),
     ));
 

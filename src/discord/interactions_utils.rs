@@ -2,7 +2,7 @@ use log::warn;
 use twilight_model::application::command::CommandOptionChoice;
 use twilight_model::application::interaction::{Interaction, InteractionData};
 use twilight_model::channel::message::component::{Button, ButtonStyle};
-use twilight_model::channel::message::{AllowedMentions, Component};
+use twilight_model::channel::message::{AllowedMentions, Component, MessageFlags};
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
@@ -32,6 +32,15 @@ pub fn update_resp_to_plain_content<S: Into<String>>(content: S) -> InteractionR
             content: Some(content.into()),
             ..Default::default()
         }),
+    }
+}
+
+pub fn plain_ephemeral_response<S: Into<String>>(content: S) -> InteractionResponse {
+    let mut data = plain_interaction_data(content);
+    data.flags = Some(MessageFlags::EPHEMERAL);
+    InteractionResponse {
+        kind: InteractionResponseType::ChannelMessageWithSource,
+        data: Some(data),
     }
 }
 

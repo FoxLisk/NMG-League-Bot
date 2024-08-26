@@ -10,11 +10,11 @@ use crate::discord::constants::{
 use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
-    autocomplete_result, button_component, interaction_to_custom_id, plain_interaction_data,
+    autocomplete_result, button_component, interaction_to_custom_id, plain_ephemeral_response,
     plain_interaction_response, update_resp_to_plain_content,
 };
 use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
-use crate::{discord, get_focused_opt, get_opt};
+use crate::{discord, get_focused_opt, get_opt_s};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
@@ -369,26 +369,26 @@ fn datetime_from_options(
 fn get_datetime_from_scheduling_cmd(
     options: &mut Vec<CommandDataOption>,
 ) -> Result<DateTime<chrono_tz::Tz>, &'static str> {
-    let day_string = match get_opt!("day", options, String) {
+    let day_string = match get_opt_s!("day", options, String) {
         Ok(d) => d,
         Err(_e) => {
             return Err("Missing required day option");
         }
     };
-    let hour = match get_opt!("hour", options, Integer) {
+    let hour = match get_opt_s!("hour", options, Integer) {
         Ok(h) => h,
         Err(_e) => {
             return Err("Missing required hour option");
         }
     };
-    let minute = match get_opt!("minute", options, Integer) {
+    let minute = match get_opt_s!("minute", options, Integer) {
         Ok(m) => m,
         Err(_e) => {
             return Err("Missing required minute option");
         }
     };
     // TODO: this cannot possibly be the best way to do this, lmao
-    let ampm_offset = match get_opt!("am_pm", options, String) {
+    let ampm_offset = match get_opt_s!("am_pm", options, String) {
         Ok(ap) => ap,
         Err(_e) => {
             return Err("Missing required AM/PM option");
@@ -557,8 +557,8 @@ async fn handle_commentator_command(
             return Err(format!("Unkown commentator command `{cmd_s}`"));
         }
     };
-    let user = get_opt!("commentator", &mut subcommand_opts, User)?;
-    let race_id = get_opt!("race", &mut subcommand_opts, Integer)?;
+    let user = get_opt_s!("commentator", &mut subcommand_opts, User)?;
+    let race_id = get_opt_s!("race", &mut subcommand_opts, Integer)?;
     let mut conn = state.diesel_cxn().await.map_err_to_string()?;
     let race = BracketRace::get_by_id(race_id as i32, &mut conn).map_err_to_string()?;
     let mut info = race.info(&mut conn).map_err_to_string()?;
@@ -611,9 +611,9 @@ async fn handle_update_user_info(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
-    let nickname = get_opt!("nickname", &mut ac.options, String).ok();
-    let twitch = get_opt!("twitch", &mut ac.options, String).ok();
-    let racetime = get_opt!("racetime", &mut ac.options, String).ok();
+    let nickname = get_opt_s!("nickname", &mut ac.options, String).ok();
+    let twitch = get_opt_s!("twitch", &mut ac.options, String).ok();
+    let racetime = get_opt_s!("racetime", &mut ac.options, String).ok();
     if nickname.is_none() && twitch.is_none() && racetime.is_none() {
         return Ok(Some(plain_interaction_response(
             "You did not provide any information to update.",
@@ -908,7 +908,7 @@ async fn handle_submit_qualifier(
         "Unable to find user on handle_submit_qualifier command",
     ))?;
 
-    let time = match get_opt!("qualifier_time", &mut ac.options, String) {
+    let time = match get_opt_s!("qualifier_time", &mut ac.options, String) {
         Ok(t) => t,
         Err(e) => {
             return Ok(Some(plain_interaction_response(e)));
@@ -922,7 +922,7 @@ async fn handle_submit_qualifier(
             )));
         }
     };
-    let vod = match get_opt!("vod", &mut ac.options, String) {
+    let vod = match get_opt_s!("vod", &mut ac.options, String) {
         Ok(v) => v,
         Err(e) => {
             return Ok(Some(plain_interaction_response(e)));
@@ -999,7 +999,7 @@ async fn _handle_reschedule_race_cmd(
     mut ac: Box<CommandData>,
     state: Arc<DiscordState>,
 ) -> Result<UpdateResponseBag, String> {
-    let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
+    let race_id = get_opt_s!("race_id", &mut ac.options, Integer)?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
         Ok(br) => br,
@@ -1022,10 +1022,10 @@ async fn handle_create_player(
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let discord_user = get_opt!("user", &mut ac.options, User)?;
-    let rt_un = get_opt!("rtgg_username", &mut ac.options, String)?;
-    let twitch_name = get_opt!("twitch_username", &mut ac.options, String)?;
-    let name_override = get_opt!("name", &mut ac.options, String).ok();
+    let discord_user = get_opt_s!("user", &mut ac.options, User)?;
+    let rt_un = get_opt_s!("rtgg_username", &mut ac.options, String)?;
+    let twitch_name = get_opt_s!("twitch_username", &mut ac.options, String)?;
+    let name_override = get_opt_s!("name", &mut ac.options, String).ok();
     let name = match name_override {
         Some(name) => name,
         None => {
@@ -1071,8 +1071,8 @@ async fn handle_add_player_to_bracket_submit(
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let discord_id = get_opt!("user", &mut ac.options, User)?;
-    let bracket_name = get_opt!("bracket", &mut ac.options, String)?;
+    let discord_id = get_opt_s!("user", &mut ac.options, User)?;
+    let bracket_name = get_opt_s!("bracket", &mut ac.options, String)?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let player = match Player::get_by_discord_id(&(discord_id.to_string()), cxn.deref_mut())
         .map_err(|e| e.to_string())?
@@ -1159,9 +1159,9 @@ async fn handle_create_race(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let p1 = get_opt!("p1", &mut ac.options, User)?;
-    let p2 = get_opt!("p2", &mut ac.options, User)?;
-    let on_start_message = get_opt!("on_start_message", &mut ac.options, String).ok();
+    let p1 = get_opt_s!("p1", &mut ac.options, User)?;
+    let p2 = get_opt_s!("p2", &mut ac.options, User)?;
+    let on_start_message = get_opt_s!("on_start_message", &mut ac.options, String).ok();
 
     if p1 == p2 {
         return Ok(plain_interaction_response(
@@ -1223,7 +1223,7 @@ async fn handle_cancel_race(
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, String> {
-    let race_id = get_opt!("race_id", &mut ac.options, Integer)?;
+    let race_id = get_opt_s!("race_id", &mut ac.options, Integer)?;
 
     if !ac.options.is_empty() {
         return Err(format!(
@@ -1432,8 +1432,8 @@ async fn handle_set_season_state(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let season_ordinal = get_opt!("season_ordinal", &mut ac.options, Integer)?;
-    let new_state_raw = get_opt!("new_state", &mut ac.options, String)?;
+    let season_ordinal = get_opt_s!("season_ordinal", &mut ac.options, Integer)?;
+    let new_state_raw = get_opt_s!("new_state", &mut ac.options, String)?;
     let new_state: SeasonState =
         serde_json::from_str(&new_state_raw).map_err(|e| format!("Error parsing state: {e}"))?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
@@ -1450,9 +1450,9 @@ async fn handle_create_season(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let format = get_opt!("format", &mut ac.options, String)?;
-    let category = get_opt!("rtgg_category_name", &mut ac.options, String)?;
-    let goal = get_opt!("rtgg_goal_name", &mut ac.options, String)?;
+    let format = get_opt_s!("format", &mut ac.options, String)?;
+    let category = get_opt_s!("rtgg_category_name", &mut ac.options, String)?;
+    let goal = get_opt_s!("rtgg_goal_name", &mut ac.options, String)?;
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let ns = NewSeason::new(format, category, goal, cxn.deref_mut()).map_err_to_string()?;
 
@@ -1471,14 +1471,7 @@ async fn handle_see_unscheduled_races(
 
     let mut unscheduled = BracketRace::unscheduled(cxn.deref_mut()).map_err_to_string()?;
     if unscheduled.is_empty() {
-        let mut data = plain_interaction_data("There are no unscheduled races.");
-        data.flags = Some(MessageFlags::EPHEMERAL);
-        let ir = InteractionResponse {
-            kind: InteractionResponseType::ChannelMessageWithSource,
-            data: Some(data),
-        };
-
-        return Ok(ir);
+        return Ok(plain_ephemeral_response("There are no unscheduled races."));
     }
     unscheduled.sort_by_key(|br| br.bracket_id);
     let mut fields = vec![];
@@ -1520,8 +1513,8 @@ async fn handle_create_bracket(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let name = get_opt!("name", &mut ac.options, String)?;
-    let bracket_type = get_opt!("bracket_type", &mut ac.options, String)?;
+    let name = get_opt_s!("name", &mut ac.options, String)?;
+    let bracket_type = get_opt_s!("bracket_type", &mut ac.options, String)?;
     let bt: BracketType = serde_json::from_str(&bracket_type).map_err_to_string()?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let szn = Season::get_active_season(conn.deref_mut())
@@ -1536,7 +1529,7 @@ async fn handle_finish_bracket(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let bracket_id = get_opt!("bracket_id", &mut ac.options, Integer)?;
+    let bracket_id = get_opt_s!("bracket_id", &mut ac.options, Integer)?;
     let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let mut bracket =
         Bracket::get_by_id(bracket_id as i32, conn.deref_mut()).map_err_to_string()?;
@@ -1555,10 +1548,10 @@ async fn get_race_finish_opts_from_command_opts(
     state: &Arc<DiscordState>,
     force: bool,
 ) -> Result<RaceFinishOptions, String> {
-    let race_id = get_opt!("race_id", options, Integer)?;
-    let p1_res = get_opt!("p1_result", options, String)?;
-    let p2_res = get_opt!("p2_result", options, String)?;
-    let racetime_url = get_opt!("racetime_url", options, String).ok();
+    let race_id = get_opt_s!("race_id", options, Integer)?;
+    let p1_res = get_opt_s!("p1_result", options, String)?;
+    let p2_res = get_opt_s!("p2_result", options, String)?;
+    let racetime_url = get_opt_s!("racetime_url", options, String).ok();
     let r1 = if p1_res == "forfeit" {
         PlayerResult::Forfeit
     } else {
@@ -1654,7 +1647,7 @@ async fn handle_generate_pairings(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let bracket_id = get_opt!("bracket_id", &mut ac.options, Integer)?;
+    let bracket_id = get_opt_s!("bracket_id", &mut ac.options, Integer)?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let mut b = match Bracket::get_by_id(bracket_id as i32, cxn.deref_mut()) {
         Ok(b) => b,

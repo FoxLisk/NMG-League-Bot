@@ -44,6 +44,8 @@ use crate::{
     shutdown::Shutdown,
 };
 
+use super::Webhooks;
+
 mod bot;
 
 /// describe the fields that should be populated in an event
@@ -88,10 +90,11 @@ struct RaceInfoBundle {
 pub async fn launch(
     mut sd: Receiver<Shutdown>,
     state: Arc<DiscordState>,
+    webhooks: Webhooks,
     pool: Pool<DieselConnectionManager>,
 ) {
     let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
-    let bot = Arc::new(HelperBot::new(pool));
+    let bot = Arc::new(HelperBot::new(webhooks, pool));
     tokio::spawn(HelperBot::run(bot.clone(), sd.resubscribe()));
 
     loop {

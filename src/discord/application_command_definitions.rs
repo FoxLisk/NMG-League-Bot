@@ -1,3 +1,4 @@
+use crate::discord::command_option_default;
 use crate::discord::constants::{
     ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
     CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
@@ -18,24 +19,7 @@ use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
 
 pub fn application_command_definitions() -> Vec<Command> {
-    fn command_option_default() -> CommandOption {
-        CommandOption {
-            autocomplete: None,
-            channel_types: None,
-            choices: None,
-            description: "".to_string(),
-            description_localizations: None,
-            kind: CommandOptionType::SubCommand,
-            max_length: None,
-            max_value: None,
-            min_length: None,
-            min_value: None,
-            name: "".to_string(),
-            name_localizations: None,
-            options: None,
-            required: None,
-        }
-    }
+
 
     let create_async_race = CommandBuilder::new(
         CREATE_ASYNC_CMD.to_string(),

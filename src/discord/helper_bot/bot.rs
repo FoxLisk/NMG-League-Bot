@@ -14,18 +14,33 @@ use twilight_gateway::{
     Config, Event, Intents,
 };
 use twilight_http::{
+    client::InteractionClient,
     request::scheduled_event::{CreateGuildScheduledEvent, UpdateGuildScheduledEvent},
     Client,
 };
 use twilight_model::{
-    guild::scheduled_event::{GuildScheduledEvent, PrivacyLevel},
+    application::{
+        command::{Command, CommandOption, CommandOptionType, CommandType},
+        interaction::{application_command::CommandData, Interaction},
+    },
+    gateway::payload::incoming::InteractionCreate,
+    guild::{
+        scheduled_event::{GuildScheduledEvent, PrivacyLevel},
+        Permissions,
+    },
+    http::interaction::InteractionResponse,
     id::{
         marker::{GuildMarker, ScheduledEventMarker},
         Id,
     },
 };
+use twilight_util::builder::command::CommandBuilder;
 
-use crate::shutdown::Shutdown;
+use crate::{
+    discord::{command_option_default, interactions_utils::plain_ephemeral_response, Webhooks},
+    get_opt, get_opt_s,
+    shutdown::Shutdown,
+};
 
 pub(super) struct GuildEventConfig {
     pub(super) guild_id: Id<GuildMarker>,
@@ -45,16 +60,18 @@ pub(super) struct HelperBot {
     cache: InMemoryCache,
     client: Client,
     diesel_pool: Pool<DieselConnectionManager>,
+    webhooks: Webhooks,
 }
 
 impl HelperBot {
-    pub(super) fn new(diesel_pool: Pool<DieselConnectionManager>) -> Self {
+    pub(super) fn new(webhooks: Webhooks, diesel_pool: Pool<DieselConnectionManager>) -> Self {
         let cache = InMemoryCache::new();
         let client = Client::new(CONFIG.helper_bot_discord_token.clone());
         Self {
             cache,
             client,
             diesel_pool,
+            webhooks,
         }
     }
 
@@ -157,12 +174,151 @@ impl HelperBot {
         out
     }
 
+    fn interaction_client(&self) -> InteractionClient<'_> {
+        self.client.interaction(CONFIG.helper_bot_application_id)
+    }
+
     async fn handle_event(&self, event: Event) {
         match event {
             Event::GuildCreate(gc) => {
                 info!("Joined guild {}: {}", gc.id, gc.name);
+                let cmds = application_command_definitions();
+                // set guild commands in the configured guild, in testing only. in real life we want to do global application commands.
+                if cfg!(feature = "testing") && gc.id == CONFIG.guild_id {
+                    match self
+                        .interaction_client()
+                        .set_guild_commands(gc.id, &cmds)
+                        .await
+                    {
+                        Ok(resp) => {
+                            if !resp.status().is_success() {
+                                warn!(
+                                    "Error setting guild commands in main discord: {:?}",
+                                    resp.text().await
+                                )
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Error setting guild commands in main discord: {e}");
+                        }
+                    }
+                }
+            }
+            Event::InteractionCreate(ic) => {
+                self.handle_interaction(ic).await;
             }
             _ => {}
         }
     }
+
+    async fn handle_interaction(&self, ic: Box<InteractionCreate>) {
+        let mut interaction = ic.0;
+        let id = std::mem::take(&mut interaction.data);
+        match id {
+            Some(data) => match data {
+                twilight_model::application::interaction::InteractionData::ApplicationCommand(
+                    ac,
+                ) => {
+                    self.handle_application_interaction(interaction, ac).await;
+                }
+
+                _ => {
+                    info!("Got unhandled interaction: {interaction:?}");
+                }
+            },
+            None => {
+                warn!("Got Interaction with no data, ignoring {interaction:?}");
+            }
+        }
+    }
+
+    // N.B. interaction has had `.data` stripped off of it; thats passed in as `ac` instead
+    async fn handle_application_interaction(&self, interaction: Interaction, ac: Box<CommandData>) {
+        let resp = match ac.name.as_str() {
+            TEST_CMD => handle_test(ac).await,
+            TEST_ERROR_CMD => handle_test_error(ac).await,
+            _ => {
+                warn!("Unhandled application command: {}", ac.name);
+                // maybe give a boilerplate response? prolly not
+                return;
+            }
+        };
+
+        match resp {
+            Ok(r) => {
+                if let Err(e) = self
+                    .interaction_client()
+                    .create_response(interaction.id, &interaction.token, &r)
+                    .await
+                {
+                    warn!("Error responding to application command: {e}");
+                    self.webhooks
+                        .message_error(&format!("Error responding to application command: {e}"))
+                        .await
+                        .ok();
+                }
+            }
+            Err(e) => {
+                warn!("Error handling application command: {e}");
+                self.webhooks
+                    .message_error(&format!("Error handling application command: {e}"))
+                    .await
+                    .ok();
+                self.interaction_client().create_response(
+                    interaction.id,
+                    &interaction.token,
+                    &plain_ephemeral_response(
+                        "Sorry, an error occurred trying to handle that command. Maybe try again?",
+                    ),
+                ).await.ok();
+            }
+        };
+    }
+}
+
+async fn handle_test(ac: Box<CommandData>) -> Result<InteractionResponse, NMGLeagueBotError> {
+    Ok(plain_ephemeral_response("Hi mom!"))
+}
+
+async fn handle_test_error(
+    mut ac: Box<CommandData>,
+) -> Result<InteractionResponse, NMGLeagueBotError> {
+    let err = get_opt!("err", &mut ac.options, String)?;
+    Err(NMGLeagueBotError::Other(err))
+}
+
+const TEST_CMD: &'static str = "test";
+const TEST_ERROR_CMD: &'static str = "test_error";
+
+fn application_command_definitions() -> Vec<Command> {
+    let test = CommandBuilder::new(
+        TEST_CMD.to_string(),
+        "Test command".to_string(),
+        CommandType::ChatInput,
+    )
+    .default_member_permissions(Permissions::ADMINISTRATOR)
+    .build();
+    let test_err = CommandBuilder::new(
+        TEST_ERROR_CMD.to_string(),
+        "Produce an error".to_string(),
+        CommandType::ChatInput,
+    )
+    .option(CommandOption {
+        description: "The error to produce".to_string(),
+        description_localizations: None,
+        name: "err".to_string(),
+        name_localizations: None,
+        required: Some(true),
+        kind: CommandOptionType::String,
+        ..command_option_default()
+    })
+    .default_member_permissions(Permissions::ADMINISTRATOR)
+    .build();
+
+    let mut cmds = vec![];
+
+    if cfg!(feature = "testing") {
+        cmds.extend(vec![test, test_err]);
+    }
+    cmds
 }
