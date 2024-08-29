@@ -225,13 +225,13 @@ macro_rules! get_opt_s {
 #[macro_export]
 macro_rules! get_focused_opt {
     ($opt_name:expr, $options:expr, $t:ident) => {{
-        use nmg_league_bot::utils::ResultErrToString;
-
-        crate::discord::get_opt($opt_name, $options, twilight_model::application::command::CommandOptionType::$t).map_err_to_string().and_then(|opt| {
+        crate::discord::get_opt($opt_name, $options, twilight_model::application::command::CommandOptionType::$t).and_then(|opt| {
             if let twilight_model::application::interaction::application_command::CommandOptionValue::Focused(output, twilight_model::application::command::CommandOptionType::$t) = opt.value {
                 Ok(output)
             } else {
-                Err(format!("Invalid option value for {}", $opt_name))
+                Err(nmg_league_bot::ApplicationCommandOptionError::UnexpectedOptionKind(
+                    twilight_model::application::command::CommandOptionType::$t, opt.value.kind()
+                ))
             }
         })
     }};

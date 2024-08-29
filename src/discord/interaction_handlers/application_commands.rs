@@ -10,8 +10,8 @@ use crate::discord::constants::{
 use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::interactions_utils::{
-    autocomplete_result, button_component, interaction_to_custom_id, plain_ephemeral_response,
-    plain_interaction_response, update_resp_to_plain_content,
+    autocomplete_result, button_component, get_subcommand_options, interaction_to_custom_id,
+    plain_ephemeral_response, plain_interaction_response, update_resp_to_plain_content,
 };
 use crate::discord::{notify_racer, ErrorResponse, ScheduleRaceError};
 use crate::{discord, get_focused_opt, get_opt_s};
@@ -49,7 +49,7 @@ use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
 use twilight_model::application::interaction::application_command::{
-    CommandData, CommandDataOption, CommandOptionValue,
+    CommandData, CommandDataOption, 
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
@@ -468,7 +468,7 @@ fn handle_schedule_race_autocomplete(
     _interaction: Box<InteractionCreate>,
     _state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    get_focused_opt!("day", &mut ac.options, String)?;
+    get_focused_opt!("day", &mut ac.options, String).map_err_to_string()?;
 
     let today = Utc::now().with_timezone(&chrono_tz::US::Eastern);
     let mut options = Vec::with_capacity(7);
@@ -524,28 +524,13 @@ async fn handle_commentator_autocomplete(
     Ok(autocomplete_result(options))
 }
 
-/// returns, effectively, the subcommand option itself; unbundled into a (name, [options]) tuple
-async fn get_subcommand_options(
-    options: Vec<CommandDataOption>,
-) -> Result<(String, Vec<CommandDataOption>), String> {
-    if options.len() != 1 {
-        warn!("`get_subcommand` called on a list of more than one option, which is probably not correct");
-    }
-    for option in options {
-        if let CommandOptionValue::SubCommand(sc) = option.value {
-            return Ok((option.name, sc));
-        }
-    }
-    Err(format!("No subcommand found"))
-}
-
 async fn handle_commentator_command(
     mut ac: Box<CommandData>,
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     let (cmd_s, mut subcommand_opts) =
-        get_subcommand_options(std::mem::take(&mut ac.options)).await?;
+        get_subcommand_options(std::mem::take(&mut ac.options)).map_err_to_string()?;
     enum Cmd {
         Add,
         Remove,
@@ -1108,7 +1093,7 @@ async fn get_bracket_autocompletes(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<Vec<CommandOptionChoice>, String> {
-    get_focused_opt!("bracket", &mut ac.options, String)?;
+    get_focused_opt!("bracket", &mut ac.options, String).map_err_to_string()?;
 
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let szn = Season::get_active_season(cxn.deref_mut())

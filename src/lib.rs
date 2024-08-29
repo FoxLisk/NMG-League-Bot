@@ -111,6 +111,9 @@ pub enum ApplicationCommandOptionError {
 
     #[error("Unexpected option kind: expected {0:?}, got {1:?}")]
     UnexpectedOptionKind(CommandOptionType, CommandOptionType),
+
+    #[error("No subcommand found")]
+    NoSubcommand
 }
 
 #[derive(Error, Debug)]
