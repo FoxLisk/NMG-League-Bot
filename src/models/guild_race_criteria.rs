@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     delete_fn, save_fn,
-    schema::guild_race_filters::{self, guild_id},
+    schema::guild_race_criteria::{self, guild_id},
     NMGLeagueBotError,
 };
 use diesel::prelude::*;
@@ -13,7 +13,7 @@ use twilight_model::id::{marker::GuildMarker, Id};
 use super::{bracket_race_infos::BracketRaceInfo, bracket_races::BracketRace, player::Player};
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
-pub enum RestreamStatusFilter {
+pub enum RestreamStatusCriterion {
     HasRestream,
     HasNoRestream,
     Any,
@@ -21,7 +21,8 @@ pub enum RestreamStatusFilter {
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone, Selectable)]
 #[diesel(treat_none_as_null = true)]
-pub struct GuildRaceFilter {
+#[diesel(table_name = guild_race_criteria)]
+pub struct GuildRaceCriteria {
     pub id: i32,
     guild_id: String,
     pub player_id: Option<i32>,
@@ -31,15 +32,15 @@ pub struct GuildRaceFilter {
     restream_status: Option<bool>,
 }
 
-impl GuildRaceFilter {
+impl GuildRaceCriteria {
     pub fn get_by_id(
         id: i32,
         gid: Id<GuildMarker>,
         conn: &mut SqliteConnection,
     ) -> Result<Option<Self>, diesel::result::Error> {
-        guild_race_filters::table
-            .filter(guild_race_filters::dsl::id.eq(id))
-            .filter(guild_race_filters::dsl::guild_id.eq(gid.to_string()))
+        guild_race_criteria::table
+            .filter(guild_race_criteria::dsl::id.eq(id))
+            .filter(guild_race_criteria::dsl::guild_id.eq(gid.to_string()))
             .first(conn)
             .optional()
     }
@@ -48,8 +49,8 @@ impl GuildRaceFilter {
         gid: Id<GuildMarker>,
         conn: &mut SqliteConnection,
     ) -> Result<Vec<Self>, diesel::result::Error> {
-        guild_race_filters::table
-            .filter(guild_race_filters::dsl::guild_id.eq(gid.to_string()))
+        guild_race_criteria::table
+            .filter(guild_race_criteria::dsl::guild_id.eq(gid.to_string()))
             .load(conn)
     }
 
@@ -88,73 +89,73 @@ impl GuildRaceFilter {
         format!("Races featuring {player_str}, with {restream_str}")
     }
 
-    delete_fn!(crate::schema::guild_race_filters::table);
+    delete_fn!(crate::schema::guild_race_criteria::table);
 }
 
 #[derive(Debug)]
-pub struct GuildFilters {
+pub struct GuildCriteria {
     guild_id: Id<GuildMarker>,
-    filters: Vec<GuildRaceFilter>,
+    criteria: Vec<GuildRaceCriteria>,
 }
 
-impl GuildFilters {
+impl GuildCriteria {
     pub fn guild_id(&self) -> Id<GuildMarker> {
         self.guild_id
     }
 
     pub fn race_is_interesting(&self, race: &BracketRace, bri: &BracketRaceInfo) -> bool {
-        self.filters
+        self.criteria
             .iter()
             .any(|f| f.race_is_interesting(race, bri))
     }
 }
 
 #[derive(Insertable)]
-#[diesel(table_name=guild_race_filters)]
-pub struct NewGuildRaceFilter {
+#[diesel(table_name=guild_race_criteria)]
+pub struct NewGuildRaceCriteria {
     guild_id: String,
     player_id: Option<i32>,
     restream_status: Option<bool>,
 }
 
-impl NewGuildRaceFilter {
+impl NewGuildRaceCriteria {
     pub fn new(
         gid: Id<GuildMarker>,
         player: Option<Player>,
-        restream_status: RestreamStatusFilter,
+        restream_status: RestreamStatusCriterion,
     ) -> Self {
         Self {
             guild_id: gid.to_string(),
             player_id: player.map(|p| p.id),
             restream_status: match restream_status {
-                RestreamStatusFilter::HasRestream => Some(true),
-                RestreamStatusFilter::HasNoRestream => Some(false),
-                RestreamStatusFilter::Any => None,
+                RestreamStatusCriterion::HasRestream => Some(true),
+                RestreamStatusCriterion::HasNoRestream => Some(false),
+                RestreamStatusCriterion::Any => None,
             },
         }
     }
-    save_fn!(guild_race_filters::table, GuildRaceFilter);
+    save_fn!(guild_race_criteria::table, GuildRaceCriteria);
 }
 
-/// Gets all filters mapped by guild_id.
-pub fn race_filters_by_guild_id<'a, I: Iterator<Item = &'a Id<GuildMarker>>>(
+/// Gets all criteria mapped by guild_id.
+pub fn race_criteria_by_guild_id<'a, I: Iterator<Item = &'a Id<GuildMarker>>>(
     ids: I,
     conn: &mut SqliteConnection,
-) -> Result<HashMap<Id<GuildMarker>, GuildFilters>, NMGLeagueBotError> {
+) -> Result<HashMap<Id<GuildMarker>, GuildCriteria>, NMGLeagueBotError> {
     let guild_ids = ids.collect::<Vec<_>>();
-    let raw_filters = guild_race_filters::table
+    let raw_criteria = guild_race_criteria::table
         .filter(guild_id.eq_any(guild_ids.iter().map(|i| i.to_string())))
-        .load::<GuildRaceFilter>(conn)?;
+        .load::<GuildRaceCriteria>(conn)?;
     let mut by_guild_id: HashMap<_, _> = guild_ids
         .iter()
         .map(|id| (**id, vec![]))
         .collect::<HashMap<_, _>>();
 
-    for f in raw_filters {
+    for f in raw_criteria {
         let gid = match f.guild_id.parse::<Id<GuildMarker>>() {
             Ok(g) => g,
             Err(e) => {
-                warn!("Unable to parse guild id on GuildRaceFilter: {f:?} - {e} - deleting");
+                warn!("Unable to parse guild id on GuildRaceCriteria: {f:?} - {e} - deleting");
                 f.delete(conn).ok();
                 continue;
             }
@@ -166,9 +167,9 @@ pub fn race_filters_by_guild_id<'a, I: Iterator<Item = &'a Id<GuildMarker>>>(
         .map(|(k, v)| {
             (
                 k,
-                GuildFilters {
+                GuildCriteria {
                     guild_id: k,
-                    filters: v,
+                    criteria: v,
                 },
             )
         })

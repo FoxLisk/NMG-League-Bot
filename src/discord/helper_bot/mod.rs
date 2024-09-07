@@ -21,7 +21,7 @@ use nmg_league_bot::{
         bracket_race_infos::BracketRaceInfo,
         bracket_races::{BracketRace, BracketRaceState},
         brackets::Bracket,
-        guild_race_filters::GuildFilters,
+        guild_race_criteria::GuildCriteria,
         player::Player,
         race_events::{NewRaceEvent, RaceEvent},
         season::SeasonState,
@@ -150,7 +150,7 @@ async fn sync_race_status(
 
     // for each guild we're syncing events to, do the syncing
     // the list of guilds to sync is just "whichever ones the bot is currently added to"
-    for guild_filters in helper_bot.guild_filters().await? {
+    for guild_filters in helper_bot.guild_criteria().await? {
         let race_events_by_bri_id = race_events_by_guild
             .remove(&guild_filters.guild_id().to_string())
             .unwrap_or(HashMap::new());
@@ -177,7 +177,7 @@ async fn sync_race_status(
 // XXX probably we could include race id #s in the event info somewhere and use that to track them over time...
 // that would be very vulnerable to users modifying events, though.
 async fn sync_events_in_a_guild(
-    guild_filters: GuildFilters,
+    guild_filters: GuildCriteria,
     helper_bot: &Arc<HelperBot>,
     race_infos: &[RaceInfoBundle],
     mut race_events_by_bri_id: HashMap<i32, RaceEvent>,

@@ -7,9 +7,9 @@ use nmg_league_bot::{
     config::CONFIG,
     db::DieselConnectionManager,
     models::{
-        guild_race_filters::{
-            race_filters_by_guild_id, GuildFilters, GuildRaceFilter, NewGuildRaceFilter,
-            RestreamStatusFilter,
+        guild_race_criteria::{
+            race_criteria_by_guild_id, GuildCriteria, GuildRaceCriteria, NewGuildRaceCriteria,
+            RestreamStatusCriterion,
         },
         player::Player,
     },
@@ -125,16 +125,23 @@ impl HelperBot {
         // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
         // convince the compiler that i have an iterator of mutable references in a simpler way
         let mut events = ShardEventStream::new(shards.iter_mut());
-        // this is moderately duplicated with the setting of guild commands below but c'est la vie
-        let cmds = application_command_definitions();
-        match bot.interaction_client().set_global_commands(&cmds).await {
-            Ok(resp) => {
-                if !resp.status().is_success() {
-                    warn!("Error setting guild commands: {:?}", resp.text().await)
-                }
+
+        if cfg!(features = "testing") {
+            if let Err(e) = bot.interaction_client().set_global_commands(&vec![]).await {
+                warn!("Error resetting global commands: {e}");
             }
-            Err(e) => {
-                warn!("Error setting guild commands: {e}");
+        } else {
+            // this is moderately duplicated with the setting of guild commands below but c'est la vie
+            let cmds = application_command_definitions();
+            match bot.interaction_client().set_global_commands(&cmds).await {
+                Ok(resp) => {
+                    if !resp.status().is_success() {
+                        warn!("Error setting guild commands: {:?}", resp.text().await)
+                    }
+                }
+                Err(e) => {
+                    warn!("Error setting guild commands: {e}");
+                }
             }
         }
 
@@ -165,10 +172,10 @@ impl HelperBot {
         info!("Helper bot done");
     }
 
-    /// gets a [GuildFilters] for each guild we're currently in
+    /// gets a [GuildCriteria] for each guild we're currently in
     ///
     /// the CONFIG.guild_id guild will be first
-    pub(super) async fn guild_filters(&self) -> Result<Vec<GuildFilters>, NMGLeagueBotError> {
+    pub(super) async fn guild_criteria(&self) -> Result<Vec<GuildCriteria>, NMGLeagueBotError> {
         let guilds_joined = self
             .cache
             .iter()
@@ -178,14 +185,14 @@ impl HelperBot {
         let mut out = Vec::with_capacity(guilds_joined.len());
         // TODO: probably we should still return the main guild config on error...?
         let mut conn = self.diesel_pool.get().await?;
-        let mut filters = race_filters_by_guild_id(guilds_joined.keys(), &mut conn)?;
+        let mut criteria = race_criteria_by_guild_id(guilds_joined.keys(), &mut conn)?;
 
         // just push this to the front; its actual contents don't matter because main discord always
         // wants to sync everything, and is hardcoded that way later
-        if let Some(filters) = filters.remove(&CONFIG.guild_id) {
-            out.push(filters);
+        if let Some(criteria) = criteria.remove(&CONFIG.guild_id) {
+            out.push(criteria);
         }
-        out.extend(filters.into_values().collect::<Vec<_>>());
+        out.extend(criteria.into_values().collect::<Vec<_>>());
         Ok(out)
     }
 
@@ -208,6 +215,9 @@ impl HelperBot {
                         Ok(resp) => {
                             if !resp.status().is_success() {
                                 warn!("Error setting guild commands: {:?}", resp.text().await)
+                            } else {
+                                let m = resp.model().await;
+                                info!("guild commands: {m:?}");
                             }
                         }
                         Err(e) => {
@@ -270,7 +280,7 @@ impl HelperBot {
         let resp = match ac.name.as_str() {
             TEST_CMD => handle_test(ac).await,
             TEST_ERROR_CMD => handle_test_error(ac).await,
-            FILTERS_CMD => handle_filters_commands(interaction, ac, conn).await,
+            CRITERIA_CMD => handle_criteria_commands(interaction, ac, conn).await,
             _ => {
                 warn!("Unhandled application command: {}", ac.name);
                 // maybe give a boilerplate response? prolly not
@@ -310,7 +320,7 @@ impl HelperBot {
     }
 }
 
-async fn handle_filters_commands(
+async fn handle_criteria_commands(
     interaction: Interaction,
     mut ac: Box<CommandData>,
     conn: &mut SqliteConnection,
@@ -337,42 +347,42 @@ async fn handle_filters_commands(
     }
     let (subcommand, opts) = get_subcommand_options(std::mem::take(&mut ac.options))?;
     match (subcommand.as_str(), interaction.kind) {
-        (FILTERS_ADD_SUBCMD, InteractionType::ApplicationCommand) => {
-            handle_add_filter(guild_id, opts, conn)
+        (CRITERIA_ADD_SUBCMD, InteractionType::ApplicationCommand) => {
+            handle_add_criteria(guild_id, opts, conn)
         }
-        (FILTERS_REMOVE_SUBCMD, InteractionType::ApplicationCommand) => {
-            handle_remove_filter(guild_id, opts, conn)
+        (CRITERIA_REMOVE_SUBCMD, InteractionType::ApplicationCommand) => {
+            handle_remove_criteria(guild_id, opts, conn)
         }
-        (FILTERS_SHOW_SUBCMD, InteractionType::ApplicationCommand) => {
-            handle_show_filters(guild_id, conn)
+        (CRITERIA_SHOW_SUBCMD, InteractionType::ApplicationCommand) => {
+            handle_show_criteria(guild_id, conn)
         }
-        (FILTERS_ADD_SUBCMD, InteractionType::ApplicationCommandAutocomplete) => {
-            handle_add_filter_autocomplete(opts, conn)
+        (CRITERIA_ADD_SUBCMD, InteractionType::ApplicationCommandAutocomplete) => {
+            handle_add_criteria_autocomplete(opts, conn)
         }
-        (FILTERS_REMOVE_SUBCMD, InteractionType::ApplicationCommandAutocomplete) => {
-            handle_remove_filter_autocomplete(guild_id, opts, conn)
+        (CRITERIA_REMOVE_SUBCMD, InteractionType::ApplicationCommandAutocomplete) => {
+            handle_remove_criteria_autocomplete(guild_id, opts, conn)
         }
         (_, InteractionType::ApplicationCommandAutocomplete) => {
             warn!(
-                "handle_filters_command got an unexpected autocomplete interaction: {interaction:?}"
+                "handle_criteria_command got an unexpected autocomplete interaction: {interaction:?}"
             );
             Ok(autocomplete_result(vec![]))
         }
         (_, InteractionType::ApplicationCommand) => {
-            warn!("handle_filters_command got an unexpected application command: {interaction:?}");
+            warn!("handle_criteria_command got an unexpected application command: {interaction:?}");
             Ok(plain_ephemeral_response(
                 "I'm sorry, i somehow don't recognize that command",
             ))
         }
         (_, _) => {
-            warn!("handle_filters_command got something REALLY unexpected: {interaction:?}");
+            warn!("handle_criteria_command got something REALLY unexpected: {interaction:?}");
             // TODO: gross
             Err(NMGLeagueBotError::Other("Unexpected command".to_string()))
         }
     }
 }
 
-fn handle_add_filter_autocomplete(
+fn handle_add_criteria_autocomplete(
     mut opts: Vec<CommandDataOption>,
     conn: &mut SqliteConnection,
 ) -> Result<InteractionResponse, NMGLeagueBotError> {
@@ -403,12 +413,12 @@ fn handle_add_filter_autocomplete(
     Ok(autocomplete_result(opts))
 }
 
-fn handle_remove_filter_autocomplete(
+fn handle_remove_criteria_autocomplete(
     guild_id: Id<GuildMarker>,
     mut opts: Vec<CommandDataOption>,
     conn: &mut SqliteConnection,
 ) -> Result<InteractionResponse, NMGLeagueBotError> {
-    get_focused_opt!("filter", &mut opts, String)?;
+    get_focused_opt!("criteria", &mut opts, String)?;
     let grfs = grfs_with_display(guild_id, conn)?;
     let opts = grfs
         .into_iter()
@@ -425,8 +435,8 @@ fn handle_remove_filter_autocomplete(
 fn grfs_with_display(
     guild_id: Id<GuildMarker>,
     conn: &mut SqliteConnection,
-) -> Result<Vec<(GuildRaceFilter, String)>, NMGLeagueBotError> {
-    let grfs = GuildRaceFilter::list_for_guild(guild_id, conn)?;
+) -> Result<Vec<(GuildRaceCriteria, String)>, NMGLeagueBotError> {
+    let grfs = GuildRaceCriteria::list_for_guild(guild_id, conn)?;
     let all_player_ids = grfs
         .iter()
         .map(|grf| grf.player_id.clone())
@@ -443,13 +453,13 @@ fn grfs_with_display(
         .collect::<Vec<_>>())
 }
 
-fn handle_remove_filter(
+fn handle_remove_criteria(
     guild_id: Id<GuildMarker>,
     mut opts: Vec<CommandDataOption>,
     conn: &mut SqliteConnection,
 ) -> Result<InteractionResponse, NMGLeagueBotError> {
     // this is a required param
-    let id = match get_opt!("filter", &mut opts, String)?.parse::<i32>() {
+    let id = match get_opt!("criteria", &mut opts, String)?.parse::<i32>() {
         Ok(i) => i,
         Err(_e) => {
             return Ok(plain_ephemeral_response(
@@ -457,20 +467,20 @@ fn handle_remove_filter(
             ));
         }
     };
-    let filter = GuildRaceFilter::get_by_id(id, guild_id, conn)?;
+    let filter = GuildRaceCriteria::get_by_id(id, guild_id, conn)?;
     if let Some(f) = filter {
         f.delete(conn)?;
         Ok(plain_ephemeral_response(
-            "Filter deleted! Your events will update appropriately in the next few minutes.",
+            "Criteria deleted! Your events will update appropriately in the next few minutes.",
         ))
     } else {
         Ok(plain_ephemeral_response(
-            "No matching filter found. Please try again.",
+            "No matching criteria found. Please try again.",
         ))
     }
 }
 
-fn handle_add_filter(
+fn handle_add_criteria(
     guild_id: Id<GuildMarker>,
     mut opts: Vec<CommandDataOption>,
     conn: &mut SqliteConnection,
@@ -505,21 +515,21 @@ fn handle_add_filter(
 
     let restream = get_opt!("restream", &mut opts, Integer)?;
     let restream_status = match restream {
-        RESTREAM_REQUIRED => RestreamStatusFilter::HasRestream,
-        RESTREAM_FORBIDDEN => RestreamStatusFilter::HasNoRestream,
-        RESTREAM_AGNOSTIC => RestreamStatusFilter::Any,
+        RESTREAM_REQUIRED => RestreamStatusCriterion::HasRestream,
+        RESTREAM_FORBIDDEN => RestreamStatusCriterion::HasNoRestream,
+        RESTREAM_AGNOSTIC => RestreamStatusCriterion::Any,
         _ => {
             return Ok(plain_ephemeral_response(
                 "Invalid restream option. Please try again.",
             ));
         }
     };
-    NewGuildRaceFilter::new(guild_id, player, restream_status).save(conn)?;
+    NewGuildRaceCriteria::new(guild_id, player, restream_status).save(conn)?;
 
-    Ok(plain_ephemeral_response("Filter added! You'll see relevant races now. If such races already exist, they will sync in the next few minutes."))
+    Ok(plain_ephemeral_response("Criteria added! You'll see relevant races now. If such races already exist, they will sync in the next few minutes."))
 }
 
-fn handle_show_filters(
+fn handle_show_criteria(
     guild_id: Id<GuildMarker>,
     conn: &mut SqliteConnection,
 ) -> Result<InteractionResponse, NMGLeagueBotError> {
@@ -535,9 +545,9 @@ fn handle_show_filters(
         .collect::<Vec<_>>();
     let title = Some(
         if fields.is_empty() {
-            "You have not configured any filters yet, so no NMG League race events are being synced to this server."
+            "You have not configured any criteria yet, so no NMG League race events are being synced to this server."
         } else {
-            "You will see NMG League races that pass any of these filters:"
+            "You will see NMG League races that match any of these criteria:"
         }
         .to_string(),
     );
@@ -579,10 +589,10 @@ async fn handle_test_error(
 
 const TEST_CMD: &'static str = "test";
 const TEST_ERROR_CMD: &'static str = "test_error";
-const FILTERS_CMD: &'static str = "filters";
-const FILTERS_ADD_SUBCMD: &'static str = "add";
-const FILTERS_REMOVE_SUBCMD: &'static str = "remove";
-const FILTERS_SHOW_SUBCMD: &'static str = "show";
+const CRITERIA_CMD: &'static str = "criteria";
+const CRITERIA_ADD_SUBCMD: &'static str = "add";
+const CRITERIA_REMOVE_SUBCMD: &'static str = "remove";
+const CRITERIA_SHOW_SUBCMD: &'static str = "show";
 
 const RESTREAM_REQUIRED: i64 = 1;
 const RESTREAM_FORBIDDEN: i64 = 2;
@@ -613,13 +623,13 @@ fn application_command_definitions() -> Vec<Command> {
     .default_member_permissions(Permissions::ADMINISTRATOR)
     .build();
 
-    let filters_commands =
-        CommandBuilder::new(FILTERS_CMD, "Filter commands", CommandType::ChatInput)
+    let criteria_commands =
+        CommandBuilder::new(CRITERIA_CMD, "Criteria commands", CommandType::ChatInput)
             .default_member_permissions(Permissions::ADMINISTRATOR)
             .option(CommandOption {
-                description: "add a new filter.".to_string(),
+                description: "add new criteria.".to_string(),
                 kind: CommandOptionType::SubCommand,
-                name: FILTERS_ADD_SUBCMD.to_string(),
+                name: CRITERIA_ADD_SUBCMD.to_string(),
                 options: Some(vec![
                     CommandOption {
                         description: "restream status".to_string(),
@@ -662,13 +672,13 @@ fn application_command_definitions() -> Vec<Command> {
                 ..command_option_default()
             })
             .option(CommandOption {
-                description: "remove a filter".to_string(),
+                description: "remove criteria".to_string(),
                 kind: CommandOptionType::SubCommand,
-                name: FILTERS_REMOVE_SUBCMD.to_string(),
+                name: CRITERIA_REMOVE_SUBCMD.to_string(),
                 options: Some(vec![CommandOption {
-                    description: "filter to remove".to_string(),
+                    description: "criteria to remove".to_string(),
                     kind: CommandOptionType::String,
-                    name: "filter".to_string(),
+                    name: "criteria".to_string(),
                     required: Some(true),
                     autocomplete: Some(true),
                     ..command_option_default()
@@ -676,14 +686,14 @@ fn application_command_definitions() -> Vec<Command> {
                 ..command_option_default()
             })
             .option(CommandOption {
-                description: "show current filters".to_string(),
+                description: "show current criteria".to_string(),
                 kind: CommandOptionType::SubCommand,
-                name: FILTERS_SHOW_SUBCMD.to_string(),
+                name: CRITERIA_SHOW_SUBCMD.to_string(),
                 ..command_option_default()
             })
             .build();
 
-    let mut cmds = vec![filters_commands];
+    let mut cmds = vec![criteria_commands];
 
     if cfg!(feature = "testing") {
         cmds.extend(vec![test, test_err]);

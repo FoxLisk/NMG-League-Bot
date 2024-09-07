@@ -1,5 +1,5 @@
 -- Your SQL goes here
-CREATE TABLE guild_race_filters (
+CREATE TABLE guild_race_criteria (
     id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
     guild_id        TEXT NOT NULL,
     player_id       INTEGER NULL,
