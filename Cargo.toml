@@ -20,7 +20,7 @@ no_auth_website = []
 # this feature runs the bot that creates & interacts with racetime rooms. (The racetime scanner for picking up finished
 # races is unaffected)
 racetime_bot = ["dep:racetime"]
-testing = []
+testing = ["dep:diesel_logger"]
 
 [dependencies]
 tokio = { version = "1.19.0", features = [
@@ -90,6 +90,8 @@ anyhow = "1"
 
 racetime = { version = "0.18.0", optional = true }
 either = "1.9.0"
+
+diesel_logger = { version = "*", optional = true }
 
 [dependencies.swiss-pairings]
 # path = "../swiss-pairings"

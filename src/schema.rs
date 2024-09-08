@@ -1,22 +1,10 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    _sqlx_migrations (version) {
-        version -> Nullable<BigInt>,
-        description -> Text,
-        installed_on -> Timestamp,
-        success -> Bool,
-        checksum -> Binary,
-        execution_time -> BigInt,
-    }
-}
-
-diesel::table! {
     bracket_race_infos (id) {
         id -> Integer,
         bracket_race_id -> Integer,
         scheduled_for -> Nullable<BigInt>,
-        scheduled_event_id -> Nullable<Text>,
         commportunities_message_id -> Nullable<Text>,
         restream_request_message_id -> Nullable<Text>,
         racetime_gg_url -> Nullable<Text>,
@@ -97,6 +85,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    race_events (id) {
+        id -> Integer,
+        guild_id -> Text,
+        bracket_race_info_id -> Integer,
+        scheduled_event_id -> Text,
+    }
+}
+
+diesel::table! {
     race_runs (id) {
         id -> Integer,
         uuid -> Text,
@@ -148,10 +145,10 @@ diesel::joinable!(player_bracket_entry -> brackets (bracket_id));
 diesel::joinable!(player_bracket_entry -> players (player_id));
 diesel::joinable!(qualifier_submissions -> players (player_id));
 diesel::joinable!(qualifier_submissions -> seasons (season_id));
+diesel::joinable!(race_events -> bracket_race_infos (bracket_race_info_id));
 diesel::joinable!(race_runs -> races (race_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    _sqlx_migrations,
     bracket_race_infos,
     bracket_races,
     bracket_rounds,
@@ -160,6 +157,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     player_bracket_entry,
     players,
     qualifier_submissions,
+    race_events,
     race_runs,
     races,
     seasons,

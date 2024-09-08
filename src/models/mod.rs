@@ -6,6 +6,7 @@ pub mod brackets;
 pub mod player;
 pub mod player_bracket_entries;
 pub mod qualifer_submission;
+pub mod race_events;
 pub mod season;
 
 // TODO: should this be a derive macro?

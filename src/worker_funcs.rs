@@ -402,7 +402,6 @@ mod tests {
             id,
             bracket_race_id,
             scheduled_for,
-            scheduled_event_id: None,
             commportunities_message_id: None,
             restream_request_message_id: None,
             racetime_gg_url: None,

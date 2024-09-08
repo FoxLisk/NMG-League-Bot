@@ -31,3 +31,5 @@ loggers:
     level: debug
   nmg_league_bot:
     level: debug
+  diesel_logger:
+    level: debug

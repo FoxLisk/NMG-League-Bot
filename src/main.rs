@@ -37,7 +37,7 @@ extern crate twilight_validate;
 use crate::discord::generate_invite_link;
 use discord::Webhooks;
 use nmg_league_bot::config::{CONFIG, LOG4RS_CONF_FILE_VAR};
-use nmg_league_bot::db::raw_diesel_cxn_from_env;
+use nmg_league_bot::db::get_diesel_pool;
 use nmg_league_bot::db::run_migrations;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfoId;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
@@ -71,6 +71,8 @@ async fn main() {
     .await
     .expect("Couldn't construct twitch client");
 
+    let diesel_pool = get_diesel_pool().await;
+
     // setup some channels
     let (upcoming_races_tx, upcoming_races_rx) =
         tokio::sync::mpsc::channel::<BracketRaceInfoId>(100);
@@ -79,11 +81,14 @@ async fn main() {
         webhooks.clone(),
         racetime_client,
         twitch_client,
+        diesel_pool.clone(),
         shutdown_send.subscribe(),
-    )
-    .await;
+    );
     {
-        let mut conn = raw_diesel_cxn_from_env().unwrap();
+        let mut conn = diesel_pool
+            .get()
+            .await
+            .expect("Could not get connection to run migrations");
         let res = run_migrations(&mut conn).unwrap();
         debug!("Migrations: {:?}", res);
     }
@@ -110,9 +115,10 @@ async fn main() {
         state.clone(),
     ));
 
-    tokio::spawn(workers::race_event_status_worker::cron(
+    tokio::spawn(workers::race_event_status_worker::launch(
         shutdown_send.subscribe(),
         state.clone(),
+        diesel_pool.clone(),
     ));
 
     #[cfg(feature = "racetime_bot")]
@@ -132,6 +138,7 @@ async fn main() {
     drop(webhooks);
     drop(client);
     drop(upcoming_races_tx);
+    drop(diesel_pool);
     tokio::select! {
         anything = tokio::signal::ctrl_c() => {
             info!("Got ^C (ish): {anything:?}");
