@@ -35,7 +35,7 @@ extern crate twilight_util;
 extern crate twilight_validate;
 
 use crate::discord::generate_invite_link;
-use discord::Webhooks;
+use discord::{helper_bot, Webhooks};
 use nmg_league_bot::config::{CONFIG, LOG4RS_CONF_FILE_VAR};
 use nmg_league_bot::db::get_diesel_pool;
 use nmg_league_bot::db::run_migrations;
@@ -115,7 +115,7 @@ async fn main() {
         state.clone(),
     ));
 
-    tokio::spawn(workers::race_event_status_worker::launch(
+    tokio::spawn(helper_bot::launch(
         shutdown_send.subscribe(),
         state.clone(),
         diesel_pool.clone(),
