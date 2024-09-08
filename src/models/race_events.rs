@@ -13,6 +13,7 @@ use super::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
 
 #[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Clone, Selectable)]
 #[diesel(treat_none_as_null = true)]
+/// This model represents our knowledge of a *Discord event* in a particular guild for a particular race
 pub struct RaceEvent {
     pub id: i32,
     pub guild_id: String,

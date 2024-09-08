@@ -1,8 +1,12 @@
 use log::warn;
+use nmg_league_bot::ApplicationCommandOptionError;
 use twilight_model::application::command::CommandOptionChoice;
+use twilight_model::application::interaction::application_command::{
+    CommandDataOption, CommandOptionValue,
+};
 use twilight_model::application::interaction::{Interaction, InteractionData};
 use twilight_model::channel::message::component::{Button, ButtonStyle};
-use twilight_model::channel::message::{AllowedMentions, Component};
+use twilight_model::channel::message::{AllowedMentions, Component, MessageFlags};
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
@@ -32,6 +36,15 @@ pub fn update_resp_to_plain_content<S: Into<String>>(content: S) -> InteractionR
             content: Some(content.into()),
             ..Default::default()
         }),
+    }
+}
+
+pub fn plain_ephemeral_response<S: Into<String>>(content: S) -> InteractionResponse {
+    let mut data = plain_interaction_data(content);
+    data.flags = Some(MessageFlags::EPHEMERAL);
+    InteractionResponse {
+        kind: InteractionResponseType::ChannelMessageWithSource,
+        data: Some(data),
     }
 }
 
@@ -78,4 +91,19 @@ pub fn autocomplete_result(options: Vec<CommandOptionChoice>) -> InteractionResp
             tts: None,
         }),
     }
+}
+
+/// returns, effectively, the subcommand option itself; unbundled into a (name, [options]) tuple
+pub fn get_subcommand_options(
+    options: Vec<CommandDataOption>,
+) -> Result<(String, Vec<CommandDataOption>), ApplicationCommandOptionError> {
+    if options.len() != 1 {
+        warn!("`get_subcommand` called on a list of more than one option, which is probably not correct");
+    }
+    for option in options {
+        if let CommandOptionValue::SubCommand(sc) = option.value {
+            return Ok((option.name, sc));
+        }
+    }
+    Err(ApplicationCommandOptionError::NoSubcommand)
 }

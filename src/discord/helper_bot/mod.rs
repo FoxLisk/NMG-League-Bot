@@ -9,7 +9,7 @@
 use std::{collections::HashMap, ops::DerefMut, sync::Arc, time::Duration};
 
 use bb8::Pool;
-use bot::{GuildEventConfig, HelperBot};
+use bot::HelperBot;
 use chrono::Utc;
 use diesel::SqliteConnection;
 use itertools::Itertools as _;
@@ -21,6 +21,7 @@ use nmg_league_bot::{
         bracket_race_infos::BracketRaceInfo,
         bracket_races::{BracketRace, BracketRaceState},
         brackets::Bracket,
+        guild_race_criteria::GuildCriteria,
         player::Player,
         race_events::{NewRaceEvent, RaceEvent},
         season::SeasonState,
@@ -43,6 +44,8 @@ use crate::{
     discord::{comm_ids_and_names, discord_state::DiscordState},
     shutdown::Shutdown,
 };
+
+use super::Webhooks;
 
 mod bot;
 
@@ -88,10 +91,11 @@ struct RaceInfoBundle {
 pub async fn launch(
     mut sd: Receiver<Shutdown>,
     state: Arc<DiscordState>,
+    webhooks: Webhooks,
     pool: Pool<DieselConnectionManager>,
 ) {
     let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
-    let bot = Arc::new(HelperBot::new(pool));
+    let bot = Arc::new(HelperBot::new(webhooks, pool));
     tokio::spawn(HelperBot::run(bot.clone(), sd.resubscribe()));
 
     loop {
@@ -146,13 +150,19 @@ async fn sync_race_status(
 
     // for each guild we're syncing events to, do the syncing
     // the list of guilds to sync is just "whichever ones the bot is currently added to"
-    for gev in helper_bot.guild_event_configs() {
+    for guild_filters in helper_bot.guild_criteria().await? {
         let race_events_by_bri_id = race_events_by_guild
-            .remove(&gev.guild_id.to_string())
+            .remove(&guild_filters.guild_id().to_string())
             .unwrap_or(HashMap::new());
 
-        if let Err(e) =
-            sync_events_in_a_guild(gev, helper_bot, &race_infos, race_events_by_bri_id, conn).await
+        if let Err(e) = sync_events_in_a_guild(
+            guild_filters,
+            helper_bot,
+            &race_infos,
+            race_events_by_bri_id,
+            conn,
+        )
+        .await
         {
             warn!("Error syncing events in a guild: {e}");
         }
@@ -167,16 +177,20 @@ async fn sync_race_status(
 // XXX probably we could include race id #s in the event info somewhere and use that to track them over time...
 // that would be very vulnerable to users modifying events, though.
 async fn sync_events_in_a_guild(
-    guild_event_config: GuildEventConfig,
+    guild_filters: GuildCriteria,
     helper_bot: &Arc<HelperBot>,
     race_infos: &[RaceInfoBundle],
     mut race_events_by_bri_id: HashMap<i32, RaceEvent>,
     conn: &mut SqliteConnection,
 ) -> Result<(), NMGLeagueBotError> {
     let mut existing_events =
-        get_existing_events_by_id(guild_event_config.guild_id, helper_bot).await?;
+        get_existing_events_by_id(guild_filters.guild_id(), helper_bot).await?;
 
     for bundle in race_infos {
+        // just hardcode that main guild must sync everything
+        let interesting = guild_filters.guild_id() == CONFIG.guild_id
+            || guild_filters.race_is_interesting(&bundle.race, &bundle.bri);
+
         let race_event = race_events_by_bri_id.remove(&bundle.bri.id);
         let existing_event = if let Some(gse_id) = race_event
             .as_ref()
@@ -190,7 +204,7 @@ async fn sync_events_in_a_guild(
 
         let empty_status = RaceEventContentAndStatus::NoEvent;
 
-        let desired_status = if guild_event_config.should_sync_race(&bundle.race) {
+        let desired_status = if interesting {
             &bundle.status
         } else {
             // if the race isn't meant to be synced to this discord, we just pass in NoEvent to indicate that it should be
@@ -207,7 +221,7 @@ async fn sync_events_in_a_guild(
         // it has the nice side effect that it handles testing cases nicely when I copy the DB from prod lol
 
         match update_discord_events(
-            guild_event_config.guild_id,
+            guild_filters.guild_id(),
             desired_status,
             existing_event.as_ref(),
             helper_bot,
@@ -224,7 +238,7 @@ async fn sync_events_in_a_guild(
                         );
                     }
                 } else {
-                    let nre = NewRaceEvent::new(guild_event_config.guild_id, &bundle.bri, e.id);
+                    let nre = NewRaceEvent::new(guild_filters.guild_id(), &bundle.bri, e.id);
                     if let Err(e) = nre.save(conn) {
                         warn!("Error creating new RaceEvent after creating event: {e}");
                     }

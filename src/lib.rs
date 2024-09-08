@@ -13,6 +13,7 @@ use racetime::Error;
 use racetime_api::err::RacetimeError;
 use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
+use twilight_model::application::command::CommandOptionType;
 use twilight_model::id::marker::ChannelMarker;
 use twilight_model::id::Id;
 use twilight_model::util::datetime::TimestampParseError;
@@ -104,6 +105,18 @@ pub enum BracketRaceStateError {
 }
 
 #[derive(Error, Debug)]
+pub enum ApplicationCommandOptionError {
+    #[error("Missing option {0}")]
+    MissingOption(String),
+
+    #[error("Unexpected option kind: expected {0:?}, got {1:?}")]
+    UnexpectedOptionKind(CommandOptionType, CommandOptionType),
+
+    #[error("No subcommand found")]
+    NoSubcommand
+}
+
+#[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
     TwilightHttpError(#[from] twilight_http::Error),
@@ -156,6 +169,12 @@ pub enum NMGLeagueBotError {
 
     #[error("Error with a BracketRaceState: {0}")]
     RaceStateError(#[from] BracketRaceStateError),
+
+    #[error("Error getting ApplicationCommand options: {0}")]
+    ApplicationCommandOptionError(#[from] ApplicationCommandOptionError),
+
+    #[error("Other error: {0}")]
+    Other(String),
 }
 
 #[cfg(feature = "racetime_bot")]

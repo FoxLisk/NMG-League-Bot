@@ -3,6 +3,7 @@ pub mod bracket_race_infos;
 pub mod bracket_races;
 pub mod bracket_rounds;
 pub mod brackets;
+pub mod guild_race_criteria;
 pub mod player;
 pub mod player_bracket_entries;
 pub mod qualifer_submission;

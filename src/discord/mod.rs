@@ -13,7 +13,7 @@ use std::sync::Arc;
 use twilight_http::request::channel::reaction::RequestReactionType;
 use twilight_mention::timestamp::{Timestamp as MentionTimestamp, TimestampStyle};
 use twilight_mention::Mention;
-use twilight_model::application::command::CommandOptionType;
+use twilight_model::application::command::{CommandOption, CommandOptionType};
 use twilight_model::application::interaction::application_command::CommandDataOption;
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::Message;
@@ -33,7 +33,7 @@ use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::worker_funcs::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
-use nmg_league_bot::BracketRaceStateError;
+use nmg_league_bot::{ApplicationCommandOptionError, BracketRaceStateError};
 use thiserror::Error;
 use twilight_model::channel::message::component::{ActionRow, ButtonStyle};
 use twilight_model::channel::message::{Component, Embed};
@@ -157,7 +157,7 @@ pub fn get_opt(
     name: &str,
     opts: &mut Vec<CommandDataOption>,
     kind: CommandOptionType,
-) -> Result<CommandDataOption, String> {
+) -> Result<CommandDataOption, ApplicationCommandOptionError> {
     let mut i = 0;
     while i < opts.len() {
         if opts[i].name == name {
@@ -166,34 +166,53 @@ pub fn get_opt(
         i += 1;
     }
     if i >= opts.len() {
-        return Err(format!("Unable to find expected option {}", name));
+        return Err(ApplicationCommandOptionError::MissingOption(
+            name.to_string(),
+        ));
     }
     let actual_kind = opts[i].value.kind();
     if actual_kind != kind {
-        return Err(format!(
-            "Option {} was of unexpected type (got {}, expected {})",
-            name,
-            actual_kind.kind(),
-            kind.kind()
+        return Err(ApplicationCommandOptionError::UnexpectedOptionKind(
+            kind,
+            actual_kind,
         ));
     }
 
     Ok(opts.swap_remove(i))
 }
 
+#[macro_export]
+macro_rules! get_opt {
+    ($opt_name:expr, $options:expr, $t:ident) => {{
+        crate::discord::get_opt($opt_name, $options, twilight_model::application::command::CommandOptionType::$t).and_then(|opt| {
+            if let twilight_model::application::interaction::application_command::CommandOptionValue::$t(output) = opt.value {
+                Ok(output)
+            } else {
+                Err(nmg_league_bot::ApplicationCommandOptionError::UnexpectedOptionKind(
+                    twilight_model::application::command::CommandOptionType::$t, opt.value.kind()
+                ))
+            }
+        })
+    }};
+}
+
 /**
-get_opt!("name", &mut vec_of_options, OptionType)
+get_opt_s!("name", &mut vec_of_options, OptionType)
 
 this does something like: find the option with name "name" in the vector,
 double check that it has CommandOptionType::OptionType, and then rip the outsides off of the
 CommandOptionValue::OptionType(actual_value) and give you back just the actual_value
 
 returns Result<T, String> where actual_value: T
+
+(the `_s` is for `_string` b/c the error type is string)
  */
 #[macro_export]
-macro_rules! get_opt {
+macro_rules! get_opt_s {
     ($opt_name:expr, $options:expr, $t:ident) => {{
-        crate::discord::get_opt($opt_name, $options, twilight_model::application::command::CommandOptionType::$t).and_then(|opt| {
+        use nmg_league_bot::utils::ResultErrToString;
+
+        crate::discord::get_opt($opt_name, $options, twilight_model::application::command::CommandOptionType::$t).map_err_to_string().and_then(|opt| {
             if let twilight_model::application::interaction::application_command::CommandOptionValue::$t(output) = opt.value {
                 Ok(output)
             } else {
@@ -210,7 +229,9 @@ macro_rules! get_focused_opt {
             if let twilight_model::application::interaction::application_command::CommandOptionValue::Focused(output, twilight_model::application::command::CommandOptionType::$t) = opt.value {
                 Ok(output)
             } else {
-                Err(format!("Invalid option value for {}", $opt_name))
+                Err(nmg_league_bot::ApplicationCommandOptionError::UnexpectedOptionKind(
+                    twilight_model::application::command::CommandOptionType::$t, opt.value.kind()
+                ))
             }
         })
     }};
@@ -459,4 +480,23 @@ pub fn generate_invite_link() -> Result<String, VarError> {
         | Permissions::USE_SLASH_COMMANDS;
     let permissions = permissions.bits() | (1 << 44); // this is CREATE_EVENTS, an undocumented(?) new(?) permission
     Ok(format!("https://discord.com/oauth2/authorize?client_id={client_id}&permissions={permissions}&scope=bot%20applications.commands"))
+}
+
+fn command_option_default() -> CommandOption {
+    CommandOption {
+        autocomplete: None,
+        channel_types: None,
+        choices: None,
+        description: "".to_string(),
+        description_localizations: None,
+        kind: CommandOptionType::SubCommand,
+        max_length: None,
+        max_value: None,
+        min_length: None,
+        min_value: None,
+        name: "".to_string(),
+        name_localizations: None,
+        options: None,
+        required: None,
+    }
 }
