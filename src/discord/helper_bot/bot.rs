@@ -393,11 +393,13 @@ fn handle_add_criteria_autocomplete(
     let players: Vec<(i32, String)> = if partial_name.is_empty() {
         Player::table()
             .select((players::id, players::name))
+            .limit(25)
             .load(conn)?
     } else {
         schema::players::table
             .filter(players::dsl::name.like(format!("%{partial_name}%")))
             .select((players::id, players::name))
+            .limit(25)
             .load(conn)?
     };
 
