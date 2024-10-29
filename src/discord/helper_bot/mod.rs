@@ -305,6 +305,7 @@ async fn update_discord_events(
                     .name(&new_status.name)?
                     .scheduled_start_time(&new_status.start_timestamp()?)
                     .scheduled_end_time(Some(&new_status.end_timestamp()?))
+                    .location(Some(&new_status.location))
                     .await?;
                 // it's not really interesting that an event has been updated
                 Ok(None)
