@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use bb8::Pool;
 use diesel::{associations::HasTable, SqliteConnection};
-use log::{debug, info, warn};
+use log::{info, warn};
 use nmg_league_bot::{
     config::CONFIG,
     db::DieselConnectionManager,

@@ -94,6 +94,7 @@ pub mod constants {
 
     pub const SEE_UNSCHEDULED_RACES_CMD: &str = "unscheduled_races";
     pub const COMMENTATORS_CMD: &str = "commentators";
+    pub const SET_RESTREAM_CMD: &str = "set_restream";
 }
 
 // the functions in here aren't well organized
