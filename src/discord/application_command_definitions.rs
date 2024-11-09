@@ -3,7 +3,7 @@ use crate::discord::constants::{
     ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
     CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
-    SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
+    SEE_UNSCHEDULED_RACES_CMD, SET_RESTREAM_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
     UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
 use nmg_league_bot::models::season::SeasonState;
@@ -19,8 +19,6 @@ use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
 
 pub fn application_command_definitions() -> Vec<Command> {
-
-
     let create_async_race = CommandBuilder::new(
         CREATE_ASYNC_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
@@ -681,6 +679,29 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .build();
 
+    let set_restream = CommandBuilder::new(
+        SET_RESTREAM_CMD,
+        "Set restream channel",
+        CommandType::ChatInput,
+    )
+    .option(CommandOption {
+        description: "race to update".to_string(),
+        kind: CommandOptionType::Integer,
+        name: "race".to_string(),
+        autocomplete: Some(true),
+        required: Some(true),
+        ..command_option_default()
+    })
+    .option(CommandOption {
+        description: "restream channel URL (\"none\" for default)".to_string(),
+        kind: CommandOptionType::String,
+        name: "channel".to_string(),
+        autocomplete: Some(false),
+        required: Some(true),
+        ..command_option_default()
+    })
+    .build();
+
     vec![
         // slash commands
         create_async_race,
@@ -700,6 +721,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         update_user_info,
         check_user_info,
         see_unscheduled_races,
+        set_restream,
         // user command[s]
         user_profile,
         commentator_bundle,

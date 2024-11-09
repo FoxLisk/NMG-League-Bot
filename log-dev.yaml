@@ -12,7 +12,7 @@ appenders:
       kind: compound
       trigger:
         kind: size
-        limit: '1 mb'
+        limit: '250 mb'
       roller:
         kind: fixed_window
         pattern: "logs/nmg-league-bot.{}.log.gz"

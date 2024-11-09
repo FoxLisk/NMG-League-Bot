@@ -3,7 +3,7 @@ use crate::discord::constants::{
     ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
     CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
-    SEE_UNSCHEDULED_RACES_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
+    SEE_UNSCHEDULED_RACES_CMD, SET_RESTREAM_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
     UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
 
@@ -18,6 +18,7 @@ use crate::{discord, get_focused_opt, get_opt_s};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, NewAsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
+use reqwest::Url;
 use std::future::Future;
 
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
@@ -49,7 +50,7 @@ use twilight_http::request::channel::message::UpdateMessage;
 use twilight_mention::Mention;
 use twilight_model::application::command::{CommandOptionChoice, CommandOptionChoiceValue};
 use twilight_model::application::interaction::application_command::{
-    CommandData, CommandDataOption, 
+    CommandData, CommandDataOption,
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
@@ -299,7 +300,22 @@ pub async fn handle_application_interaction(
                     .map(Some)
             }
             InteractionType::ApplicationCommandAutocomplete => {
-                handle_commentator_autocomplete(ac, interaction, state)
+                scheduled_races_autocomplete(ac, interaction, state)
+                    .await
+                    .map(Some)
+            }
+            _ => Ok(Some(plain_interaction_response(format!(
+                "Unexpected InteractionType for {}",
+                RESCHEDULE_RACE_CMD
+            )))),
+        }),
+
+        SET_RESTREAM_CMD => admin_command_wrapper(match interaction.kind {
+            InteractionType::ApplicationCommand => {
+                handle_set_restream(ac, interaction, state).await.map(Some)
+            }
+            InteractionType::ApplicationCommandAutocomplete => {
+                scheduled_races_autocomplete(ac, interaction, state)
                     .await
                     .map(Some)
             }
@@ -484,7 +500,7 @@ fn handle_schedule_race_autocomplete(
     Ok(autocomplete_result(options))
 }
 
-async fn handle_commentator_autocomplete(
+async fn scheduled_races_autocomplete(
     _ac: Box<CommandData>,
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
@@ -575,6 +591,46 @@ async fn handle_commentator_command(
 
     Ok(plain_interaction_response(format!(
         "Commentators updated on race {race_id}"
+    )))
+}
+
+async fn handle_set_restream(
+    mut ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<InteractionResponse, String> {
+    let race_id = get_opt_s!("race", &mut ac.options, Integer)?;
+    let channel = get_opt_s!("channel", &mut ac.options, String)?;
+    let mut conn = state.diesel_cxn().await.map_err_to_string()?;
+    let race = BracketRace::get_by_id(race_id as i32, &mut conn).map_err_to_string()?;
+    let mut info = race.info(&mut conn).map_err_to_string()?;
+
+    if channel == "none" {
+        info.restream_channel = None;
+    } else {
+        match Url::parse(&channel) {
+            Ok(p) => {
+                if !p.scheme().starts_with("http") {
+                    return Ok(plain_interaction_response(
+                        "Please provide a full URL including `https://`",
+                    ));
+                }
+                info.restream_channel = Some(channel);
+            }
+            Err(e) => {
+                return Ok(plain_interaction_response(
+                    "Please provide a full URL including `https://`.",
+                ));
+            }
+        }
+    }
+    info.update(&mut conn).map_err_to_string()?;
+
+    // it would be nice to also update the restream request message
+    // and maybe send pings to the new comm? but i think it's not very important and it seems annoying to implement
+
+    Ok(plain_interaction_response(format!(
+        "Restream channel updated on {race_id}"
     )))
 }
 
