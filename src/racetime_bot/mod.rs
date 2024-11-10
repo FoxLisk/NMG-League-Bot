@@ -657,7 +657,7 @@ impl RaceHandler<RacetimeState> for Handler {
 
     async fn error(
         &mut self,
-        _ctx: &RaceContext<RacetimeState>,
+        ctx: &RaceContext<RacetimeState>,
         errors: Vec<String>,
     ) -> Result<(), Error> {
         // maybe there's some kind of error I care about? the issue is that if you don't override
@@ -665,6 +665,15 @@ impl RaceHandler<RacetimeState> for Handler {
         // "you tried to invite a user with the wrong ID"
         // especially since this is called asynchronously that's very annoying.
         debug!("Error from rtgg: {errors:?}");
+        for err_msg in errors {
+            if err_msg.contains("is not allowed to join this race") {
+                if let Err(e) = ctx.set_open().await {
+                    warn!("Error setting rtgg room to open: {e}");
+                } else {
+                    send_message("Race room set to open due to an invite failing", ctx).await;
+                }
+            }
+        }
         Ok(())
     }
 }
