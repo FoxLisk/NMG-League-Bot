@@ -11,7 +11,7 @@
     <div class="page-content-container">
         <div class="previous-season-item">
             <h3 class="season-title">Season 8</h3>
-            Our first season of All Dungeons RMG. This one was spearheaded by tam
+            Our first season of All Dungeons RMG. This one was spearheaded by
             {{macros::link(href="/player/16", text="tam")}} and featured
             {{macros::link(href="/season/8", text="three swiss brackets")}}.
         </div>
