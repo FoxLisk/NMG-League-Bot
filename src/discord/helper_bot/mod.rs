@@ -15,19 +15,15 @@ use diesel::SqliteConnection;
 use itertools::Itertools as _;
 use log::{info, warn};
 use nmg_league_bot::{
-    config::CONFIG,
-    db::DieselConnectionManager,
-    models::{
+    config::CONFIG, db::DieselConnectionManager, models::{
         bracket_race_infos::BracketRaceInfo,
-        bracket_races::{BracketRace, BracketRaceState},
+        bracket_races::BracketRace,
         brackets::Bracket,
         guild_race_criteria::GuildCriteria,
         player::Player,
         race_events::{NewRaceEvent, RaceEvent},
         season::SeasonState,
-    },
-    schema::{self},
-    NMGLeagueBotError, RaceEventError,
+    }, schema::{self}, BracketRaceState, NMGLeagueBotError, RaceEventError
 };
 use tokio::sync::broadcast::Receiver;
 use twilight_model::{

@@ -94,12 +94,21 @@ pub enum RaceEventError {
     MissingPlayer(i32),
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
+pub enum BracketRaceState {
+    New,
+    Scheduled,
+    Finished,
+}
+
 #[derive(Debug, Error)]
 pub enum BracketRaceStateError {
-    #[error("Invalid state")]
-    InvalidState,
+    #[error("Invalid state: expected {0:?}, got {1:?}")]
+    InvalidState(Vec<BracketRaceState>, BracketRaceState),
     #[error("Deserialization error: {0}")]
     ParseError(#[from] serde_json::Error),
+    #[error("Cannot finish race without both players' results")]
+    MissingResult,
     #[error("Database error: {0}")]
     DatabaseError(#[from] diesel::result::Error),
 }
@@ -113,7 +122,7 @@ pub enum ApplicationCommandOptionError {
     UnexpectedOptionKind(CommandOptionType, CommandOptionType),
 
     #[error("No subcommand found")]
-    NoSubcommand
+    NoSubcommand,
 }
 
 #[derive(Error, Debug)]

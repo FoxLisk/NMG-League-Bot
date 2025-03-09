@@ -14,7 +14,7 @@ use itertools::Itertools;
 use log::{debug, warn};
 use rand::thread_rng;
 use serde::Serialize;
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::time::Duration;
 use swiss_pairings::{PairingError, TourneyConfig};
 use thiserror::Error;
@@ -24,7 +24,7 @@ use rand::seq::SliceRandom;
 use super::bracket_races::PlayerResult;
 
 #[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug)]
-enum BracketState {
+pub enum BracketState {
     Unstarted,
     Started,
     Finished,
@@ -139,21 +139,6 @@ fn generate_next_round_pairings_swiss(
     Ok(())
 }
 
-fn generate_next_round_pairings_round_robin(
-    bracket: &Bracket,
-    conn: &mut SqliteConnection,
-) -> Result<(), BracketError> {
-    let rounds = bracket.rounds(conn)?;
-    let mut highest_round_num = 0;
-    for round in rounds {
-        assert!(round.round_num > highest_round_num);
-        highest_round_num = round.round_num;
-    }
-    let new_round = NewBracketRound::new(bracket, highest_round_num + 1);
-    let round = new_round.save(conn)?;
-    generate_pairings_round_robin(bracket, &round, conn)
-}
-
 fn generate_next_round_pairings(
     bracket: &Bracket,
     conn: &mut SqliteConnection,
@@ -163,7 +148,9 @@ fn generate_next_round_pairings(
     }
     match bracket.bracket_type()? {
         BracketType::Swiss => generate_next_round_pairings_swiss(bracket, conn),
-        BracketType::RoundRobin => generate_next_round_pairings_round_robin(bracket, conn),
+        BracketType::RoundRobin => Err(BracketError::RoundRobinError(
+            "Round Robin pairings already generated".to_string(),
+        )),
     }
 }
 
@@ -195,69 +182,6 @@ fn generate_initial_pairings_swiss(
     Ok(())
 }
 
-/// constructs the polygon of size `n` if `n` is odd `n-1` if `n` is even
-/// rotates it counterclockwise `rotation` times
-/// returns the pairings across the polgyon and the leftover vertex index
-/// returns None if your input sucks shit
-fn polygon_indices(n: usize, rotation: usize) -> Option<(Vec<(usize, usize)>, usize)> {
-    if n < 2 {
-        return None;
-    }
-    let vertices = if n % 2 == 1 { n } else { n - 1 };
-    /*
-    we imagine a polygon with N sides (N-1 if N even). We number vertices
-    clockwise from the bottom left, with N marked in the middle
-            2
-           / \
-        1 | 5 |3
-        0 |___|4
-
-    in each round, we rotate the vertex labels clockwise once. e.g.
-            1
-           / \
-        0 | 5 |2
-        4 |___|3
-
-    players play the person across from them on the polygon, with the left out player at the top
-    vertex playing the middle player
-     */
-    let rotate = |idx: usize| {
-        // idx + rotation corresponds to a counterclockwise rotation of points;
-        // idx - rotation would be anticlockwise (same pairings in the end but they come up
-        // in a different order), however it runs into issues because usize doesn't handle
-        // negative numbers (obviously!)
-        (idx + rotation) % vertices
-    };
-    let mut indices = (0..vertices).map(|i| rotate(i)).collect::<VecDeque<_>>();
-    let mut index_pairs = vec![];
-    while indices.len() > 1 {
-        let i1 = indices.pop_front()?;
-        let i2 = indices.pop_back()?;
-        index_pairs.push((i1, i2));
-    }
-    let middle = indices.pop_front()?;
-    Some((index_pairs, middle))
-}
-
-/// players MUST be sorted the same way on each call to this method!
-/// Returns None if players is empty or some shit
-fn polygon_method<T>(players: &Vec<T>, round: usize) -> Option<Vec<(&T, &T)>> {
-    // https://web.archive.org/web/20230401000000*/https://nrich.maths.org/1443
-    let n = players.len();
-    if round < 1 {
-        return None;
-    }
-    let (pairs, middle) = polygon_indices(n, round - 1)?;
-    let mut player_pairs = vec![];
-    for (i1, i2) in pairs {
-        player_pairs.push((players.get(i1)?, players.get(i2)?));
-    }
-    if n % 2 == 0 {
-        player_pairs.push((players.get(middle)?, players.get(n - 1)?));
-    }
-    Some(player_pairs)
-}
-
 fn generate_pairings_round_robin(
     bracket: &Bracket,
     round: &BracketRound,
@@ -265,15 +189,42 @@ fn generate_pairings_round_robin(
 ) -> Result<(), BracketError> {
     let mut players = bracket.players(conn)?;
     players.sort_unstable_by_key(|p| p.id);
-    let pairings = polygon_method(&players, round.round_num as usize).ok_or(
-        BracketError::RoundRobinError("Unable to generate pairings".to_string()),
-    )?;
-    let mut nbrs = vec![];
-    for (p1, p2) in pairings {
-        nbrs.push(NewBracketRace::new(bracket, &round, p1, p2));
-    }
-    insert_bulk(&nbrs, conn)?;
 
+    fn sorted_tuple<'a>(ps: (&'a Player, &'a Player)) -> (&'a Player, &'a Player) {
+        let (p1, p2) = ps;
+        if p1.id < p2.id {
+            (p1, p2)
+        } else {
+            (p2, p1)
+        }
+    }
+
+    let product = itertools::iproduct!(players.iter(), players.iter()).collect::<Vec<_>>();
+    let filtered = product
+        .iter()
+        .filter(|(p1, p2)| p1.id != p2.id)
+        .collect::<Vec<_>>();
+    let uniq = filtered.iter().unique().collect::<Vec<_>>();
+    warn!(
+        "Product (count): {}, filtered: {filtered:?}, uniq: {uniq:?}",
+        product.len()
+    );
+
+    let nbrs: Vec<_> = itertools::iproduct!(players.iter(), players.iter())
+        .filter(|(p1, p2)| p1.id != p2.id)
+        .map(sorted_tuple)
+        .unique()
+        .map(|(p1, p2)| NewBracketRace::new(bracket, round, p1, p2))
+        .collect::<_>();
+    let expected = (players.len() * (players.len() - 1)) / 2;
+    if nbrs.len() != expected {
+        return Err(BracketError::Other(format!(
+            "Expected {expected} pairings, got {}",
+            nbrs.len()
+        )));
+    }
+    debug!("NBRs: {nbrs:?}");
+    insert_bulk(&nbrs, conn)?;
     Ok(())
 }
 
@@ -281,8 +232,11 @@ fn generate_initial_pairings_round_robin(
     bracket: &mut Bracket,
     conn: &mut SqliteConnection,
 ) -> Result<(), BracketError> {
+    // hmm maybe we have to keep this? i think we have some assumptions about the concept of
+    // "round" which maybe should be rethought (but not today)
     let new_round = NewBracketRound::new(bracket, 1);
     let round = new_round.save(conn)?;
+    // TODO: inline this function?
     generate_pairings_round_robin(bracket, &round, conn)?;
 
     // TODO: setting state can be pulled up an abstraction layer
@@ -576,7 +530,7 @@ impl NewBracket {
 
 #[cfg(test)]
 mod tests {
-    use crate::models::brackets::{polygon_method, BracketState};
+    use crate::models::brackets::BracketState;
     use rocket::serde::json::serde_json;
     #[derive(Eq, PartialEq, Debug)]
     struct P {
@@ -596,96 +550,6 @@ mod tests {
         assert_eq!(
             BracketState::Unstarted,
             serde_json::from_str(r#""Unstarted""#).unwrap()
-        );
-    }
-
-    #[test]
-    fn test_polygon_method_four() {
-        let p1 = P { id: 1 };
-        let p2 = P { id: 2 };
-        let p3 = P { id: 3 };
-        let p4 = P { id: 4 };
-        let players = vec![p1, p2, p3, p4];
-        let r1 = polygon_method(&players, 1).unwrap();
-        let r2 = polygon_method(&players, 2).unwrap();
-        let r3 = polygon_method(&players, 3).unwrap();
-        let r1_pairs = r1
-            .iter()
-            .map(|(pp1, pp2)| (pp1.id, pp2.id))
-            .collect::<Vec<_>>();
-        let r2_pairs = r2
-            .iter()
-            .map(|(pp1, pp2)| (pp1.id, pp2.id))
-            .collect::<Vec<_>>();
-        let r3_pairs = r3
-            .iter()
-            .map(|(pp1, pp2)| (pp1.id, pp2.id))
-            .collect::<Vec<_>>();
-        assert_eq!(vec![(1, 3), (2, 4)], r1_pairs);
-        assert_eq!(vec![(2, 1), (3, 4)], r2_pairs);
-        assert_eq!(vec![(3, 2), (1, 4)], r3_pairs);
-    }
-
-    #[test]
-    fn test_polygon_method_six() {
-        let players = (1..7).map(|id| P { id }).collect::<Vec<_>>();
-        let rounds = (1..=5)
-            .map(|r| {
-                polygon_method(&players, r)
-                    .unwrap()
-                    .iter()
-                    .map(|(p1, p2)| (p1.id, p2.id))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            vec![
-                vec![(1, 5), (2, 4), (3, 6)],
-                vec![(2, 1), (3, 5), (4, 6)],
-                vec![(3, 2), (4, 1), (5, 6)],
-                vec![(4, 3), (5, 2), (1, 6)],
-                vec![(5, 4), (1, 3), (2, 6)],
-            ],
-            rounds
-        );
-    }
-
-    #[test]
-    fn test_polygon_method_three() {
-        let players = (1..=3).map(|id| P { id }).collect::<Vec<_>>();
-        let rounds = (1..=3)
-            .map(|r| {
-                polygon_method(&players, r)
-                    .unwrap()
-                    .iter()
-                    .map(|(p1, p2)| (p1.id, p2.id))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(vec![vec![(1, 3)], vec![(2, 1)], vec![(3, 2)],], rounds);
-    }
-
-    #[test]
-    fn test_polygon_method_five() {
-        let players = (1..=5).map(|id| P { id }).collect::<Vec<_>>();
-        let rounds = (1..=5)
-            .map(|r| {
-                polygon_method(&players, r)
-                    .unwrap()
-                    .iter()
-                    .map(|(p1, p2)| (p1.id, p2.id))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            vec![
-                vec![(1, 5), (2, 4)],
-                vec![(2, 1), (3, 5)],
-                vec![(3, 2), (4, 1)],
-                vec![(4, 3), (5, 2)],
-                vec![(5, 4), (1, 3)],
-            ],
-            rounds
         );
     }
 }

@@ -13,7 +13,7 @@ jobs:
   test:
     strategy:
       matrix:
-        features: [ "no_auth_website", "racetime_bot", "testing" ]
+        features: [ "no_auth_website", "racetime_bot", "testing", "development" ]
 
     runs-on: ubuntu-latest
 

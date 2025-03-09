@@ -6,7 +6,7 @@
 			"command": "build",
 			"args": [
 				"--features",
-				"racetime_bot,testing"
+				"racetime_bot,testing,development"
 			],
 			"group": {
 				"kind": "build",
