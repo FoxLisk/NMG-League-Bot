@@ -21,6 +21,8 @@ no_auth_website = []
 # races is unaffected)
 racetime_bot = ["dep:racetime"]
 testing = ["dep:diesel_logger"]
+# this feature enables some local development tools: scripts in src/bin and their dependencies.
+development = []
 
 [dependencies]
 tokio = { version = "1.19.0", features = [

@@ -26,6 +26,18 @@ pub struct Player {
     pub racetime_user_id: Option<String>,
 }
 
+impl PartialEq for Player {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for Player {}
+impl core::hash::Hash for Player {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+// statics
 impl Player {
     /// this should never fail but i'm scared of assuming that
     pub fn discord_id(&self) -> Result<Id<UserMarker>, ParseIntError> {
@@ -33,7 +45,7 @@ impl Player {
     }
 
     /// Returns a map of { id: Player }
-    /// 
+    ///
     /// Filtered to the specified users if the `ids` paramater is provided.
     pub fn by_id(
         ids: Option<Vec<i32>>,
@@ -105,6 +117,7 @@ impl Player {
             .map(|i| i.mention().to_string())
             .unwrap_or(self.name.clone())
     }
+
     update_fn! {}
 }
 

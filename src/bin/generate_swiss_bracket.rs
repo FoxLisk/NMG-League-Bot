@@ -7,7 +7,6 @@ use nmg_league_bot::utils::uuid_string;
 
 extern crate dotenv;
 
-// Generates a 4-player round robin bracket
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv::dotenv()?;
