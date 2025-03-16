@@ -309,22 +309,16 @@ pub fn application_command_definitions() -> Vec<Command> {
     .option(CommandOption {
         choices: Some(hours.clone()),
         description: "Hour".to_string(),
-        description_localizations: None,
-        max_value: None,
-        min_value: None,
         name: "hour".to_string(),
-        name_localizations: None,
         required: Some(true),
         kind: CommandOptionType::Integer,
         ..command_option_default()
     })
     .option(CommandOption {
         description: "Minute (1-59 to avoid noon/midnight confusion)".to_string(),
-        description_localizations: None,
         max_value: Some(CommandOptionValue::Integer(59)),
         min_value: Some(CommandOptionValue::Integer(1)),
         name: "minute".to_string(),
-        name_localizations: None,
         required: Some(true),
         kind: CommandOptionType::Integer,
         ..command_option_default()
@@ -332,11 +326,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     .option(CommandOption {
         choices: Some(ampm_opts.clone()),
         description: "AM/PM".to_string(),
-        description_localizations: None,
-        max_length: None,
-        min_length: None,
         name: "am_pm".to_string(),
-        name_localizations: None,
         required: Some(true),
         kind: CommandOptionType::String,
         ..command_option_default()
@@ -344,13 +334,16 @@ pub fn application_command_definitions() -> Vec<Command> {
     .option(CommandOption {
         autocomplete: Some(true),
         description: "Day (yyyy/mm/dd format) (wait for suggestions)".to_string(),
-        description_localizations: None,
-        max_length: None,
-        min_length: None,
         name: "day".to_string(),
-        name_localizations: None,
         required: Some(true),
         kind: CommandOptionType::String,
+        ..command_option_default()
+    })
+    .option(CommandOption {
+        description: "Opponent (Only necessary for Round Robin brackets)".to_string(),
+        name: "opponent".to_string(),
+        required: Some(false),
+        kind: CommandOptionType::User,
         ..command_option_default()
     })
     .build();

@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use nmg_league_bot::{BracketRaceState, NMGLeagueBotError};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -9,6 +10,7 @@ use rocket_dyn_templates::{context, Template};
 use tokio::sync::Mutex as AsyncMutex;
 use tokio::time::Duration;
 
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::schema;
 use crate::shutdown::Shutdown;
@@ -21,9 +23,9 @@ use nmg_league_bot::db::{get_diesel_pool, DieselConnectionManager};
 use nmg_league_bot::models::asyncs::race::{AsyncRace, RaceState};
 use nmg_league_bot::models::asyncs::race_run::{AsyncRaceRun, RaceRunState};
 use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
-use nmg_league_bot::models::bracket_races::{BracketRace, BracketRaceState, PlayerResult};
+use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
-use nmg_league_bot::models::brackets::{Bracket, BracketError};
+use nmg_league_bot::models::brackets::{Bracket, BracketError, BracketType};
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
 use nmg_league_bot::utils::format_hms;
@@ -35,7 +37,6 @@ use std::ops::{Deref, DerefMut};
 use tokio::sync::mpsc::Sender;
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
-use crate::discord::discord_state::DiscordOperations;
 mod api;
 mod auth;
 mod internal_api;
@@ -386,6 +387,7 @@ struct DisplayBracket {
     bracket: Bracket,
     /// all the rounds of the bracket, in ascending order (i.e. round 1 first, round 2 second)
     rounds: Vec<DisplayRound>,
+    is_round_robin: bool,
 }
 
 #[derive(Serialize)]
@@ -398,7 +400,7 @@ struct BracketsContext {
 fn get_display_bracket(
     bracket: Bracket,
     conn: &mut SqliteConnection,
-) -> Result<DisplayBracket, diesel::result::Error> {
+) -> Result<DisplayBracket, NMGLeagueBotError> {
     let races = bracket.bracket_races(conn)?;
     let rounds_by_id: HashMap<i32, BracketRound> =
         HashMap::from_iter(bracket.rounds(conn)?.into_iter().map(|r| (r.id, r)));
@@ -444,8 +446,12 @@ fn get_display_bracket(
         .sorted_by_key(|(n, _rs)| n.clone())
         .map(|(_n, rs)| rs)
         .collect();
-
-    Ok(DisplayBracket { bracket, rounds })
+    let is_round_robin = bracket.bracket_type()? == BracketType::RoundRobin;
+    Ok(DisplayBracket {
+        bracket,
+        rounds,
+        is_round_robin,
+    })
 }
 
 #[get("/season/<season_ordinal>/bracket/<bracket_id>")]

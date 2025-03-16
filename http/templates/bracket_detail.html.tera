@@ -11,7 +11,9 @@
 
     {% for round in bracket.rounds %}
     <div class="subsection-container">
+        {% if not bracket.is_round_robin %}
         <h3 class="subsection-title">Round {{ round.round_num }}</h3>
+        {% endif %}
         <table>
             <thead>
                 <tr>

@@ -1,3 +1,7 @@
+# Season 9
+
+* Feature: Round Robin brackets now generate all pairings upfront and allow free scheduling of races.
+
 # Season 8
 
 * Internals: Discord event management is now asynchronous. This means there will be a slight delay after scheduling
