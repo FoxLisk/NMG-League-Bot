@@ -1,5 +1,6 @@
 use diesel::prelude::*;
 use diesel::RunQueryDsl;
+use serde::Deserialize;
 use serde::Serialize;
 
 use crate::models::player::Player;
@@ -7,7 +8,7 @@ use crate::models::season::Season;
 use crate::schema::qualifier_submissions;
 use crate::{delete_fn, save_fn, update_fn, NMGLeagueBotError};
 
-#[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
+#[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset, Deserialize)]
 pub struct QualifierSubmission {
     pub id: i32,
     player_id: i32,

@@ -1,8 +1,11 @@
 //! api lol. the idea is just stuff that returns json i guess
 
+use std::ops::DerefMut;
+
 use crate::web::auth::Admin;
 use crate::web::ConnectionWrapper;
 use diesel::SqliteConnection;
+use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::qualifer_submission::QualifierSubmission;
 use nmg_league_bot::utils::ResultErrToString;
 use nmg_league_bot::ApiError;
@@ -23,6 +26,7 @@ impl<'r, 'o: 'r, T: Serialize, E: std::error::Error> Responder<'r, 'o> for ApiRe
 #[derive(diesel::Queryable, serde::Serialize)]
 struct Qualifier {
     id: i32,
+    player_id: i32,
     player_name: String,
     time: i32,
     vod: String,
@@ -34,12 +38,19 @@ fn get_qualifiers(id: i32, db: &mut SqliteConnection) -> Result<Vec<Qualifier>, 
     Ok(qs::table
         .inner_join(players::table)
         .filter(qs::season_id.eq(id))
-        .select((qs::id, players::name, qs::reported_time, qs::vod_link))
+        .select((
+            qs::id,
+            qs::player_id,
+            players::name,
+            qs::reported_time,
+            qs::vod_link,
+        ))
         .order_by(qs::reported_time.asc())
         .load(db)?)
 }
 
 // N.B. this one really should be season.id to make the SQL query simpler/faster
+/// Returns a JSON dump of all the qualifiers for the season. Includes the join to player_name for convenience.
 #[get("/season/<id>/qualifiers")]
 async fn qualifiers(
     id: i32,
@@ -68,6 +79,27 @@ async fn delete_qualifier(
     ApiResponse(_delete_qualifier())
 }
 
+#[get("/players?<player_id>")]
+async fn get_players(
+    player_id: Vec<i32>,
+    mut db: ConnectionWrapper<'_>,
+) -> ApiResponse<Vec<Player>, NMGLeagueBotError> {
+    use diesel::prelude::*;
+    use nmg_league_bot::schema::players;
+    let res: Result<Vec<Player>, _> = if player_id.is_empty() {
+        players::table.load(db.deref_mut())
+    } else {
+        players::table
+            .filter(players::id.eq_any(player_id))
+            .load(db.deref_mut())
+    };
+
+    ApiResponse(res.map_err(From::from))
+}
+
 pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
-    rocket.mount("/api/v1", rocket::routes![qualifiers, delete_qualifier])
+    rocket.mount(
+        "/api/v1",
+        rocket::routes![qualifiers, delete_qualifier, get_players],
+    )
 }
