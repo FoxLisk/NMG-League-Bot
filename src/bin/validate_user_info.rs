@@ -31,19 +31,17 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .expect("Couldn't construct twitch client");
+
     let Args {
         base_url,
         season_id,
     } = Args::parse();
+
+    // get list of qualifiers to find out what players to check
     let qual_resp = c
         .get(format!("{base_url}/api/v1/season/{season_id}/qualifiers"))
         .send()
         .await?;
-    // let mut content = String::with_capacity(resp.content_length().unwrap_or(0) as usize);
-    // resp.read_to_string(&mut content)?;
-    // println!("{content}");
-    // let qualifiers = serde_json::from_str::<Result<Vec<QualifierSubmission>, String>>(&content)?;
-    // println!("{qualifiers:?}");
     let parsed: Result<Vec<Qualifier>, String> = qual_resp.json().await?;
     let qualifiers = parsed.map_err(|e| anyhow::anyhow!(e))?;
     let player_ids = qualifiers
@@ -55,6 +53,7 @@ async fn main() -> anyhow::Result<()> {
         .map(|id| format!("player_id={id}"))
         .join("&");
 
+    // get players
     let players_resp = c
         .get(format!("{base_url}/api/v1/players?{query_string}"))
         .send()
@@ -65,6 +64,9 @@ async fn main() -> anyhow::Result<()> {
 
     let mut errors: HashMap<String, Vec<String>> = Default::default();
     let mut interval = tokio::time::interval(Duration::from_secs(1));
+
+    // make sure they have data set. we also do racetime queries in this loop, because there's no bulk API
+    // for that afaict. twitch searches are handled after
 
     // I wish we could *also* check that their discord is connected to their twitch account, but it seems
     // that getting discord user connections requires OAuth.
@@ -111,6 +113,7 @@ async fn main() -> anyhow::Result<()> {
         // don't slam rtgg too much
         interval.tick().await;
     }
+    // this stupid variable is just to get type inference to work
     let whatever = twitches_to_check
         .keys()
         .map(|s| s.as_str().into())
