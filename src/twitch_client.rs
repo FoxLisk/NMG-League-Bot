@@ -32,6 +32,7 @@ impl TwitchClientBundle {
             app_token,
         })
     }
+
     pub async fn req_get<R, D>(
         &self,
         request: R,

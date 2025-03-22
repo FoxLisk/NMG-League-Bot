@@ -15,7 +15,7 @@ pub trait MentionOptional {
     fn mention_maybe(&self) -> Option<String>;
 }
 
-#[derive(Queryable, Debug, Clone, Identifiable, AsChangeset, serde::Serialize)]
+#[derive(Queryable, Debug, Clone, Identifiable, AsChangeset, serde::Serialize, serde::Deserialize)]
 pub struct Player {
     pub id: i32,
     /// display name
