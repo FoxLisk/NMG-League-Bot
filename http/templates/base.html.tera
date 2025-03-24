@@ -32,6 +32,9 @@
         <span>Login</span>
     </a>
     {% endif %}
+    <a id="#" class="nav-item nav-generic-item last-item" href="/helper_bot">
+        <span>Helper Bot</span>
+    </a>
 </nav>
 {% block body %}
 {% endblock %}
