@@ -35,7 +35,9 @@ extern crate twilight_util;
 extern crate twilight_validate;
 
 use crate::discord::generate_invite_link;
-use discord::{helper_bot, Webhooks};
+#[cfg(feature = "helper_bot")]
+use discord::helper_bot;
+use discord::Webhooks;
 use nmg_league_bot::config::{CONFIG, LOG4RS_CONF_FILE_VAR};
 use nmg_league_bot::db::get_diesel_pool;
 use nmg_league_bot::db::run_migrations;
@@ -115,6 +117,7 @@ async fn main() {
         state.clone(),
     ));
 
+    #[cfg(feature = "helper_bot")]
     tokio::spawn(helper_bot::launch(
         shutdown_send.subscribe(),
         state.clone(),

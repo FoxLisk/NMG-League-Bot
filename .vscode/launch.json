@@ -13,7 +13,7 @@
                     "build",
                     "--bin=bot",
                     "--package=nmg-league-bot",
-                    "--features=testing,development"
+                    "--features=testing,development,"
                 ],
                 "filter": {
                     "name": "bot",
