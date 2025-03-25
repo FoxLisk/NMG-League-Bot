@@ -12,37 +12,32 @@
                 server!
             </div>
             <!-- @RequiemOfSpirit: ~when's DDLC~ can you center this for me? 🥺 -->
-            <img src="/static/images/helper_bot/headshot.png" style="width:auto; height: 200px;">
+            <img src="/static/images/helper_bot/headshot.png" style="height: 200px;">
             <div>
                 To get the events you're interested in, first
                 <a href="https://discord.com/oauth2/authorize?client_id=1282035853320912909">add me to your
                     server</a>.
                 Then you will get access to my <code>/criteria</code> commands.
-
-                <img src="/static/images/helper_bot/criteria_commands.png" style="width:auto; height: 200px;">
+                <img src="/static/images/helper_bot/criteria_commands.png" style="height: 200px;">
             </div>
             <div>
                 By default, you'll get no events. Get started by adding a criteria you're interested in, perhaps
-                races
-                that feature
-                yourself:
+                races that feature yourself:
 
                 <img src="/static/images/helper_bot/criteria_add.png">
             </div>
             <div>
                 The other type of criteria besides "player" is "restream," and the two can be combined. For example,
-                maybe you want
-                races that feature a certain player, but only if there is a restream:
+                maybe you want races that feature a certain player, but only if there is a restream:
                 <img src="/static/images/helper_bot/criteria_add_2.png">
             </div>
             <div>
                 You can see your current active criteria with <code>/criteria show</code>:
                 <img src="/static/images/helper_bot/criteria_show.png">
             </div>
-            <div>d
+            <div>
                 And finally, <code>/criteria remove</code> will prompt you with a list of existing criteria and you can
-                choose
-                which one to remove:
+                choose which one to remove:
                 <img src="/static/images/helper_bot/criteria_remove.png">
             </div>
             <div>
