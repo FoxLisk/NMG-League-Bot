@@ -11,8 +11,9 @@
             <div>Hello! I'm the NMG League Helper Bot, and I would love to create events for you in your own Discord
                 server!
             </div>
-            <!-- @RequiemOfSpirit: ~when's DDLC~ can you center this for me? 🥺 -->
-            <img src="/static/images/helper_bot/headshot.png" style="height: 200px;">
+            <div class="flex justify-center">
+                <img src="/static/images/helper_bot/headshot.png" style="height: 200px;">
+            </div>
             <div>
                 To get the events you're interested in, first
                 <a href="https://discord.com/oauth2/authorize?client_id=1282035853320912909">add me to your
