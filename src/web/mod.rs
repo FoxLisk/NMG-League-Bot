@@ -922,6 +922,16 @@ async fn player_detail(
     .await
 }
 
+#[get("/helper_bot")]
+async fn helper_bot(
+    mut db: ConnectionWrapper<'_>,
+    admin: Option<Admin>,
+) -> Result<Template, Status> {
+    Ok(Template::render(
+        "helper_bot",
+        context! { base_context: BaseContext::new(&mut db, &admin)},
+    ))
+}
 #[get("/")]
 async fn home(mut db: ConnectionWrapper<'_>, admin: Option<Admin>) -> Result<Template, Status> {
     Ok(Template::render(
@@ -978,6 +988,7 @@ pub(crate) async fn launch_website(
                 player_detail,
                 player_detail_by_id,
                 bracket_detail,
+                helper_bot
             ],
         )
         .attach(Template::custom(|e| {

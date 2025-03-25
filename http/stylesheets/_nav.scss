@@ -35,6 +35,10 @@ nav#top-nav {
     transition-property: background-color, box-shadow;
   }
 
+  .last-item {
+    margin-left: auto;
+  }
+
   .nav-item:hover {
     background-color: colors.$nav_hover-bg-color;
   }

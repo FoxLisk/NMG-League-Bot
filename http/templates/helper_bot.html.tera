@@ -1,0 +1,50 @@
+{% extends "base" %}
+
+{% import "macros" as macros %}
+
+{% block pagename %} Helper Bot {% endblock %}
+{% block body %}
+<div id="home-page">
+    <h1 id="title">Helper Bot</h1>
+    <div class="px-8">
+        <div id="text-container">
+            <div>Hello! I'm the NMG League Helper Bot, and I would love to create events for you in your own Discord
+                server!
+            </div>
+            <div class="flex justify-center">
+                <img src="/static/images/helper_bot/headshot.png" style="height: 200px;">
+            </div>
+            <div>
+                To get the events you're interested in, first
+                <a href="https://discord.com/oauth2/authorize?client_id=1282035853320912909">add me to your
+                    server</a>.
+                Then you will get access to my <code>/criteria</code> commands.
+                <img src="/static/images/helper_bot/criteria_commands.png" style="height: 200px;">
+            </div>
+            <div>
+                By default, you'll get no events. Get started by adding a criteria you're interested in, perhaps
+                races that feature yourself:
+
+                <img src="/static/images/helper_bot/criteria_add.png">
+            </div>
+            <div>
+                The other type of criteria besides "player" is "restream," and the two can be combined. For example,
+                maybe you want races that feature a certain player, but only if there is a restream:
+                <img src="/static/images/helper_bot/criteria_add_2.png">
+            </div>
+            <div>
+                You can see your current active criteria with <code>/criteria show</code>:
+                <img src="/static/images/helper_bot/criteria_show.png">
+            </div>
+            <div>
+                And finally, <code>/criteria remove</code> will prompt you with a list of existing criteria and you can
+                choose which one to remove:
+                <img src="/static/images/helper_bot/criteria_remove.png">
+            </div>
+            <div>
+                If you have any questions or feedback,
+                {{ macros::external_link(href="https://discord.gg/exrgFbna7d", text="ask in the League Discord") }}!
+            </div>
+        </div>
+    </div>
+    {% endblock %}
