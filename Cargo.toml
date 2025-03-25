@@ -20,6 +20,9 @@ no_auth_website = []
 # this feature runs the bot that creates & interacts with racetime rooms. (The racetime scanner for picking up finished
 # races is unaffected)
 racetime_bot = ["dep:racetime"]
+# this feature runs the helper bot that creates events in discord
+helper_bot = []
+
 testing = ["dep:diesel_logger"]
 # this feature enables some local development tools: scripts in src/bin and their dependencies.
 development = []

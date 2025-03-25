@@ -45,6 +45,7 @@ pub(crate) use webhooks::Webhooks;
 use crate::discord::discord_state::DiscordState;
 
 pub(crate) mod bot;
+#[cfg(feature = "helper_bot")]
 pub mod helper_bot;
 mod webhooks;
 
