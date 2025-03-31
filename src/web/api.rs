@@ -117,15 +117,22 @@ struct ApiRace {
     pub restream_channel: Option<String>,
 }
 
-impl TryFrom<(BracketRace, BracketRaceInfo, BracketRound)> for ApiRace {
+impl TryFrom<(BracketRace, Option<BracketRaceInfo>, BracketRound)> for ApiRace {
     type Error = serde_json::Error;
 
-    fn try_from(value: (BracketRace, BracketRaceInfo, BracketRound)) -> Result<Self, Self::Error> {
+    fn try_from(
+        value: (BracketRace, Option<BracketRaceInfo>, BracketRound),
+    ) -> Result<Self, Self::Error> {
         let (race, info, round) = value;
         let player_1_result = race.player_1_result().transpose()?;
         let player_2_result = race.player_2_result().transpose()?;
         let state = race.state()?;
         let outcome = race.outcome()?;
+        let (scheduled_for, racetime_gg_url, restream_channel) = if let Some(i) = info {
+            (i.scheduled_for, i.racetime_gg_url, i.restream_channel)
+        } else {
+            (None, None, None)
+        };
         Ok(Self {
             id: race.id,
             bracket_id: race.bracket_id,
@@ -136,9 +143,9 @@ impl TryFrom<(BracketRace, BracketRaceInfo, BracketRound)> for ApiRace {
             player_1_result,
             player_2_result,
             outcome,
-            scheduled_for: info.scheduled_for,
-            racetime_gg_url: info.racetime_gg_url,
-            restream_channel: info.restream_channel,
+            scheduled_for: scheduled_for,
+            racetime_gg_url: racetime_gg_url,
+            restream_channel: restream_channel,
         })
     }
 }
@@ -246,42 +253,25 @@ async fn get_season_races(
     state: Option<String>,
     mut db: ConnectionWrapper<'_>,
 ) -> ApiResponse<Vec<ApiRace>> {
-    let _get_races = |conn: &mut SqliteConnection| -> Result<Vec<(BracketRace, BracketRaceInfo, BracketRound)>, ApiError> {
+    let _get_races = |conn: &mut SqliteConnection| -> Result<
+        Vec<(BracketRace, Option<BracketRaceInfo>, BracketRound)>,
+        ApiError,
+    > {
         use crate::schema::{bracket_race_infos, bracket_races, bracket_rounds, brackets, seasons};
         use diesel::prelude::*;
 
-
-        
-        // let mut q = bracket_races::table
-        // .inner_join(bracket_rounds::table)
-        // .inner_join(brackets::table.inner_join(seasons::table)))
-        //     .inner_join(
-        //         bracket_races::table
-        //             .inner_join(brackets::table.inner_join(seasons::table))
-        //             .inner_join(bracket_rounds::table),
-        //     )
-        //     .select((
-        //         bracket_races::all_columns,
-        //         bracket_race_infos::all_columns,
-        //         bracket_rounds::all_columns,
-        //     ))
-        //     .filter(seasons::ordinal.eq(ordinal))
-        //     .into_boxed();
-
-        let mut q = bracket_race_infos::table
-            .inner_join(
-                bracket_races::table
-                    .inner_join(brackets::table.inner_join(seasons::table))
-                    .inner_join(bracket_rounds::table),
-            )
+        let mut q = bracket_races::table
+            .inner_join(bracket_rounds::table)
+            .inner_join(brackets::table.inner_join(seasons::table))
+            .left_join(bracket_race_infos::table)
             .select((
                 bracket_races::all_columns,
-                bracket_race_infos::all_columns,
+                bracket_race_infos::all_columns.nullable(),
                 bracket_rounds::all_columns,
             ))
             .filter(seasons::ordinal.eq(ordinal))
             .into_boxed();
-        println!("Got state param: {state:?}");
+
         if let Some(state_inner) = state {
             match serde_json::from_str::<BracketRaceState>(&state_inner) {
                 Ok(_) => {
@@ -295,9 +285,7 @@ async fn get_season_races(
                 }
             };
         }
-        Ok(
-            q.load::<(BracketRace, BracketRaceInfo, BracketRound)>(conn)?
-        )
+        Ok(q.load::<(BracketRace, Option<BracketRaceInfo>, BracketRound)>(conn)?)
     };
     let data = _get_races(&mut db);
 
@@ -327,10 +315,8 @@ mod tests {
     use diesel::SqliteConnection;
     use itertools::Itertools;
     use nmg_league_bot::models::bracket_races;
-    use nmg_league_bot::models::bracket_races::BracketRace;
     use nmg_league_bot::models::bracket_races::NewBracketRace;
     use nmg_league_bot::models::bracket_rounds::NewBracketRound;
-    use nmg_league_bot::models::brackets::Bracket;
     use nmg_league_bot::models::brackets::BracketType;
     use nmg_league_bot::models::brackets::NewBracket;
     use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -342,10 +328,7 @@ mod tests {
             player::{NewPlayer, Player},
         },
         schema::players,
-        NMGLeagueBotError,
     };
-    use reqwest::Url;
-    use rocket::http::uri::Origin;
     use rocket::local::asynchronous::Client;
 
     use crate::web::api::ApiBracket;
@@ -502,15 +485,10 @@ mod tests {
             NewPlayerBracketEntry::new(&b, &p1).save(db)?;
             NewPlayerBracketEntry::new(&b, &p2).save(db)?;
             bracket_races::insert_bulk(&vec![NewBracketRace::new(&b, &round, &p1, &p2)], db)?;
-            let br = BracketRace::get_by_id(1, db)?;
-            // hydrate the BRI
-            br.info(db)?;
-            assert_eq!(1, b.bracket_races(db)?.len());
             Ok(ns)
         })
         .await?;
 
-        
         let unfiltered_resp = c
             .get(format!("/api/v1/season/{}/races", s.ordinal))
             .dispatch()
@@ -520,7 +498,6 @@ mod tests {
             .map_err(|e| anyhow!("{e}"))?;
         assert_eq!(1, parsed.len());
 
-        
         let bad_state = c
             .get(format!("/api/v1/season/{}/races?state=foo", s.ordinal))
             .dispatch()
@@ -532,7 +509,11 @@ mod tests {
 
         // `urlencoding::encode()` urlencodes the `=` sign!
         let new_resp = c
-            .get(format!("/api/v1/season/{}/races?state={}", s.ordinal, urlencoding::encode(r#""New""#)))
+            .get(format!(
+                "/api/v1/season/{}/races?state={}",
+                s.ordinal,
+                urlencoding::encode(r#""New""#)
+            ))
             .dispatch()
             .await;
         assert_eq!(rocket::http::Status::Ok, new_resp.status(),);
