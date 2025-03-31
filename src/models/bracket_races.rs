@@ -2,6 +2,7 @@ use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
+use crate::save_fn;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
@@ -341,4 +342,5 @@ impl NewBracketRace {
             outcome: None,
         }
     }
+
 }

@@ -21,7 +21,7 @@ Values given as `Enum` are internally defined Enums. The possible values of thes
 
 These Enums are just direct serializations of [Rust Enums](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html), in case that information is useful to you.
 
-### Paramaters Gotcha
+## Paramaters Gotcha
 
 Query parameters given as `Enum` will have to be serialized to JSON in your query string. This means that to filter for races in the format "new", you'd have to pass `?state="New"`. 
 
@@ -38,6 +38,12 @@ This returns a list of all players.
 ## Parameters
 
 You may specify the query parameter `player_id` zero or more times. If at least one `player_id` is present, the output is filtered to only those players.
+
+
+
+| Parameter Name    | Type  | Number          | Description                                      | Example         |
+| ----------        | ----  | ------          | -----------                                      | -------         |
+| player_id         | i32   | 0 or more       | Filters returned races to ones in this state     | 3               |
 
 ## Player Data
 
@@ -58,7 +64,7 @@ Note: Discord IDs are bigints serialized as strings. [Read their docs here](http
 
 ## Example
 
-All players (filtering out everyone but myself)
+All players (omitting everyone but myself for space reasons)
 
 ```
 $ curl https://nmg-league.foxlisk.com/api/v1/players
@@ -206,20 +212,19 @@ This API is mostly intended for users of the [Races endpoint](#races) to be able
 $ curl https://nmg-league.foxlisk.com/api/v1/seasion/9/brackets
 {
   "Ok": [
-
+    {
+      "id": 26,
+      "name": "Fighter Sword",
+      "season_id": 9,
+      "state": "Started",
+      "bracket_type": "Swiss"
+    },
     {
       "id": 27,
       "name": "Swordless",
       "season_id": 9,
-      "state": "\"Started\"",
-      "bracket_type": "\"RoundRobin\""
-    },
-    {
-      "id": 24,
-      "name": "Tempered Sword",
-      "season_id": 9,
-      "state": "\"Started\"",
-      "bracket_type": "\"Swiss\""
+      "state": "Started",
+      "bracket_type": "RoundRobin"
     },
     ...
   ]
@@ -235,11 +240,11 @@ Returns races in the specified season.
 ## Parameters
 
 
-| Parameter Name    | Type            | Description                                      | Example         |
-| ----------        | ----            | -----------                                      | -------         |
-| state             | Enum            | Filters returned races to ones in this state     | "Scheduled"     |
+| Parameter Name    | Type  | Number          | Description                                      | Example         |
+| ----------        | ----  | ------          | -----------                                      | -------         |
+| state             | Enum  | 0 or 1          | Filters returned races to ones in this state     | "Scheduled"     |
 
-Remember that [query parameters must be JSON encoded](#paramaters-gotcha)
+Remember that [Enum query parameters must be JSON encoded](#paramaters-gotcha)
 
 `state` enum definition: 
 
@@ -390,6 +395,7 @@ And an unfiltered response with some representative values:
       "racetime_gg_url": null,
       "restream_channel": null
     },
+    ...
   ]
 }
 ```

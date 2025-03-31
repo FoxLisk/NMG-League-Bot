@@ -22,6 +22,7 @@ use nmg_league_bot::NMGLeagueBotError;
 use rocket::response::Responder;
 use rocket::serde::json::Json;
 use rocket::{delete, get, Build, Request, Rocket};
+use serde::Deserialize;
 use serde::Serialize;
 use thiserror::Error;
 
@@ -64,7 +65,7 @@ impl<'r, 'o: 'r, T: Serialize> Responder<'r, 'o> for ApiResponse<T> {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ApiBracket {
     id: i32,
     name: String,
@@ -89,7 +90,7 @@ impl TryFrom<Bracket> for ApiBracket {
     }
 }
 
-#[derive(diesel::Queryable, serde::Serialize)]
+#[derive(diesel::Queryable, Serialize, Deserialize)]
 struct ApiQualifier {
     id: i32,
     player_id: i32,
@@ -98,7 +99,7 @@ struct ApiQualifier {
     vod: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct ApiRace {
     // race
     pub id: i32,
@@ -207,7 +208,7 @@ fn db_objs_to_api_objs<DB, API>(db_objs: Vec<DB>) -> Result<Vec<API>, ApiError>
 where
     API: TryFrom<DB>,
     // I couldn't figure this out on my own, but the compiler explained it.
-    // The compiler actually gave  serde_json::Error: From<<API as TryFrom<DB>>::Error>,
+    // The compiler actually gave `serde_json::Error: From<<API as TryFrom<DB>>::Error>`,
     // but we can be a bit more generic and accept any NMGLeagueBotError.
     NMGLeagueBotError: From<<API as TryFrom<DB>>::Error>,
 {
@@ -248,6 +249,25 @@ async fn get_season_races(
     let _get_races = |conn: &mut SqliteConnection| -> Result<Vec<(BracketRace, BracketRaceInfo, BracketRound)>, ApiError> {
         use crate::schema::{bracket_race_infos, bracket_races, bracket_rounds, brackets, seasons};
         use diesel::prelude::*;
+
+
+        
+        // let mut q = bracket_races::table
+        // .inner_join(bracket_rounds::table)
+        // .inner_join(brackets::table.inner_join(seasons::table)))
+        //     .inner_join(
+        //         bracket_races::table
+        //             .inner_join(brackets::table.inner_join(seasons::table))
+        //             .inner_join(bracket_rounds::table),
+        //     )
+        //     .select((
+        //         bracket_races::all_columns,
+        //         bracket_race_infos::all_columns,
+        //         bracket_rounds::all_columns,
+        //     ))
+        //     .filter(seasons::ordinal.eq(ordinal))
+        //     .into_boxed();
+
         let mut q = bracket_race_infos::table
             .inner_join(
                 bracket_races::table
@@ -261,13 +281,16 @@ async fn get_season_races(
             ))
             .filter(seasons::ordinal.eq(ordinal))
             .into_boxed();
-        if let Some(blah) = state {
-            match serde_json::from_str::<BracketRaceState>(&blah) {
+        println!("Got state param: {state:?}");
+        if let Some(state_inner) = state {
+            match serde_json::from_str::<BracketRaceState>(&state_inner) {
                 Ok(_) => {
-                    q = q.filter(bracket_races::state.eq(blah));
+                    // we make sure it is parseable, but we pass the unparsed value through
+                    // because that's what's actually in the DB
+                    q = q.filter(bracket_races::state.eq(state_inner));
                 }
                 Err(e) => {
-                    debug!("Error parsing state param {blah}: {e}");
+                    debug!("Error parsing state param {state_inner}: {e}");
                     return Err(ApiError::BadRequest);
                 }
             };
@@ -303,9 +326,14 @@ mod tests {
     use diesel::prelude::*;
     use diesel::SqliteConnection;
     use itertools::Itertools;
+    use nmg_league_bot::models::bracket_races;
+    use nmg_league_bot::models::bracket_races::BracketRace;
+    use nmg_league_bot::models::bracket_races::NewBracketRace;
+    use nmg_league_bot::models::bracket_rounds::NewBracketRound;
     use nmg_league_bot::models::brackets::Bracket;
     use nmg_league_bot::models::brackets::BracketType;
     use nmg_league_bot::models::brackets::NewBracket;
+    use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
     use nmg_league_bot::models::season::NewSeason;
     use nmg_league_bot::{
         db::{run_migrations, DieselConnectionManager},
@@ -316,9 +344,12 @@ mod tests {
         schema::players,
         NMGLeagueBotError,
     };
+    use reqwest::Url;
+    use rocket::http::uri::Origin;
     use rocket::local::asynchronous::Client;
 
     use crate::web::api::ApiBracket;
+    use crate::web::api::ApiRace;
 
     use super::build_rocket;
 
@@ -457,6 +488,70 @@ mod tests {
         let parsed = parse_result::<Vec<ApiBracket>>(&resp.into_string().await.unwrap())?
             .map_err(|e| anyhow!("{e}"))?;
         assert_eq!(2, parsed.len());
+        Ok(())
+    }
+    #[tokio::test]
+    async fn test_get_races() -> anyhow::Result<()> {
+        let c = setup().await?;
+        let s = run_with_db(&c, |db| {
+            let ns = NewSeason::new("Any% NMG", "alttp", "Any% NMG", db)?.save(db)?;
+            let b = NewBracket::new(&ns, "bracket 1", BracketType::Swiss).save(db)?;
+            let round = NewBracketRound::new(&b, 1).save(db)?;
+            let p1 = NewPlayer::new("p1", "1", None, None).save(db)?;
+            let p2 = NewPlayer::new("p2", "2", None, None).save(db)?;
+            NewPlayerBracketEntry::new(&b, &p1).save(db)?;
+            NewPlayerBracketEntry::new(&b, &p2).save(db)?;
+            bracket_races::insert_bulk(&vec![NewBracketRace::new(&b, &round, &p1, &p2)], db)?;
+            let br = BracketRace::get_by_id(1, db)?;
+            // hydrate the BRI
+            br.info(db)?;
+            assert_eq!(1, b.bracket_races(db)?.len());
+            Ok(ns)
+        })
+        .await?;
+
+        
+        let unfiltered_resp = c
+            .get(format!("/api/v1/season/{}/races", s.ordinal))
+            .dispatch()
+            .await;
+        assert_eq!(rocket::http::Status::Ok, unfiltered_resp.status(),);
+        let parsed = parse_result::<Vec<ApiRace>>(&unfiltered_resp.into_string().await.unwrap())?
+            .map_err(|e| anyhow!("{e}"))?;
+        assert_eq!(1, parsed.len());
+
+        
+        let bad_state = c
+            .get(format!("/api/v1/season/{}/races?state=foo", s.ordinal))
+            .dispatch()
+            .await;
+        assert_eq!(rocket::http::Status::Ok, bad_state.status(),);
+        let parsed = parse_result::<Vec<ApiRace>>(&bad_state.into_string().await.unwrap())?;
+        assert!(parsed.is_err());
+        assert_eq!("Bad Request", parsed.err().unwrap());
+
+        // `urlencoding::encode()` urlencodes the `=` sign!
+        let new_resp = c
+            .get(format!("/api/v1/season/{}/races?state={}", s.ordinal, urlencoding::encode(r#""New""#)))
+            .dispatch()
+            .await;
+        assert_eq!(rocket::http::Status::Ok, new_resp.status(),);
+        let parsed = parse_result::<Vec<ApiRace>>(&new_resp.into_string().await.unwrap())?
+            .map_err(|e| anyhow!("{e}"))?;
+        assert_eq!(1, parsed.len());
+
+        let scheduled_resp = c
+            .get(format!(
+                "/api/v1/season/{}/races?state={}",
+                s.ordinal,
+                urlencoding::encode(r#""Scheduled""#)
+            ))
+            .dispatch()
+            .await;
+        assert_eq!(rocket::http::Status::Ok, scheduled_resp.status(),);
+        let parsed = parse_result::<Vec<ApiRace>>(&scheduled_resp.into_string().await.unwrap())?
+            .map_err(|e| anyhow!("{e}"))?;
+        assert_eq!(0, parsed.len());
         Ok(())
     }
 }
