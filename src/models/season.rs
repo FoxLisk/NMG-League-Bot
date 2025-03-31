@@ -250,6 +250,8 @@ pub struct NewSeason {
 }
 
 impl NewSeason {
+    /// this requires a database connection to get the next ordinal
+    // TODO: probably technically a race condition in here lmao
     pub fn new<S: Into<String>>(
         format: S,
         rtgg_category_name: S,

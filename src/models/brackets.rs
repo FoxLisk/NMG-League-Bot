@@ -13,7 +13,7 @@ use enum_iterator::Sequence;
 use itertools::Itertools;
 use log::{debug, warn};
 use rand::thread_rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 use swiss_pairings::{PairingError, TourneyConfig};
@@ -36,7 +36,7 @@ pub enum BracketType {
     RoundRobin,
 }
 
-#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Selectable)]
+#[derive(Queryable, Identifiable, Debug, AsChangeset, Serialize, Deserialize, Selectable)]
 #[allow(unused)]
 pub struct Bracket {
     pub id: i32,
@@ -266,7 +266,7 @@ fn generate_initial_pairings(
 }
 
 impl Bracket {
-    fn state(&self) -> Result<BracketState, serde_json::Error> {
+    pub fn state(&self) -> Result<BracketState, serde_json::Error> {
         serde_json::from_str(&self.state)
     }
 
@@ -383,8 +383,8 @@ impl Bracket {
 
         let mut info: HashMap<i32, PlayerInfoBuilder> = Default::default();
         for race in races {
-            let p1r = race.player_1_result().ok_or(BracketError::InvalidState)?;
-            let p2r = race.player_2_result().ok_or(BracketError::InvalidState)?;
+            let p1r = race.player_1_result().ok_or(BracketError::InvalidState)??;
+            let p2r = race.player_2_result().ok_or(BracketError::InvalidState)??;
             let o = race.outcome()?.ok_or(BracketError::InvalidState)?;
             let (p1_adjust, p2_adjust) = match o {
                 Outcome::Tie => (1, 1),

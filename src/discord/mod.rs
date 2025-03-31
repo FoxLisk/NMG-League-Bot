@@ -323,6 +323,12 @@ enum ScheduleRaceError {
     BracketRaceStateError(#[from] BracketRaceStateError),
 }
 
+impl From<serde_json::Error> for ScheduleRaceError {
+    fn from(value: serde_json::Error) -> Self {
+        Self::BracketRaceStateError(BracketRaceStateError::ParseError(value))
+    }
+}
+
 /// Returns a nicely formatted message to return to chat
 /// wipes out existing state about scheduling/commentating/etc
 async fn schedule_race<Tz: TimeZone>(

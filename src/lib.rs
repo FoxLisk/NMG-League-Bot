@@ -27,6 +27,8 @@ pub mod db;
 pub mod models;
 pub mod racetime_types;
 pub mod schema;
+#[cfg(feature = "testing")]
+pub mod test_utils;
 pub mod twitch_client;
 pub mod utils;
 pub mod worker_funcs;
@@ -58,14 +60,6 @@ impl ChannelConfig {
             match_results,
         }
     }
-}
-
-// N.B. this should probably live in web::api, but that's currently not included in the lib
-// so that's a huge mess
-#[derive(Debug, Error)]
-pub enum ApiError {
-    #[error("Cannot delete qualifiers that are already closed.")]
-    CannotDeletePastQualifiers,
 }
 
 // See above comment (but replace with racetime_bot)
@@ -125,7 +119,7 @@ pub enum ApplicationCommandOptionError {
     NoSubcommand,
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug,)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
     TwilightHttpError(#[from] twilight_http::Error),
@@ -147,9 +141,6 @@ pub enum NMGLeagueBotError {
 
     #[error("Twitch API error: {0}")]
     TwitchError(#[from] ClientRequestError<reqwest::Error>),
-
-    #[error("API Error: {0}")]
-    ApiError(#[from] ApiError),
 
     #[error("No timestamp on new bracket race info")]
     MissingTimestamp,
