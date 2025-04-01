@@ -274,7 +274,9 @@ Remember that [Enum query parameters must be JSON encoded](#paramaters-gotcha)
 | restream_channel  | optional String | URL of a restream channel, if any***                         | "https://twitch.tv/zeldaspeedruns" |
 
 \* Currently, all Round Robin bracket races have round "1". This is subject to change at any time.
+
 \*\* This field should get set 30 minutes before the race is created, but could be out sync. Will be `null` for any races run asynchronously.
+
 \*\*\* This will be null by default. The multistream links that populate the UI are not returned in this API.
 
 `result` enum definition (for `player_1_result` and `player_2_result`):
