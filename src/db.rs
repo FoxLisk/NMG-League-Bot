@@ -61,6 +61,11 @@ impl DieselConnectionManager {
         let path = munge_path(sqlite_db_path);
         Self { path }
     }
+
+    #[cfg(feature = "testing")]
+    pub fn new_from_path<S: Into<String>>(path: S) -> Self {
+        Self { path: path.into() }
+    }
 }
 
 #[async_trait]

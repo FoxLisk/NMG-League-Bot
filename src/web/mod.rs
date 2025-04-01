@@ -318,8 +318,13 @@ struct DisplayRace {
 }
 
 impl DisplayPlayer {
-    fn new(p: &Player, res: Option<PlayerResult>, winner: bool, loser: bool) -> Self {
-        let status = if let Some(r) = res {
+    fn new(
+        p: &Player,
+        res: Option<Result<PlayerResult, serde_json::Error>>,
+        winner: bool,
+        loser: bool,
+    ) -> Self {
+        let status = if let Some(Ok(r)) = res {
             format!("{r}")
         } else {
             "".to_string()
@@ -805,9 +810,11 @@ where
                     race.player_1_id,
                 )
             };
-            fn res_opt_to_display(r: Option<PlayerResult>) -> String {
-                r.map(|pr| pr.to_string())
-                    .unwrap_or("Missing data".to_string())
+            fn res_opt_to_display(r: Option<Result<PlayerResult, serde_json::Error>>) -> String {
+                match r {
+                    Some(Ok(pr)) => pr.to_string(),
+                    _ => "Missing data".to_string(),
+                }
             }
 
             let p = players

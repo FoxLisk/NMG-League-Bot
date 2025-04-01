@@ -2,6 +2,7 @@ use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
+use crate::save_fn;
 use crate::schema::bracket_races;
 use crate::update_fn;
 use crate::utils::format_hms;
@@ -15,8 +16,6 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
-
-
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
@@ -115,8 +114,8 @@ impl BracketRace {
 }
 
 impl BracketRace {
-    pub fn state(&self) -> Result<BracketRaceState, BracketRaceStateError> {
-        serde_json::from_str(&self.state).map_err(From::from)
+    pub fn state(&self) -> Result<BracketRaceState, serde_json::Error> {
+        serde_json::from_str(&self.state)
     }
 
     fn set_state(&mut self, state: BracketRaceState) {
@@ -228,21 +227,23 @@ impl BracketRace {
         Ok(())
     }
 
-    pub fn player_1_result(&self) -> Option<PlayerResult> {
+    pub fn player_1_result(&self) -> Option<Result<PlayerResult, serde_json::Error>> {
         self.player_1_result
             .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok())
+            // not sure why `.map(serde_json::from_str)` doesnt work here but this does. it complains
+            // about &String vs &str in the former invocation
+            .map(|s| serde_json::from_str(s))
     }
 
-    pub fn player_2_result(&self) -> Option<PlayerResult> {
+    pub fn player_2_result(&self) -> Option<Result<PlayerResult, serde_json::Error>> {
         self.player_2_result
             .as_ref()
-            .and_then(|s| serde_json::from_str(s).ok())
+            .map(|s| serde_json::from_str(s))
     }
 
     fn finish(&mut self) -> Result<(), BracketRaceStateError> {
         let (p1, p2) = match (self.player_1_result(), self.player_2_result()) {
-            (Some(p1r), Some(p2r)) => (p1r, p2r),
+            (Some(p1r), Some(p2r)) => (p1r?, p2r?),
             _ => {
                 return Err(BracketRaceStateError::MissingResult);
             }
@@ -341,4 +342,5 @@ impl NewBracketRace {
             outcome: None,
         }
     }
+
 }

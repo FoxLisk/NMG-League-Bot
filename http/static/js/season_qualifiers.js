@@ -17,8 +17,8 @@ function seconds_to_hmmss(secs) {
  we're going to trust that the server returns these sorted fastest to slowest
  returns a promise that might be an error
   */
-async function get_qualifiers(season_id) {
-    return await fetch('/api/v1/season/' + season_id + '/qualifiers')
+async function get_qualifiers(season_ordinal) {
+    return await fetch('/api/v1/season/' + season_ordinal + '/qualifiers')
         .then(r => {
             if (!r.ok) {
                 throw new Error("Network error.");
@@ -96,12 +96,12 @@ async function do_delete(id) {
 document.addEventListener('DOMContentLoaded', async () => {
     let container = document.getElementById('qualifiers');
     let table = document.getElementById('qualifiers_table')
-    let season_id = container.dataset['seasonId'];
+    let season_ordinal = container.dataset['seasonOrdinal'];
     let tbody = document.querySelector('#qualifiers_table tbody');
     let toggle_obsolete_button = document.querySelector('button#toggle-obsolete-button');
     let wrapper = document.getElementById('qualifiers-wrapper');
     let no_qualifiers = document.getElementById('no-qualifiers');
-    let qualifiers = await get_qualifiers(season_id);
+    let qualifiers = await get_qualifiers(season_ordinal);
     try {
         var obsolete_hidden = true;
         function rebuild() {
