@@ -93,7 +93,12 @@ pub async fn run_bot(
     .await
     .unwrap();
 
-    tokio::spawn(create_rooms(races_to_create, rt_state.clone()));
+    let new_room_sender = b.extra_room_sender();
+    tokio::spawn(create_rooms(
+        races_to_create,
+        new_room_sender,
+        rt_state.clone(),
+    ));
     drop(state);
     match b.run_until::<Handler, _, _>(sd.recv()).await {
         Ok(shutdown) => {
@@ -108,7 +113,11 @@ pub async fn run_bot(
     }
 }
 
-async fn create_rooms(mut events: MpscReceiver<BracketRaceInfoId>, state: Arc<RacetimeState>) {
+async fn create_rooms(
+    mut events: MpscReceiver<BracketRaceInfoId>,
+    new_room_sender: Sender<String>,
+    state: Arc<RacetimeState>,
+) {
     let hi = host_info();
 
     let client = reqwest::Client::default();
@@ -136,8 +145,11 @@ async fn create_rooms(mut events: MpscReceiver<BracketRaceInfoId>, state: Arc<Ra
         }
         match handle_one_bri(&mut bri, &mut token, &state.discord_state).await {
             Ok(slug) => {
-                if let Err(e) = state.learn_about_bri(slug, &bri).await {
+                if let Err(e) = state.learn_about_bri(slug.clone(), &bri).await {
                     warn!("Error telling RacetimeState about new room for BRI: {e}");
+                }
+                if let Err(e) = new_room_sender.send(slug).await {
+                    warn!("Error immediately dispatching new room to bot: {e}");
                 }
             }
             Err(e) => {
