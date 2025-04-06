@@ -1,6 +1,13 @@
 # Season 9
 
 * Feature: Round Robin brackets now generate all pairings upfront and allow free scheduling of races.
+* Feature: There is now [an API](api_docs/README.md)
+* Internals: The rtgg rooms that get created are now immediately sent to the bot. This *might* fix an issue where
+             the bot would create a room but then not notice it appear and thus not send it out to players, etc.
+* Internals: Helper Bot now requires the `helper_bot` cargo feature to run
+* Feature: Helper Bot info page at `/helper_bot`
+* Internals: User data validation script
+
 
 # Season 8
 
