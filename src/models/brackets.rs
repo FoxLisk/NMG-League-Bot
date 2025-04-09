@@ -371,22 +371,67 @@ impl Bracket {
         }
         let rounds = self.rounds(conn)?;
         let mut races = vec![];
+        let is_rr = match self.bracket_type()? {
+            BracketType::Swiss => false,
+            BracketType::RoundRobin => true,
+        };
+
+        struct StandingsRace {
+            player_1_id: i32,
+            player_2_id: i32,
+            player_1_result: PlayerResult,
+            player_2_result: PlayerResult,
+            outcome: Outcome,
+        }
+
+        impl TryFrom<BracketRace> for StandingsRace {
+            type Error = BracketError;
+
+            fn try_from(value: BracketRace) -> Result<Self, Self::Error> {
+                let player_1_result = value
+                    .player_1_result()
+                    .ok_or(BracketError::InvalidState)??;
+                let player_2_result = value
+                    .player_2_result()
+                    .ok_or(BracketError::InvalidState)??;
+                let outcome = value.outcome()?.ok_or(BracketError::InvalidState)?;
+                Ok(Self {
+                    player_1_id: value.player_1_id,
+                    player_2_id: value.player_2_id,
+                    player_1_result,
+                    player_2_result,
+                    outcome,
+                })
+            }
+        }
+
         for round in rounds {
             let round_races = round.races(conn)?;
-            if !all_races_complete(&round_races) {
-                // this either means we've reached the current round, or it means that
-                // we have a data issue, and in either case i'm giving up
+            if !is_rr && !round_races.iter().all(BracketRace::is_complete) {
+                // we don't want to show standings mid-round for swiss brackets because they're very ugly IMO
+                // (having the brackets be like 1. 2-1 guy, 2. 2-0 guy looks awful)
+                // but for RR brackets I think it's fine; they're a little messier, but it sucks to not show
+                // any results until the very end.
                 break;
             }
-            races.extend(round_races);
+
+            races.extend(
+                round_races
+                    .into_iter()
+                    .filter_map(|r| StandingsRace::try_from(r).ok()),
+            );
         }
 
         let mut info: HashMap<i32, PlayerInfoBuilder> = Default::default();
         for race in races {
-            let p1r = race.player_1_result().ok_or(BracketError::InvalidState)??;
-            let p2r = race.player_2_result().ok_or(BracketError::InvalidState)??;
-            let o = race.outcome()?.ok_or(BracketError::InvalidState)?;
-            let (p1_adjust, p2_adjust) = match o {
+            let StandingsRace {
+                player_1_id,
+                player_2_id,
+                player_1_result,
+                player_2_result,
+                outcome,
+            } = race;
+            let (p1_adjust, p2_adjust) = match outcome {
                 Outcome::Tie => (1, 1),
                 Outcome::P1Win => (2, 0),
                 Outcome::P2Win => (0, 2),
@@ -394,16 +439,16 @@ impl Bracket {
             let p1_i_b = info
                 .entry(race.player_1_id)
                 .or_insert(PlayerInfoBuilder::new(race.player_1_id));
-            p1_i_b.results.push(p1r);
+            p1_i_b.results.push(player_1_result);
             p1_i_b.points += p1_adjust;
-            p1_i_b.opponents.push(race.player_2_id);
+            p1_i_b.opponents.push(player_2_id);
 
             let p2_i_b = info
                 .entry(race.player_2_id)
                 .or_insert(PlayerInfoBuilder::new(race.player_2_id));
-            p2_i_b.results.push(p2r);
+            p2_i_b.results.push(player_2_result);
             p2_i_b.points += p2_adjust;
-            p2_i_b.opponents.push(race.player_1_id);
+            p2_i_b.opponents.push(player_1_id);
         }
         let points: HashMap<i32, i32> = info.values().map(|p| (p.id, p.points)).collect();
 
@@ -488,18 +533,6 @@ impl PlayerInfo {
         }
         finished.iter().sum::<u32>() as f32 / finished.len() as f32
     }
-}
-
-fn all_races_complete(races: &[BracketRace]) -> bool {
-    for race in races {
-        match race.outcome() {
-            Ok(Some(_)) => {}
-            _ => {
-                return false;
-            }
-        }
-    }
-    true
 }
 
 #[derive(Insertable)]

@@ -122,10 +122,20 @@ impl BracketRace {
         self.state = serde_json::to_string(&state).unwrap_or("Unknown".to_string());
     }
 
+    /// Returns the [Outcome] of the race if it is complete, None if it's not complete, and an error if
+    /// this model has invalid data.
     pub fn outcome(&self) -> Result<Option<Outcome>, serde_json::Error> {
         match self.outcome.as_ref() {
             None => Ok(None),
             Some(o) => Ok(Some(serde_json::from_str(o)?)),
+        }
+    }
+
+    /// Returns true if the race is definitely complete, false if it is incomplete or there is a data error.
+    pub fn is_complete(&self) -> bool {
+        match self.outcome() {
+            Ok(Some(_)) => true,
+            _ => false,
         }
     }
 
