@@ -560,7 +560,7 @@ fn get_standings_context(
     szn: Season,
     admin: &Option<Admin>,
     conn: &mut SqliteConnection,
-) -> Result<StandingsContext, diesel::result::Error> {
+) -> Result<StandingsContext, NMGLeagueBotError> {
     let mut ctx_brackets = vec![];
 
     for bracket in szn.brackets(conn)? {
@@ -568,9 +568,13 @@ fn get_standings_context(
         let standings = match bracket.standings(conn) {
             Ok(s) => s,
             Err(BracketError::DBError(e)) => {
-                return Err(e);
+                return Err(e)?;
             }
             Err(BracketError::InvalidState) => {
+                warn!(
+                    "Bracket {} is not in a valid state for standings",
+                    bracket.name
+                );
                 vec![]
             }
             Err(e) => {
