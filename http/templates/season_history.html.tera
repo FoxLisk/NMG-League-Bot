@@ -10,17 +10,27 @@
     </div>
     <div class="page-content-container">
         <div class="previous-season-item">
+            <h3 class="season-title">Season 9</h3>
+            Another season of Any% NMG, this time with
+            {{macros::link(href="/season/9", text="four swiss brackets and one round robin bracket")}}.
+        </div>
+        <hr class="season-separator" />
+
+        <div class="previous-season-item">
             <h3 class="season-title">Season 8</h3>
             Our first season of All Dungeons RMG. This one was spearheaded by
             {{macros::link(href="/player/16", text="tam")}} and featured
             {{macros::link(href="/season/8", text="three swiss brackets")}}.
         </div>
+        <hr class="season-separator" />
+
         <div class="previous-season-item">
             <h3 class="season-title">Season 7</h3>
             Another season of Any% NMG, this time with
             {{macros::link(href="/season/7", text="three swiss brackets")}}.
         </div>
         <hr class="season-separator" />
+
         <div class="previous-season-item">
             <h3 class="season-title">Season 6</h3>
             Season 6 was once again vanilla Any% NMG, this time with

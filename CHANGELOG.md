@@ -1,3 +1,7 @@
+# Season 10
+
+* Feature: Season 9 history blurb
+
 # Season 9
 
 * Feature: Round Robin brackets now generate all pairings upfront and allow free scheduling of races.
