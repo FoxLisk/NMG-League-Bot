@@ -407,7 +407,9 @@ And an unfiltered response with some representative values:
 
 URL: `/season/<ordinal>/commentator_signups`
 
-Returns commentator signups in the specified season.
+Returns commentator signups in the specified season. These are collected by people using discord reactions,
+and at the moment the only data I store about them is the user's discord ID. If you have a use case that would
+benefit from a richer API here, please let me know so I can see about prioritizing it.
 
 ## Parameters
 
@@ -425,10 +427,6 @@ Returns commentator signups in the specified season.
 | discord_id        | String          | commentator's Discord ID                                     | "255676979460702210" |
 
 Note: Discord IDs are bigints serialized as strings. [Read their docs here](https://discord.com/developers/docs/reference#snowflakes).
-
-Currently the only data I store about commentators is their discord IDs, which is not super convenient for a consumer of this
-API. If you have a use case that would benefit from having more data in here, please let me know so I can prioritize improving
-this situation.
 
 
 
