@@ -710,7 +710,7 @@ mod tests {
         let mut grouped = get_comms_by_race(
             &c,
             format!(
-                "/api/v1/season/{}/commentator_signups?race_id={}",
+                "/api/v1/season/{}/commentator_signups?bracket_race_id={}",
                 s.ordinal, race1.id
             ),
         )
@@ -724,7 +724,7 @@ mod tests {
                 .sorted()
                 .collect::<Vec<_>>()
         );
-        assert_eq!(0, grouped.len());
+        assert_eq!(0, grouped.len(), "{grouped:?}");
         Ok(())
     }
 }
