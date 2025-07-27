@@ -2,12 +2,15 @@
 
 use std::ops::DerefMut;
 
+use crate::discord;
 use crate::web::auth::Admin;
 use crate::web::ConnectionWrapper;
 use diesel::SqliteConnection;
 use log::debug;
 use log::warn;
+use nmg_league_bot::models::bracket_race_infos;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_race_infos::CommentatorSignup;
 use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::bracket_races::Outcome;
 use nmg_league_bot::models::bracket_races::PlayerResult;
@@ -146,6 +149,26 @@ impl TryFrom<(BracketRace, Option<BracketRaceInfo>, BracketRound)> for ApiRace {
             scheduled_for: scheduled_for,
             racetime_gg_url: racetime_gg_url,
             restream_channel: restream_channel,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct ApiCommentatorSignup {
+    pub bracket_race_id: i32,
+    pub discord_id: String,
+}
+
+impl TryFrom<(CommentatorSignup, BracketRaceInfo, BracketRace)> for ApiCommentatorSignup {
+    type Error = serde_json::Error;
+
+    fn try_from(
+        value: (CommentatorSignup, BracketRaceInfo, BracketRace),
+    ) -> Result<Self, Self::Error> {
+        let (signup, info, race) = value;
+        Ok(Self {
+            bracket_race_id: race.id,
+            discord_id: signup.discord_id,
         })
     }
 }
@@ -292,6 +315,43 @@ async fn get_season_races(
     ApiResponse(data.and_then(db_objs_to_api_objs))
 }
 
+#[get("/season/<ordinal>/commentator_signups?<bracket_race_id>")]
+async fn get_season_commentator_signups(
+    ordinal: i32,
+    bracket_race_id: Vec<i32>,
+    mut db: ConnectionWrapper<'_>,
+) -> ApiResponse<Vec<ApiCommentatorSignup>> {
+    let _get_comms = |conn: &mut SqliteConnection| -> Result<
+        Vec<(CommentatorSignup, BracketRaceInfo, BracketRace)>,
+        ApiError,
+    > {
+        use crate::schema::{
+            bracket_race_infos, bracket_races, brackets, commentator_signups, seasons,
+        };
+        use diesel::prelude::*;
+
+        let mut q = commentator_signups::table
+            .inner_join(bracket_race_infos::table.inner_join(
+                bracket_races::table.inner_join(brackets::table.inner_join(seasons::table)),
+            ))
+            .select((
+                commentator_signups::all_columns,
+                bracket_race_infos::all_columns,
+                bracket_races::all_columns,
+            ))
+            .filter(seasons::ordinal.eq(ordinal))
+            .into_boxed();
+
+        if !bracket_race_id.is_empty() {
+            q = q.filter(bracket_races::id.eq_any(bracket_race_id));
+        }
+        Ok(q.load::<(CommentatorSignup, BracketRaceInfo, BracketRace)>(conn)?)
+    };
+    let data = _get_comms(&mut db);
+
+    ApiResponse(data.and_then(db_objs_to_api_objs))
+}
+
 pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.mount(
         "/api/v1",
@@ -300,7 +360,8 @@ pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
             delete_qualifier,
             get_players,
             get_season_brackets,
-            get_season_races
+            get_season_races,
+            get_season_commentator_signups
         ],
     )
 }

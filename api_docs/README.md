@@ -401,3 +401,51 @@ And an unfiltered response with some representative values:
   ]
 }
 ```
+
+
+# Commentator Signups
+
+URL: `/season/<ordinal>/commentator_signups`
+
+Returns commentator signups in the specified season.
+
+## Parameters
+
+
+| Parameter Name    | Type  | Number          | Description                                            | Example |
+| ----------        | ----  | ------          | -----------                                            | ------- |
+| bracket_race_id   | i32   | 0 or more       | Filters returned signups to ones for the given race(s) | 315     |
+
+
+## Commentator Signup Data
+
+| Field name        | Type            | Description                                                  | Example              |
+| ----------        | ----            | -----------                                                  | -------              |
+| bracket_race_id   | i32             | foreign key to [Race](#races)                                | 315                  |
+| discord_id        | String          | commentator's Discord ID                                     | "255676979460702210" |
+
+Note: Discord IDs are bigints serialized as strings. [Read their docs here](https://discord.com/developers/docs/reference#snowflakes).
+
+Currently the only data I store about commentators is their discord IDs, which is not super convenient for a consumer of this
+API. If you have a use case that would benefit from having more data in here, please let me know so I can prioritize improving
+this situation.
+
+
+
+## Example
+
+```
+$ curl https://nmg-league.foxlisk.com/api/v1/season/9/commentator_signups?race_id=315
+{
+  "Ok": [
+    {
+      "bracket_race_id": 315,
+      "discord_id": "270991884430606336"
+    },
+    {
+      "bracket_race_id": 315,
+      "discord_id": "306169649006116864"
+    }
+  ]
+}
+```
