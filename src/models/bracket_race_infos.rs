@@ -251,7 +251,7 @@ impl NewBracketRaceInfo {
 pub struct CommentatorSignup {
     id: i32,
     bracket_race_info_id: i32,
-    discord_id: String,
+    pub discord_id: String,
 }
 
 impl CommentatorSignup {

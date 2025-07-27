@@ -1,13 +1,17 @@
 //! api lol. the idea is just stuff that returns json i guess
 
+use std::convert::Infallible;
 use std::ops::DerefMut;
 
+use crate::discord;
 use crate::web::auth::Admin;
 use crate::web::ConnectionWrapper;
 use diesel::SqliteConnection;
 use log::debug;
 use log::warn;
+use nmg_league_bot::models::bracket_race_infos;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::bracket_race_infos::CommentatorSignup;
 use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::bracket_races::Outcome;
 use nmg_league_bot::models::bracket_races::PlayerResult;
@@ -146,6 +150,26 @@ impl TryFrom<(BracketRace, Option<BracketRaceInfo>, BracketRound)> for ApiRace {
             scheduled_for: scheduled_for,
             racetime_gg_url: racetime_gg_url,
             restream_channel: restream_channel,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct ApiCommentatorSignup {
+    pub bracket_race_id: i32,
+    pub discord_id: String,
+}
+
+impl TryFrom<(CommentatorSignup, BracketRaceInfo, BracketRace)> for ApiCommentatorSignup {
+    type Error = serde_json::Error;
+
+    fn try_from(
+        value: (CommentatorSignup, BracketRaceInfo, BracketRace),
+    ) -> Result<Self, Self::Error> {
+        let (signup, _info, race) = value;
+        Ok(Self {
+            bracket_race_id: race.id,
+            discord_id: signup.discord_id,
         })
     }
 }
@@ -292,6 +316,43 @@ async fn get_season_races(
     ApiResponse(data.and_then(db_objs_to_api_objs))
 }
 
+#[get("/season/<ordinal>/commentator_signups?<bracket_race_id>")]
+async fn get_season_commentator_signups(
+    ordinal: i32,
+    bracket_race_id: Vec<i32>,
+    mut db: ConnectionWrapper<'_>,
+) -> ApiResponse<Vec<ApiCommentatorSignup>> {
+    let _get_comms = |conn: &mut SqliteConnection| -> Result<
+        Vec<(CommentatorSignup, BracketRaceInfo, BracketRace)>,
+        ApiError,
+    > {
+        use crate::schema::{
+            bracket_race_infos, bracket_races, brackets, commentator_signups, seasons,
+        };
+        use diesel::prelude::*;
+
+        let mut q = commentator_signups::table
+            .inner_join(bracket_race_infos::table.inner_join(
+                bracket_races::table.inner_join(brackets::table.inner_join(seasons::table)),
+            ))
+            .select((
+                commentator_signups::all_columns,
+                bracket_race_infos::all_columns,
+                bracket_races::all_columns,
+            ))
+            .filter(seasons::ordinal.eq(ordinal))
+            .into_boxed();
+
+        if !bracket_race_id.is_empty() {
+            q = q.filter(bracket_races::id.eq_any(bracket_race_id));
+        }
+        Ok(q.load::<(CommentatorSignup, BracketRaceInfo, BracketRace)>(conn)?)
+    };
+    let data = _get_comms(&mut db);
+
+    ApiResponse(data.and_then(db_objs_to_api_objs))
+}
+
 pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
     rocket.mount(
         "/api/v1",
@@ -300,13 +361,15 @@ pub fn build_rocket(rocket: Rocket<Build>) -> Rocket<Build> {
             delete_qualifier,
             get_players,
             get_season_brackets,
-            get_season_races
+            get_season_races,
+            get_season_commentator_signups
         ],
     )
 }
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::collections::HashSet;
 
     use anyhow::anyhow;
@@ -314,7 +377,9 @@ mod tests {
     use diesel::prelude::*;
     use diesel::SqliteConnection;
     use itertools::Itertools;
+    use nmg_league_bot::models::bracket_race_infos::NewCommentatorSignup;
     use nmg_league_bot::models::bracket_races;
+    use nmg_league_bot::models::bracket_races::BracketRace;
     use nmg_league_bot::models::bracket_races::NewBracketRace;
     use nmg_league_bot::models::bracket_rounds::NewBracketRound;
     use nmg_league_bot::models::brackets::BracketType;
@@ -330,8 +395,11 @@ mod tests {
         schema::players,
     };
     use rocket::local::asynchronous::Client;
+    use rustls::sign;
+    use twilight_model::id::Id;
 
     use crate::web::api::ApiBracket;
+    use crate::web::api::ApiCommentatorSignup;
     use crate::web::api::ApiRace;
 
     use super::build_rocket;
@@ -473,6 +541,7 @@ mod tests {
         assert_eq!(2, parsed.len());
         Ok(())
     }
+
     #[tokio::test]
     async fn test_get_races() -> anyhow::Result<()> {
         let c = setup().await?;
@@ -533,6 +602,129 @@ mod tests {
         let parsed = parse_result::<Vec<ApiRace>>(&scheduled_resp.into_string().await.unwrap())?
             .map_err(|e| anyhow!("{e}"))?;
         assert_eq!(0, parsed.len());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_get_comms() -> anyhow::Result<()> {
+        let c = setup().await?;
+        let s = run_with_db(&c, |db| {
+            let ns = NewSeason::new("Any% NMG", "alttp", "Any% NMG", db)?.save(db)?;
+            let b = NewBracket::new(&ns, "bracket 1", BracketType::Swiss).save(db)?;
+            let round = NewBracketRound::new(&b, 1).save(db)?;
+            let p1 = NewPlayer::new("p1", "1", None, None).save(db)?;
+            let p2 = NewPlayer::new("p2", "2", None, None).save(db)?;
+
+            let p3 = NewPlayer::new("p3", "3", None, None).save(db)?;
+            let p4 = NewPlayer::new("p4", "4", None, None).save(db)?;
+            NewPlayerBracketEntry::new(&b, &p1).save(db)?;
+            NewPlayerBracketEntry::new(&b, &p2).save(db)?;
+            NewPlayerBracketEntry::new(&b, &p3).save(db)?;
+            NewPlayerBracketEntry::new(&b, &p4).save(db)?;
+            bracket_races::insert_bulk(
+                &vec![
+                    NewBracketRace::new(&b, &round, &p1, &p2),
+                    NewBracketRace::new(&b, &round, &p3, &p4),
+                ],
+                db,
+            )?;
+            Ok(ns)
+        })
+        .await?;
+
+        let unfiltered_resp = c
+            .get(format!("/api/v1/season/{}/commentator_signups", s.ordinal))
+            .dispatch()
+            .await;
+        assert_eq!(rocket::http::Status::Ok, unfiltered_resp.status(),);
+
+        let parsed = parse_result::<Vec<ApiCommentatorSignup>>(
+            &unfiltered_resp.into_string().await.unwrap(),
+        )?
+        .map_err(|e| anyhow!("{e}"))?;
+        assert_eq!(0, parsed.len());
+
+        let (race1, race2) = run_with_db(&c, |db| {
+            use diesel::prelude::*;
+            use nmg_league_bot::schema::bracket_races;
+            let mut races = bracket_races::table.load::<BracketRace>(db)?;
+            assert_eq!(2, races.len());
+            let race1 = races.pop().unwrap();
+            let race2 = races.pop().unwrap();
+            let mut info1 = race1.info(db)?;
+            info1.new_commentator_signup(Id::new(11111), db)?;
+            info1.new_commentator_signup(Id::new(22222), db)?;
+            let mut info2 = race2.info(db)?;
+            info2.new_commentator_signup(Id::new(33333), db)?;
+            Ok((race1, race2))
+        })
+        .await?;
+
+        async fn get_comms_by_race(
+            c: &Client,
+            url: String,
+        ) -> anyhow::Result<HashMap<i32, Vec<String>>> {
+            let resp = c.get(url).dispatch().await;
+            assert_eq!(rocket::http::Status::Ok, resp.status(),);
+
+            let parsed =
+                parse_result::<Vec<ApiCommentatorSignup>>(&resp.into_string().await.unwrap())
+                    .map_err(|e| anyhow!("{e}"))?
+                    .map_err(|e| anyhow!("{e}"))?;
+            let mut by_race_id: HashMap<i32, Vec<String>> = Default::default();
+            for signup in parsed {
+                by_race_id
+                    .entry(signup.bracket_race_id)
+                    .or_insert_with(Vec::new)
+                    .push(signup.discord_id);
+            }
+            Ok(by_race_id)
+        }
+
+        let mut grouped = get_comms_by_race(
+            &c,
+            format!("/api/v1/season/{}/commentator_signups", s.ordinal),
+        )
+        .await?;
+
+        assert_eq!(
+            vec!["11111", "22222"],
+            grouped
+                .remove(&race1.id)
+                .unwrap()
+                .iter()
+                .sorted()
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            vec!["33333"],
+            grouped
+                .remove(&race2.id)
+                .unwrap()
+                .iter()
+                .sorted()
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(0, grouped.len());
+
+        let mut grouped = get_comms_by_race(
+            &c,
+            format!(
+                "/api/v1/season/{}/commentator_signups?bracket_race_id={}",
+                s.ordinal, race1.id
+            ),
+        )
+        .await?;
+        assert_eq!(
+            vec!["11111", "22222"],
+            grouped
+                .remove(&race1.id)
+                .unwrap()
+                .iter()
+                .sorted()
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(0, grouped.len(), "{grouped:?}");
         Ok(())
     }
 }
