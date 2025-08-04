@@ -62,7 +62,6 @@ impl ChannelConfig {
     }
 }
 
-// See above comment (but replace with racetime_bot)
 #[cfg(feature = "racetime_bot")]
 #[derive(Debug, Error)]
 pub enum RaceTimeBotError {
@@ -77,7 +76,7 @@ pub enum RaceTimeBotError {
     #[error("Missing BracketRaceInfo for slug {0}")]
     MissingBRI(String),
     #[error("Worker thread for this race disconnected")]
-    WorkerDisconnect,
+    RaceControllerDisconnect,
     #[error("Handler disconnected (the inverse of WorkerDisconnect)")]
     HandlerDisconnect,
 }
@@ -119,7 +118,7 @@ pub enum ApplicationCommandOptionError {
     NoSubcommand,
 }
 
-#[derive(Error, Debug,)]
+#[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
     TwilightHttpError(#[from] twilight_http::Error),

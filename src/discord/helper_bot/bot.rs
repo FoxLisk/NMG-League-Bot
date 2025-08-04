@@ -126,7 +126,7 @@ impl HelperBot {
         // convince the compiler that i have an iterator of mutable references in a simpler way
         let mut events = ShardEventStream::new(shards.iter_mut());
 
-        if cfg!(features = "testing") {
+        if cfg!(feature = "testing") {
             if let Err(e) = bot.interaction_client().set_global_commands(&vec![]).await {
                 warn!("Error resetting global commands: {e}");
             }
