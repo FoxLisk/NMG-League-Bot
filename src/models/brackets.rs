@@ -44,6 +44,8 @@ pub struct Bracket {
     pub season_id: i32,
     state: String,
     bracket_type: String,
+    /// if true, this bracket is a backfill of a historical bracket
+    pub backfill_note: Option<String>,
 }
 
 impl Bracket {}
@@ -542,6 +544,7 @@ pub struct NewBracket {
     name: String,
     state: String,
     bracket_type: String,
+    pub backfill_note: Option<String>,
 }
 
 impl NewBracket {
@@ -555,6 +558,7 @@ impl NewBracket {
             name: name.into(),
             state,
             bracket_type,
+            backfill_note: None,
         }
     }
 

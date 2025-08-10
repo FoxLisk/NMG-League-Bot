@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use diesel::SqliteConnection;
 use itertools::Itertools as _;
 use nmg_league_bot::{
-    db::raw_diesel_cxn_from_env,
+    db::{raw_diesel_cxn_from_env, run_migrations},
     models::{
         bracket_races::{NewBracketRace, Outcome, PlayerResult},
         bracket_rounds::NewBracketRound,
@@ -17,8 +17,29 @@ use nmg_league_bot::{
 };
 use rand::{thread_rng, Rng};
 
+struct RaceResult {
+    player_1_name: String,
+    player_2_name: String,
+    player_1_result: PlayerResult,
+    player_2_result: PlayerResult,
+    outcome: Outcome,
+}
+
+impl From<(&'static str, &'static str)> for RaceResult {
+    fn from((p1, p2): (&'static str, &'static str)) -> Self {
+        Self {
+            player_1_name: p1.to_string(),
+            player_2_name: p2.to_string(),
+            player_1_result: PlayerResult::Finish(60),
+            player_2_result: PlayerResult::Finish(120),
+            outcome: Outcome::P1Win,
+        }
+    }
+}
+
 struct MakeBracket {
     new_bracket_name: &'static str,
+    backfill_note: String,
     races: Vec<Vec<(&'static str, &'static str)>>,
     bracket_type: BracketType,
 }
@@ -33,6 +54,7 @@ fn main() -> anyhow::Result<()> {
     std::fs::copy("db/prod.db3", "db/sqlite.db3")?;
     let dark_world = MakeBracket {
         new_bracket_name: "Dark World",
+        backfill_note: "This is a backfill of a historical bracket that was run off-site. The times included here are all placeholders.".to_string(),
         bracket_type: BracketType::Swiss,
         races: vec![
             vec![
@@ -80,6 +102,7 @@ fn main() -> anyhow::Result<()> {
 
     let light_world = MakeBracket {
         new_bracket_name: "Light World",
+        backfill_note: "This is a backfill of a historical bracket that was run off-site. The times included here are all placeholders.".to_string(),
 
         bracket_type: BracketType::Swiss,
         races: vec![
@@ -136,6 +159,15 @@ fn main() -> anyhow::Result<()> {
             ordinal: 1,
         },
         brackets: vec![dark_world, light_world],
+    };
+
+    let s2_rain_state = MakeBracket {
+        new_bracket_name: "Rain State",
+        backfill_note: "This is a backfill of a historical bracket that was run off-site."
+            .to_string(),
+
+        bracket_type: BracketType::RoundRobin,
+        races: vec![],
     };
 
     let missing_players: HashMap<String, NewPlayer> = vec![
@@ -244,6 +276,8 @@ fn main() -> anyhow::Result<()> {
     .map(|(k, v)| (k.to_string(), v))
     .collect::<_>();
     let mut db = raw_diesel_cxn_from_env()?;
+    // TODO: this is probably *safe* in prod but i'd rather take it out
+    run_migrations(&mut db)?;
     let orm_players = get_all_players(&mut db)?;
     validate_players(&missing_players, &orm_players)?;
     if !validate_season(&s1, &missing_players, &orm_players)? {
@@ -312,8 +346,9 @@ fn make_bracket(
     orm_players: &HashMap<String, Player>,
     db: &mut SqliteConnection,
 ) -> anyhow::Result<()> {
-    let nb = NewBracket::new(&season, bracket_data.new_bracket_name, BracketType::Swiss);
-    let bracket = match nb.save(db) {
+    let mut nb = NewBracket::new(&season, bracket_data.new_bracket_name, BracketType::Swiss);
+    nb.backfill_note = Some(bracket_data.backfill_note.clone());
+    let mut bracket = match nb.save(db) {
         Ok(b) => b,
         Err(e) => {
             return Err(anyhow!(
@@ -322,6 +357,7 @@ fn make_bracket(
             ));
         }
     };
+
     let mut players_in_bracket: HashSet<&Player> = Default::default();
 
     for (rn, races) in bracket_data.races.into_iter().enumerate() {
@@ -405,7 +441,7 @@ fn validate_season(
     orm_players: &HashMap<String, Player>,
 ) -> anyhow::Result<bool> {
     for bracket in &season.brackets {
-        if !validate_bracket(&bracket.races, missing_players, orm_players)? {
+        if !validate_s1_bracket(&bracket.races, missing_players, orm_players)? {
             println!("Error validating {}", bracket.new_bracket_name);
             return Ok(false);
         }
@@ -414,7 +450,7 @@ fn validate_season(
     Ok(true)
 }
 
-fn validate_bracket(
+fn validate_s1_bracket(
     season_data: &Vec<Vec<(&str, &str)>>,
     missing_players: &HashMap<String, NewPlayer>,
     orm_players: &HashMap<String, Player>,
@@ -440,10 +476,7 @@ fn validate_bracket(
             let in_missing = missing_players.contains_key(*p);
             if in_orm == in_missing {
                 println!("Player `{p}' in bad state in round {i}: found in orm: {in_orm} - found in missing: {in_missing}.");
-                // for (k, v) in orm_players.iter() {
-                //     println!("key: {k}");
-                //     // println!("player: {v:?}");
-                // }
+
                 return Ok(false);
             }
         }
