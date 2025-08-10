@@ -2,21 +2,25 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::anyhow;
 use diesel::SqliteConnection;
+use itertools::Itertools as _;
 use nmg_league_bot::{
     db::raw_diesel_cxn_from_env,
     models::{
-        bracket_races::{BracketRaceState, NewBracketRace, Outcome, PlayerResult},
+        bracket_races::{NewBracketRace, Outcome, PlayerResult},
         bracket_rounds::NewBracketRound,
         brackets::{BracketType, NewBracket},
         player::{NewPlayer, Player},
+        player_bracket_entries::NewPlayerBracketEntry,
         season::{NewSeason, Season, SeasonState},
     },
+    BracketRaceState,
 };
 use rand::{thread_rng, Rng};
 
 struct MakeBracket {
     new_bracket_name: &'static str,
     races: Vec<Vec<(&'static str, &'static str)>>,
+    bracket_type: BracketType,
 }
 
 struct MakeSeason {
@@ -26,8 +30,10 @@ struct MakeSeason {
 
 fn main() -> anyhow::Result<()> {
     dotenv::dotenv()?;
+    std::fs::copy("db/prod.db3", "db/sqlite.db3")?;
     let dark_world = MakeBracket {
         new_bracket_name: "Dark World",
+        bracket_type: BracketType::Swiss,
         races: vec![
             vec![
                 ("foxlisk", "buane"),
@@ -74,6 +80,8 @@ fn main() -> anyhow::Result<()> {
 
     let light_world = MakeBracket {
         new_bracket_name: "Light World",
+
+        bracket_type: BracketType::Swiss,
         races: vec![
             vec![
                 ("spleebie", "trinexx"),
@@ -83,11 +91,11 @@ fn main() -> anyhow::Result<()> {
                 ("parisianplayer", "daaanty"),
                 ("john snuu", "coxla"),
                 ("flipheal", "robjbeasley"),
-                ("vextopher", "mraaronsnerd"),
+                ("vextopher", "aurorasnerd"),
             ],
             vec![
                 ("yeroc", "robjbeasley"),
-                ("tam", "mraaronsnerd"),
+                ("tam", "aurorasnerd"),
                 ("mcmonkey", "coxla"),
                 ("trinexx", "daaanty"),
                 ("cheamo", "vextopher"),
@@ -100,7 +108,7 @@ fn main() -> anyhow::Result<()> {
                 ("vextopher", "mcmonkey"),
                 ("john snuu", "trinexx"),
                 ("rei", "parisianplayer"),
-                ("daaanty", "mraaronsnerd"),
+                ("daaanty", "aurorasnerd"),
                 ("robjbeasley", "coxla"),
                 ("spleebie", "cheamo"),
                 ("shadyforce", "flipheal"),
@@ -113,7 +121,7 @@ fn main() -> anyhow::Result<()> {
                 ("trinexx", "mcmonkey"),
                 ("daaanty", "yeroc"),
                 ("parisianplayer", "robjbeasley"),
-                ("mraaronsnerd", "coxla"),
+                ("aurorasnerd", "coxla"),
             ],
         ],
     };
@@ -131,16 +139,16 @@ fn main() -> anyhow::Result<()> {
     };
 
     let missing_players: HashMap<String, NewPlayer> = vec![
-        (
-            "fricker22",
-            NewPlayer::new(
-                "Fricker22",
-                "335269633542062080",
-                Some("Fricker22#5435"),
-                Some("fricker22"),
-                Some("5rNGD3DKwlB9blOy"),
-            ),
-        ),
+        // (
+        //     "fricker22",
+        //     NewPlayer::new(
+        //         "Fricker22",
+        //         "335269633542062080",
+        //         Some("Fricker22#5435"),
+        //         Some("fricker22"),
+        //         Some("5rNGD3DKwlB9blOy"),
+        //     ),
+        // ),
         (
             "bambooshadow",
             NewPlayer::new(
@@ -161,26 +169,26 @@ fn main() -> anyhow::Result<()> {
                 Some("xldAMBl417BaOP57"),
             ),
         ),
-        (
-            "shkoople",
-            NewPlayer::new(
-                "shkoople",
-                "98548933424332800",
-                Some("shkoople#4144"),
-                Some("shkoople"),
-                Some("LNY0OkW1DZoKalP1"),
-            ),
-        ),
-        (
-            "buane",
-            NewPlayer::new(
-                "Buane",
-                "124664588485656582",
-                Some("Buane#5757"),
-                Some("buane"),
-                Some("41jgrbWPz3e7P5QE"),
-            ),
-        ),
+        // (
+        //     "shkoople",
+        //     NewPlayer::new(
+        //         "shkoople",
+        //         "98548933424332800",
+        //         Some("shkoople#4144"),
+        //         Some("shkoople"),
+        //         Some("LNY0OkW1DZoKalP1"),
+        //     ),
+        // ),
+        // (
+        //     "buane",
+        //     NewPlayer::new(
+        //         "Buane",
+        //         "124664588485656582",
+        //         Some("Buane#5757"),
+        //         Some("buane"),
+        //         Some("41jgrbWPz3e7P5QE"),
+        //     ),
+        // ),
         (
             "shadyforce",
             NewPlayer::new(
@@ -222,12 +230,12 @@ fn main() -> anyhow::Result<()> {
             ),
         ),
         (
-            "mraaronsnerd",
+            "aurorasnerd",
             NewPlayer::new(
-                "MrAaronSnerd",
+                "AuroraSnerd",
                 "724797547637506090",
-                Some("MrAaronSnerd#8504"),
-                Some("mraaronsnerd"),
+                Some("AuroraSnerd#0011"),
+                Some("aurorasnerd"),
                 Some("MqzQPW4jNK31L2R5"),
             ),
         ),
@@ -237,6 +245,7 @@ fn main() -> anyhow::Result<()> {
     .collect::<_>();
     let mut db = raw_diesel_cxn_from_env()?;
     let orm_players = get_all_players(&mut db)?;
+    validate_players(&missing_players, &orm_players)?;
     if !validate_season(&s1, &missing_players, &orm_players)? {
         return Err(anyhow!("Invalid season (pre-player-creation)"));
     }
@@ -250,8 +259,31 @@ fn main() -> anyhow::Result<()> {
     if !validate_season(&s1, &Default::default(), &orm_players)? {
         return Err(anyhow!("Invalid season (post-player-creation)"));
     }
+    actually_make_season(s1, orm_players, &mut db)?;
 
-    // for round in s1.into_iter() {}
+    Ok(())
+}
+
+fn validate_players(
+    missing_players: &HashMap<String, NewPlayer>,
+    orm_players: &HashMap<String, Player>,
+) -> anyhow::Result<()> {
+    let existing_discord_ids = orm_players
+        .values()
+        .map(|v| v.discord_id.clone())
+        .collect::<HashSet<_>>();
+    let mut not_missing_players = vec![];
+    for p in missing_players.values() {
+        if existing_discord_ids.contains(&p.discord_id) {
+            not_missing_players.push(p.name.clone());
+        }
+    }
+    if !not_missing_players.is_empty() {
+        return Err(anyhow!(
+            "The following players are already in the database: {}",
+            not_missing_players.iter().join(", ")
+        ));
+    }
     Ok(())
 }
 
@@ -260,6 +292,7 @@ fn actually_make_season(
     orm_players: HashMap<String, Player>,
     db: &mut SqliteConnection,
 ) -> anyhow::Result<()> {
+    // we do want to be able to add brackets to existing seasons where we ran an overflow bracket on challonge
     let season = match Season::get_by_ordinal(season_data.new_season.ordinal, db) {
         Ok(s) => s,
         Err(diesel::result::Error::NotFound) => season_data.new_season.save(db)?,
@@ -267,71 +300,92 @@ fn actually_make_season(
             return Err(e)?;
         }
     };
-    // let mut rng = thread_rng();
     for bracket_data in season_data.brackets {
-        let nb = NewBracket::new(&season, bracket_data.new_bracket_name, BracketType::Swiss);
-        let bracket = match nb.save(db) {
-            Ok(b) => b,
+        make_bracket(&season, bracket_data, &orm_players, db)?;
+    }
+    Ok(())
+}
+
+fn make_bracket(
+    season: &Season,
+    bracket_data: MakeBracket,
+    orm_players: &HashMap<String, Player>,
+    db: &mut SqliteConnection,
+) -> anyhow::Result<()> {
+    let nb = NewBracket::new(&season, bracket_data.new_bracket_name, BracketType::Swiss);
+    let bracket = match nb.save(db) {
+        Ok(b) => b,
+        Err(e) => {
+            return Err(anyhow!(
+                "Warning: Error saving bracket {}: {e}",
+                bracket_data.new_bracket_name
+            ));
+        }
+    };
+    let mut players_in_bracket: HashSet<&Player> = Default::default();
+
+    for (rn, races) in bracket_data.races.into_iter().enumerate() {
+        let nr = NewBracketRound::new(&bracket, rn as i32);
+        let round = match nr.save(db) {
+            Ok(br) => br,
             Err(e) => {
-                println!(
-                    "Warning: Error saving bracket {}: {e}",
-                    bracket_data.new_bracket_name
-                );
-                continue;
+                return Err(anyhow!(
+                    "Error saving BracketRound {rn} for bracket {}: {e}",
+                    bracket.name
+                ));
             }
         };
-        for (rn, races) in bracket_data.races.into_iter().enumerate() {
-            let nr = NewBracketRound::new(&bracket, rn as i32);
-            let round = match nr.save(db) {
-                Ok(br) => br,
-                Err(e) => {
-                    println!(
-                        "Error saving BracketRound {rn} for bracket {}",
+        for (p1_name_tmp, p2_name_tmp) in races {
+            // this is just for optics to make it so not every race is won by player 1 teehee
+
+            let (p1_name, p2_name, outcome) = if thread_rng().gen_bool(0.5) {
+                (p1_name_tmp, p2_name_tmp, Outcome::P1Win)
+            } else {
+                (p2_name_tmp, p1_name_tmp, Outcome::P2Win)
+            };
+            let p1 = match orm_players.get(p1_name) {
+                Some(p) => p,
+                None => {
+                    return Err(anyhow!(
+                        "Error: Missing player {p1_name} from {}",
                         bracket.name
-                    );
-                    break;
+                    ));
                 }
             };
-            for (p1_name, p2_name) in races {
-                // this is just for optics to make it so not every race is won by player 1 teehee
-                let p1 = match orm_players.get(p1_name) {
-                    Some(p) => p,
-                    None => {
-                        println!("Error: Missing player {p1_name} from {}", bracket.name);
-                        break;
-                    }
-                };
-                let p2 = match orm_players.get(p2_name) {
-                    Some(p) => p,
-                    None => {
-                        println!("Error: Missing player {p2_name} from {}", bracket.name);
-                        break;
-                    }
-                };
-
-                let nbr = NewBracketRace {
-                    bracket_id: bracket.id,
-                    round_id: round.id,
-                    player_1_id: p1.id,
-                    player_2_id: p2.id,
-                    async_race_id: None,
-                    state: serde_json::to_string(&BracketRaceState::Finished).unwrap(),
-                    // NOTE: I am just putting in trash data for finish times
-                    // At some point in the future, I could plausibly collect past results from
-                    // racetime rooms
-                    player_1_result: Some(
-                        serde_json::to_string(&PlayerResult::Finish(60)).unwrap(),
-                    ),
-                    player_2_result: Some(
-                        serde_json::to_string(&PlayerResult::Finish(120)).unwrap(),
-                    ),
-                    outcome: Some(serde_json::to_string(&Outcome::P1Win).unwrap()),
-                };
-                if let Err(e) = nbr.save(db) {
-                    println!("Error saving race {p1_name} vs {p2_name}: {e}");
+            players_in_bracket.insert(p1);
+            let p2 = match orm_players.get(p2_name) {
+                Some(p) => p,
+                None => {
+                    return Err(anyhow!(
+                        "Error: Missing player {p2_name} from {}",
+                        bracket.name
+                    ));
                 }
+            };
+            players_in_bracket.insert(p2);
+
+            let nbr = NewBracketRace {
+                bracket_id: bracket.id,
+                round_id: round.id,
+                player_1_id: p1.id,
+                player_2_id: p2.id,
+                async_race_id: None,
+                state: serde_json::to_string(&BracketRaceState::Finished).unwrap(),
+                // NOTE: I am just putting in trash data for finish times
+                // At some point in the future, I could plausibly collect past results from
+                // racetime rooms
+                player_1_result: Some(serde_json::to_string(&PlayerResult::Finish(60)).unwrap()),
+                player_2_result: Some(serde_json::to_string(&PlayerResult::Finish(120)).unwrap()),
+                outcome: Some(serde_json::to_string(&outcome).unwrap()),
+            };
+            if let Err(e) = nbr.save(db) {
+                return Err(anyhow!("Error saving race {p1_name} vs {p2_name}: {e}"));
             }
         }
+    }
+    for player in players_in_bracket {
+        let npbe = NewPlayerBracketEntry::new(&bracket, player);
+        npbe.save(db)?;
     }
     Ok(())
 }

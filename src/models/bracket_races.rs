@@ -21,6 +21,7 @@ use swiss_pairings::MatchResult;
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
     Forfeit,
+    /// finish time in seconds
     Finish(u32),
 }
 

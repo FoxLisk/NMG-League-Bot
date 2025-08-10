@@ -70,12 +70,16 @@
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 1</h3>
-            Season 1 predates this website. You can find the Dark World bracket on challonge
-            {{ macros::external_link(href="https://challonge.com/h7z70mm7", text="here") }}.
-            For the Light World we had
-            {{ macros::external_link(href="https://challonge.com/20m8zgsx", text="three rounds in challonge") }}
-            and
-            {{macros::external_link(href="https://docs.google.com/spreadsheets/d/1N8GEBTF1lMGGBCNNyBE0B53pzb1Z-bl15TESpHhprao/edit#gid=0", text="one round in a google sheet")}}.
+            Season 1 was consisted of two 16-player brackets, and has been
+            {{ macros::link(href="/season/1", text="backfilled to this site") }},
+            but was originally hosted on
+            Challonge (
+            {{ macros::external_link(href="https://challonge.com/h7z70mm7", text="Dark World") }},
+            {{ macros::external_link(href="https://challonge.com/20m8zgsx", text="Light World") }}
+            )
+            with the final round of Light World
+            {{macros::external_link(href="https://docs.google.com/spreadsheets/d/1N8GEBTF1lMGGBCNNyBE0B53pzb1Z-bl15TESpHhprao/edit#gid=0", text="in a google sheet") }}
+            due to Challonge incompetence.
         </div>
 
     </div>
