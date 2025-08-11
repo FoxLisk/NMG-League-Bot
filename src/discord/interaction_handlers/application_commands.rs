@@ -34,7 +34,7 @@ use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
 use nmg_league_bot::models::qualifer_submission::NewQualifierSubmission;
 use nmg_league_bot::models::season::{NewSeason, Season, SeasonState};
-use nmg_league_bot::utils::{ResultCollapse, ResultErrToString};
+use nmg_league_bot::utils::{parse_race_result, ResultCollapse, ResultErrToString};
 use nmg_league_bot::worker_funcs::{trigger_race_finish, RaceFinishError, RaceFinishOptions};
 use nmg_league_bot::{utils, BracketRaceState, BracketRaceStateError, NMGLeagueBotError};
 use racetime_api::endpoint::Query;
@@ -1680,21 +1680,9 @@ async fn get_race_finish_opts_from_command_opts(
     let p1_res = get_opt_s!("p1_result", options, String)?;
     let p2_res = get_opt_s!("p2_result", options, String)?;
     let racetime_url = get_opt_s!("racetime_url", options, String).ok();
-    let r1 = if p1_res == "forfeit" {
-        PlayerResult::Forfeit
-    } else {
-        PlayerResult::Finish(
-            utils::parse_hms(&p1_res).ok_or("Invalid time for player 1".to_string())?,
-        )
-    };
+    let r1 = parse_race_result(&p1_res).map_err_to_string()?;
 
-    let r2 = if p2_res == "forfeit" {
-        PlayerResult::Forfeit
-    } else {
-        PlayerResult::Finish(
-            utils::parse_hms(&p2_res).ok_or("Invalid time for player 2".to_string())?,
-        )
-    };
+    let r2 = parse_race_result(&p2_res).map_err_to_string()?;
     let mut cxn = state.diesel_cxn().await.map_err_to_string()?;
     let race = match BracketRace::get_by_id(race_id as i32, cxn.deref_mut()) {
         Ok(r) => r,

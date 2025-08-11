@@ -55,6 +55,26 @@ pub enum Outcome {
     P2Win,
 }
 
+impl From<(&PlayerResult, &PlayerResult)> for Outcome {
+    fn from(results: (&PlayerResult, &PlayerResult)) -> Self {
+        let (p1, p2) = results;
+        match (p1, p2) {
+            (PlayerResult::Forfeit, PlayerResult::Forfeit) => Outcome::Tie,
+            (PlayerResult::Forfeit, _) => Outcome::P2Win,
+            (_, PlayerResult::Forfeit) => Outcome::P1Win,
+            (PlayerResult::Finish(p1t), PlayerResult::Finish(p2t)) => {
+                if p1t < p2t {
+                    Outcome::P1Win
+                } else if p1t > p2t {
+                    Outcome::P2Win
+                } else {
+                    Outcome::Tie
+                }
+            }
+        }
+    }
+}
+
 #[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone, Selectable)]
 pub struct BracketRace {
     pub id: i32,
@@ -261,20 +281,7 @@ impl BracketRace {
             }
         };
 
-        let outcome = match (p1, p2) {
-            (PlayerResult::Forfeit, PlayerResult::Forfeit) => Outcome::Tie,
-            (PlayerResult::Forfeit, _) => Outcome::P2Win,
-            (_, PlayerResult::Forfeit) => Outcome::P1Win,
-            (PlayerResult::Finish(p1t), PlayerResult::Finish(p2t)) => {
-                if p1t < p2t {
-                    Outcome::P1Win
-                } else if p1t > p2t {
-                    Outcome::P2Win
-                } else {
-                    Outcome::Tie
-                }
-            }
-        };
+        let outcome: Outcome = From::from((&p1, &p2));
         self.outcome = Some(serde_json::to_string(&outcome)?);
         self.set_state(BracketRaceState::Finished);
         Ok(())

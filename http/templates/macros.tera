@@ -84,3 +84,10 @@
 {% set url = "/player/" ~ name %}
 {{ self::link(href=url, text=name) }}
 {% endmacro player_detail %}
+
+{% macro backfill_note(bracket) %}
+    {% if bracket.backfill_note %}
+    <strong>NOTE:</strong> {{ bracket.backfill_note }}
+    <hr class="section-title-separator" />
+    {% endif %}
+{% endmacro backfill_note %}

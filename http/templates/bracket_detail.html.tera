@@ -8,10 +8,8 @@
 <div id="bracket-detail-page" class="stats-container">
     <h2 class="section-title" title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</h2>
     <hr class="section-title-separator" />
-    {% if bracket.bracket.backfill_note %}
-    <strong>NOTE:</strong> {{ bracket.bracket.backfill_note }}
-    <hr class="section-title-separator" />
-    {% endif %}
+
+    {{ macros::backfill_note(bracket=bracket.bracket) }}
 
     {% for round in bracket.rounds %}
     <div class="subsection-container">

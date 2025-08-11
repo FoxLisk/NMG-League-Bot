@@ -13,6 +13,7 @@ use nmg_league_bot::{
         player_bracket_entries::NewPlayerBracketEntry,
         season::{NewSeason, Season, SeasonState},
     },
+    utils::parse_race_result,
     BracketRaceState,
 };
 use rand::{thread_rng, Rng};
@@ -25,6 +26,8 @@ struct RaceResult {
     outcome: Outcome,
 }
 
+
+// TODO: randomize player orders to make this look natural
 impl From<(&'static str, &'static str)> for RaceResult {
     fn from((p1, p2): (&'static str, &'static str)) -> Self {
         Self {
@@ -37,10 +40,27 @@ impl From<(&'static str, &'static str)> for RaceResult {
     }
 }
 
+impl From<(&'static str, &'static str, &'static str, &'static str)> for RaceResult {
+    fn from(
+        (p1, p1_time, p2, p2_time): (&'static str, &'static str, &'static str, &'static str),
+    ) -> Self {
+        let p1_result = parse_race_result(p1_time).unwrap();
+        let p2_result = parse_race_result(p2_time).unwrap();
+        let outcome: Outcome = From::from((&p1_result, &p2_result));
+        Self {
+            player_1_name: p1.to_string(),
+            player_2_name: p2.to_string(),
+            player_1_result: p1_result,
+            player_2_result: p2_result,
+            outcome,
+        }
+    }
+}
+
 struct MakeBracket {
     new_bracket_name: &'static str,
     backfill_note: String,
-    races: Vec<Vec<(&'static str, &'static str)>>,
+    races: Vec<Vec<RaceResult>>,
     bracket_type: BracketType,
 }
 
@@ -49,12 +69,14 @@ struct MakeSeason {
     brackets: Vec<MakeBracket>,
 }
 
+// TODO: standings not populating - probably need to set bracket state or something?
 fn main() -> anyhow::Result<()> {
     dotenv::dotenv()?;
     std::fs::copy("db/prod.db3", "db/sqlite.db3")?;
+    let s1_backfill_note = "This is a backfill of a historical bracket that was run off-site. The times included here are placeholders. They may be updated at some future time.".to_string();
     let dark_world = MakeBracket {
         new_bracket_name: "Dark World",
-        backfill_note: "This is a backfill of a historical bracket that was run off-site. The times included here are all placeholders.".to_string(),
+        backfill_note: s1_backfill_note.clone(),
         bracket_type: BracketType::Swiss,
         races: vec![
             vec![
@@ -66,7 +88,10 @@ fn main() -> anyhow::Result<()> {
                 ("shkoople", "caznode"),
                 ("chexhuman", "lanxion"),
                 ("bambooshadow", "relkin"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
             vec![
                 ("relkin", "benteezy"),
                 ("buane", "lanxion"),
@@ -76,7 +101,10 @@ fn main() -> anyhow::Result<()> {
                 ("eriror", "thisisnotyoho"),
                 ("fricker22", "bambooshadow"),
                 ("foxlisk", "chexhuman"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
             vec![
                 ("relkin", "thisisnotyoho"),
                 ("caznode", "mooglemod"),
@@ -86,7 +114,10 @@ fn main() -> anyhow::Result<()> {
                 ("benteezy", "lanxion"),
                 ("doomtap", "fricker22"),
                 ("eriror", "foxlisk"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
             vec![
                 ("benteezy", "thisisnotyoho"),
                 ("bydey", "bambooshadow"),
@@ -96,13 +127,16 @@ fn main() -> anyhow::Result<()> {
                 ("shkoople", "relkin"),
                 ("foxlisk", "caznode"),
                 ("eriror", "doomtap"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
         ],
     };
 
     let light_world = MakeBracket {
         new_bracket_name: "Light World",
-        backfill_note: "This is a backfill of a historical bracket that was run off-site. The times included here are all placeholders.".to_string(),
+        backfill_note: s1_backfill_note.clone(),
 
         bracket_type: BracketType::Swiss,
         races: vec![
@@ -115,7 +149,10 @@ fn main() -> anyhow::Result<()> {
                 ("john snuu", "coxla"),
                 ("flipheal", "robjbeasley"),
                 ("vextopher", "aurorasnerd"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
             vec![
                 ("yeroc", "robjbeasley"),
                 ("tam", "aurorasnerd"),
@@ -125,7 +162,10 @@ fn main() -> anyhow::Result<()> {
                 ("shadyforce", "john snuu"),
                 ("spleebie", "parisianplayer"),
                 ("flipheal", "rei"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
             vec![
                 ("tam", "yeroc"),
                 ("vextopher", "mcmonkey"),
@@ -135,7 +175,10 @@ fn main() -> anyhow::Result<()> {
                 ("robjbeasley", "coxla"),
                 ("spleebie", "cheamo"),
                 ("shadyforce", "flipheal"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
             vec![
                 ("shadyforce", "spleebie"),
                 ("cheamo", "rei"),
@@ -145,7 +188,10 @@ fn main() -> anyhow::Result<()> {
                 ("daaanty", "yeroc"),
                 ("parisianplayer", "robjbeasley"),
                 ("aurorasnerd", "coxla"),
-            ],
+            ]
+            .into_iter()
+            .map(From::from)
+            .collect(),
         ],
     };
 
@@ -167,7 +213,32 @@ fn main() -> anyhow::Result<()> {
             .to_string(),
 
         bracket_type: BracketType::RoundRobin,
-        races: vec![],
+        races: vec![vec![
+            ("kaederukawa", "1:33:33", "windfox470", "1:34:01"),
+            (
+                "defi_smiles",
+                "1:40:23",
+                "jesse (radicalsniper99)",
+                "1:32:16",
+            ),
+            ("kaederukawa", "1:35:16", "defi_smiles", "forfeit"),
+            (
+                "windfox470",
+                "forfeit",
+                "jesse (radicalsniper99)",
+                "1:32:05",
+            ),
+            (
+                "kaederukawa",
+                "1:31:46",
+                "jesse (radicalsniper99)",
+                "1:32:25",
+            ),
+            ("windfox470", "forfeit", "defi_smiles", "forfeit"),
+        ]
+        .into_iter()
+        .map(From::from)
+        .collect()],
     };
 
     let missing_players: HashMap<String, NewPlayer> = vec![
@@ -280,9 +351,7 @@ fn main() -> anyhow::Result<()> {
     run_migrations(&mut db)?;
     let orm_players = get_all_players(&mut db)?;
     validate_players(&missing_players, &orm_players)?;
-    if !validate_season(&s1, &missing_players, &orm_players)? {
-        return Err(anyhow!("Invalid season (pre-player-creation)"));
-    }
+
     for p in missing_players.into_values() {
         if let Err(e) = p.save(&mut db) {
             return Err(anyhow!("Error saving {p:?}: {e}"));
@@ -290,10 +359,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     let orm_players = get_all_players(&mut db)?;
-    if !validate_season(&s1, &Default::default(), &orm_players)? {
-        return Err(anyhow!("Invalid season (post-player-creation)"));
-    }
-    actually_make_season(s1, orm_players, &mut db)?;
+
+    actually_make_season(s1, &orm_players, &mut db)?;
+
+    let s2 = Season::get_by_ordinal(2, &mut db)?;
+    make_bracket(&s2, s2_rain_state, &orm_players, &mut db)?;
 
     Ok(())
 }
@@ -323,7 +393,7 @@ fn validate_players(
 
 fn actually_make_season(
     season_data: MakeSeason,
-    orm_players: HashMap<String, Player>,
+    orm_players: &HashMap<String, Player>,
     db: &mut SqliteConnection,
 ) -> anyhow::Result<()> {
     // we do want to be able to add brackets to existing seasons where we ran an overflow bracket on challonge
@@ -335,7 +405,7 @@ fn actually_make_season(
         }
     };
     for bracket_data in season_data.brackets {
-        make_bracket(&season, bracket_data, &orm_players, db)?;
+        make_bracket(&season, bracket_data, orm_players, db)?;
     }
     Ok(())
 }
@@ -346,7 +416,11 @@ fn make_bracket(
     orm_players: &HashMap<String, Player>,
     db: &mut SqliteConnection,
 ) -> anyhow::Result<()> {
-    let mut nb = NewBracket::new(&season, bracket_data.new_bracket_name, BracketType::Swiss);
+    let mut nb = NewBracket::new(
+        &season,
+        bracket_data.new_bracket_name,
+        bracket_data.bracket_type,
+    );
     nb.backfill_note = Some(bracket_data.backfill_note.clone());
     let mut bracket = match nb.save(db) {
         Ok(b) => b,
@@ -357,6 +431,14 @@ fn make_bracket(
             ));
         }
     };
+    let finished = bracket.finish(db)?;
+    if !finished {
+        return Err(anyhow!(
+            "Error: Bracket {} was not finished after saving",
+            bracket_data.new_bracket_name
+        ));
+    }
+    bracket.update(db)?;
 
     let mut players_in_bracket: HashSet<&Player> = Default::default();
 
@@ -371,14 +453,9 @@ fn make_bracket(
                 ));
             }
         };
-        for (p1_name_tmp, p2_name_tmp) in races {
-            // this is just for optics to make it so not every race is won by player 1 teehee
-
-            let (p1_name, p2_name, outcome) = if thread_rng().gen_bool(0.5) {
-                (p1_name_tmp, p2_name_tmp, Outcome::P1Win)
-            } else {
-                (p2_name_tmp, p1_name_tmp, Outcome::P2Win)
-            };
+        for race_result in races {
+            let p1_name = &race_result.player_1_name;
+            let p2_name = &race_result.player_2_name;
             let p1 = match orm_players.get(p1_name) {
                 Some(p) => p,
                 None => {
@@ -407,12 +484,10 @@ fn make_bracket(
                 player_2_id: p2.id,
                 async_race_id: None,
                 state: serde_json::to_string(&BracketRaceState::Finished).unwrap(),
-                // NOTE: I am just putting in trash data for finish times
-                // At some point in the future, I could plausibly collect past results from
-                // racetime rooms
-                player_1_result: Some(serde_json::to_string(&PlayerResult::Finish(60)).unwrap()),
-                player_2_result: Some(serde_json::to_string(&PlayerResult::Finish(120)).unwrap()),
-                outcome: Some(serde_json::to_string(&outcome).unwrap()),
+
+                player_1_result: Some(serde_json::to_string(&race_result.player_1_result).unwrap()),
+                player_2_result: Some(serde_json::to_string(&race_result.player_2_result).unwrap()),
+                outcome: Some(serde_json::to_string(&race_result.outcome).unwrap()),
             };
             if let Err(e) = nbr.save(db) {
                 return Err(anyhow!("Error saving race {p1_name} vs {p2_name}: {e}"));
@@ -433,62 +508,4 @@ fn get_all_players(db: &mut SqliteConnection) -> anyhow::Result<HashMap<String, 
         .collect::<HashMap<String, Player>>();
     println!("called get_all_players: result is length {}", players.len());
     Ok(players)
-}
-
-fn validate_season(
-    season: &MakeSeason,
-    missing_players: &HashMap<String, NewPlayer>,
-    orm_players: &HashMap<String, Player>,
-) -> anyhow::Result<bool> {
-    for bracket in &season.brackets {
-        if !validate_s1_bracket(&bracket.races, missing_players, orm_players)? {
-            println!("Error validating {}", bracket.new_bracket_name);
-            return Ok(false);
-        }
-    }
-
-    Ok(true)
-}
-
-fn validate_s1_bracket(
-    season_data: &Vec<Vec<(&str, &str)>>,
-    missing_players: &HashMap<String, NewPlayer>,
-    orm_players: &HashMap<String, Player>,
-) -> anyhow::Result<bool> {
-    let expected_players: HashSet<String> = season_data[0]
-        .iter()
-        .map(|(a, b)| vec![a, b])
-        .flatten()
-        .map(|s| s.to_string())
-        .collect::<_>();
-    if expected_players.len() != 16 {
-        println!("Wrong number of players! {}", expected_players.len());
-        return Ok(false);
-    }
-    let mut seen_mus: HashSet<(&str, &str)> = Default::default();
-    for (i, round) in season_data.iter().enumerate() {
-        if round.len() != 8 {
-            println!("Wrong number of matches in round {i}");
-            return Ok(false);
-        }
-        for p in round.iter().map(|(a, b)| vec![a, b]).flatten() {
-            let in_orm = orm_players.contains_key(*p);
-            let in_missing = missing_players.contains_key(*p);
-            if in_orm == in_missing {
-                println!("Player `{p}' in bad state in round {i}: found in orm: {in_orm} - found in missing: {in_missing}.");
-
-                return Ok(false);
-            }
-        }
-        for (p1, p2) in round.iter() {
-            for mu in [(*p1, *p2), (*p2, *p1)] {
-                if !seen_mus.insert(mu) {
-                    println!("Repeat matchup: {mu:?} in round {i}");
-                    return Ok(false);
-                }
-            }
-        }
-    }
-
-    Ok(true)
 }

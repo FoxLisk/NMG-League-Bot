@@ -548,6 +548,7 @@ struct StandingsPlayer {
 #[derive(Serialize)]
 struct StandingsBracket {
     name: String,
+    backfill_note: Option<String>,
     players: Vec<StandingsPlayer>,
 }
 
@@ -627,6 +628,7 @@ fn get_standings_context(
         };
         ctx_brackets.push(StandingsBracket {
             name: bracket.name,
+            backfill_note: bracket.backfill_note,
             players: sps,
         });
     }

@@ -62,8 +62,10 @@
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 2</h3>
-            Season 2 is mostly available on this site {{ macros::link(href="/season/2", text="here") }}.
-            You can find the Rain State info in
+
+            Season 2 was once gain {{ macros::link(href="/season/2", text="two sixteen-player brackets") }}, this time
+            with a
+            smaller round robin bracket that has been backfilled to this site but was originally tracked in
             {{ macros::external_link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit", text="this google sheet") }}.
         </div>
         <hr class="season-separator" />
