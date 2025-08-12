@@ -10,9 +10,15 @@
     </div>
     <div class="page-content-container">
         <div class="previous-season-item">
+            <h3 class="season-title">Season 10: Any% NMG</h3>
+            This time we were back to exactly
+            {{macros::link(href="/season/10/standings", text="three swiss brackets")}}.
+        </div>
+        <hr class="season-separator" />
+        <div class="previous-season-item">
             <h3 class="season-title">Season 9: Any% NMG</h3>
-            This was our largest season since Season 2, 
-            {{macros::link(href="/season/9", text="four swiss brackets and one round robin bracket")}}.
+            This was our largest season since Season 2, featuring
+            {{macros::link(href="/season/9/standings", text="four swiss brackets and one round robin bracket")}}.
         </div>
         <hr class="season-separator" />
 
@@ -20,54 +26,58 @@
             <h3 class="season-title">Season 8: All Dungeons RMG</h3>
             Our first season of All Dungeons RMG. This one was spearheaded by
             {{macros::link(href="/player/16", text="tam")}} and featured
-            {{macros::link(href="/season/8", text="three swiss brackets")}}.
+            {{macros::link(href="/season/8/standings", text="two swiss brackets and one round robin")}}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 7: Any% NMG</h3>
-            Another season of exactly 
-            {{macros::link(href="/season/7", text="three swiss brackets")}}.
+            Another season of exactly
+            {{macros::link(href="/season/7/standings", text="three swiss brackets")}}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 6: Any% NMG</h3>
             This time we had a clean
-            {{macros::link(href="/season/6", text="four swiss brackets")}}.
+            {{macros::link(href="/season/6/standings", text="four swiss brackets")}}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 5: Any% NMG</h3>
             Season 5 was back to vanilla Any% NMG. This time we had a clean break with
-            {{macros::link(href="/season/5", text="three swiss brackets")}}.
+            {{macros::link(href="/season/5/standings", text="three swiss brackets")}}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 4: Vanilla Preset Any% NMG</h3>
             For Season 4 we went with Vanilla Preset, and the event was spearheaded by
-            {{ macros::link(href="/player/7", text="relkin")}}. We hosted {{ macros::external_link(href="https://challonge.com/p7og5bef", text="on Challonge") }}, 
-            and an extra Round Robin bracket that has been backfilled to this site, but was originally 
+            {{ macros::link(href="/player/7", text="relkin")}}. We had three swiss brackets
+            and an extra round robin bracket. All of these
+            {{macros::link(href="/season/4/standings", text="are available here")}},
+            but the round robin bracket was originally tracked
             {{ macros::external_link(href="https://challonge.com/p7og5bef", text="on Challonge") }}.
 
-        <p>
-        Note that this was before FastROM!
-        </p>
+            <p>
+                Note that this was before FastROM!
+            </p>
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 3: Any% NMG</h3>
-            Season 3 marks the transition to 8-player brackets, and can be found {{ macros::link(href="/season/3", text="here") }}.
+            Season 3 marks the transition to eight-player brackets, and can be found
+            {{ macros::link(href="/season/3/standings", text="here") }}.
         </div>
         <hr class="season-separator" />
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 2: Any% NMG</h3>
 
-            Season 2 was also {{ macros::link(href="/season/2", text="two sixteen-player brackets") }}, this time
+            Season 2 was also {{ macros::link(href="/season/2/standings", text="two sixteen-player brackets") }}, this
+            time
             with an additional
             smaller round robin bracket that has been backfilled to this site but was originally tracked in
             {{ macros::external_link(href="https://docs.google.com/spreadsheets/d/1kZpTu52Q1mki5fEW_NENG2JTzKzSGprVTPjJp3R_LoI/edit", text="this google sheet") }}.
@@ -77,7 +87,7 @@
         <div class="previous-season-item">
             <h3 class="season-title">Season 1: Any% NMG</h3>
             Season 1 was consisted of two 16-player brackets, and has been
-            {{ macros::link(href="/season/1", text="backfilled to this site") }},
+            {{ macros::link(href="/season/1/standings", text="backfilled to this site") }},
             but was originally hosted on
             Challonge (
             {{ macros::external_link(href="https://challonge.com/h7z70mm7", text="Dark World") }},
