@@ -26,7 +26,6 @@ struct RaceResult {
     outcome: Outcome,
 }
 
-
 // TODO: randomize player orders to make this look natural
 impl From<(&'static str, &'static str)> for RaceResult {
     fn from((p1, p2): (&'static str, &'static str)) -> Self {
@@ -72,11 +71,10 @@ struct MakeSeason {
 // TODO: standings not populating - probably need to set bracket state or something?
 fn main() -> anyhow::Result<()> {
     dotenv::dotenv()?;
-    std::fs::copy("db/prod.db3", "db/sqlite.db3")?;
-    let s1_backfill_note = "This is a backfill of a historical bracket that was run off-site. The times included here are placeholders. They may be updated at some future time.".to_string();
+    let no_times_backfill_note = "This is a backfill of a historical bracket that was run off-site. The times included here are placeholders. They may be updated at some future time.".to_string();
     let dark_world = MakeBracket {
         new_bracket_name: "Dark World",
-        backfill_note: s1_backfill_note.clone(),
+        backfill_note: no_times_backfill_note.clone(),
         bracket_type: BracketType::Swiss,
         races: vec![
             vec![
@@ -136,7 +134,7 @@ fn main() -> anyhow::Result<()> {
 
     let light_world = MakeBracket {
         new_bracket_name: "Light World",
-        backfill_note: s1_backfill_note.clone(),
+        backfill_note: no_times_backfill_note.clone(),
 
         bracket_type: BracketType::Swiss,
         races: vec![
@@ -235,6 +233,29 @@ fn main() -> anyhow::Result<()> {
                 "1:32:25",
             ),
             ("windfox470", "forfeit", "defi_smiles", "forfeit"),
+        ]
+        .into_iter()
+        .map(From::from)
+        .collect()],
+    };
+
+    let s4_hc = MakeBracket {
+        new_bracket_name: "Hyrule Castle",
+        backfill_note: no_times_backfill_note.clone(),
+
+        bracket_type: BracketType::RoundRobin,
+        races: vec![vec![
+            // manually entering the fake times so that i can put soyhr as 'forfeit'... sigh
+            ("redkitsune", "0:01:00", "joshbittner", "0:02:00"),
+            ("niobiumnarwhal", "0:02:00", "seanrhapsody", "0:01:00"),
+            ("redkitsune", "0:01:00", "niobiumnarwhal", "0:02:00"),
+            ("joshbittner", "0:01:00", "soyhr", "forfeit"),
+            ("niobiumnarwhal", "0:01:00", "soyhr", "forfeit"),
+            ("redkitsune", "0:01:00", "seanrhapsody", "0:02:00"),
+            ("seanrhapsody", "0:01:00", "soyhr", "forfeit"),
+            ("joshbittner", "0:01:00", "niobiumnarwhal", "0:02:00"),
+            ("seanrhapsody", "0:01:00", "joshbittner", "0:02:00"),
+            ("redkitsune", "0:01:00", "soyhr", "forfeit"),
         ]
         .into_iter()
         .map(From::from)
@@ -347,8 +368,7 @@ fn main() -> anyhow::Result<()> {
     .map(|(k, v)| (k.to_string(), v))
     .collect::<_>();
     let mut db = raw_diesel_cxn_from_env()?;
-    // TODO: this is probably *safe* in prod but i'd rather take it out
-    run_migrations(&mut db)?;
+
     let orm_players = get_all_players(&mut db)?;
     validate_players(&missing_players, &orm_players)?;
 
@@ -359,11 +379,13 @@ fn main() -> anyhow::Result<()> {
     }
 
     let orm_players = get_all_players(&mut db)?;
+    let s2 = Season::get_by_ordinal(2, &mut db)?;
+    let s4 = Season::get_by_ordinal(4, &mut db)?;
 
     actually_make_season(s1, &orm_players, &mut db)?;
 
-    let s2 = Season::get_by_ordinal(2, &mut db)?;
     make_bracket(&s2, s2_rain_state, &orm_players, &mut db)?;
+    make_bracket(&s4, s4_hc, &orm_players, &mut db)?;
 
     Ok(())
 }
@@ -459,20 +481,14 @@ fn make_bracket(
             let p1 = match orm_players.get(p1_name) {
                 Some(p) => p,
                 None => {
-                    return Err(anyhow!(
-                        "Error: Missing player {p1_name} from {}",
-                        bracket.name
-                    ));
+                    return Err(anyhow!("Missing player {p1_name} from {}", bracket.name));
                 }
             };
             players_in_bracket.insert(p1);
             let p2 = match orm_players.get(p2_name) {
                 Some(p) => p,
                 None => {
-                    return Err(anyhow!(
-                        "Error: Missing player {p2_name} from {}",
-                        bracket.name
-                    ));
+                    return Err(anyhow!("Missing player {p2_name} from {}", bracket.name));
                 }
             };
             players_in_bracket.insert(p2);
