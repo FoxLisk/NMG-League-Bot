@@ -87,7 +87,9 @@
 
 {% macro backfill_note(bracket) %}
     {% if bracket.backfill_note %}
-    <strong>NOTE:</strong> {{ bracket.backfill_note }}
-    <hr class="section-title-separator" />
+    <div class="backfill-note">
+        <strong>NOTE:</strong> {{ bracket.backfill_note }}
+        <hr class="section-title-separator" />
+    </div>
     {% endif %}
 {% endmacro backfill_note %}
