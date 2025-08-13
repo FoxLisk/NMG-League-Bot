@@ -27,7 +27,7 @@ pub mod db;
 pub mod models;
 pub mod racetime_types;
 pub mod schema;
-#[cfg(feature = "testing")]
+#[cfg(test)]
 pub mod test_utils;
 pub mod twitch_client;
 pub mod utils;

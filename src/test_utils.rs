@@ -19,7 +19,7 @@ mod tests {
     #[test]
     fn test_database_init() -> anyhow::Result<()> {
         let mut db = setup_db()?;
-        NewPlayer::new("name", "1234", None, None).save(&mut db)?;
+        NewPlayer::new("name", "1234", None, None, None).save(&mut db)?;
         let count = crate::schema::players::table
             .select(count(crate::schema::players::id))
             .get_result::<i64>(&mut db)?;
@@ -32,7 +32,7 @@ mod tests {
         // this is just a separate test to make sure that the player created in the previous test doesn't carry over
 
         let mut db = setup_db()?;
-        NewPlayer::new("name", "1234", None, None).save(&mut db)?;
+        NewPlayer::new("name", "1234", None, None, None).save(&mut db)?;
         let count = crate::schema::players::table
             .select(count(crate::schema::players::id))
             .get_result::<i64>(&mut db)?;
