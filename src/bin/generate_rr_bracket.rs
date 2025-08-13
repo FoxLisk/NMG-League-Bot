@@ -10,6 +10,15 @@ extern crate dotenv;
 // Generates a 4-player round robin bracket
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "development")]
+    {
+        create_the_bracket().await?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "development")]
+async fn create_the_bracket() -> anyhow::Result<()> {
     dotenv::dotenv().unwrap();
     let mut db = raw_diesel_cxn_from_env().unwrap();
 
