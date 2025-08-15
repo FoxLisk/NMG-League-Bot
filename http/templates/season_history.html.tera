@@ -86,7 +86,7 @@
 
         <div class="previous-season-item">
             <h3 class="season-title">Season 1: Any% NMG</h3>
-            Season 1 was consisted of two 16-player brackets, and has been
+            Season 1 consisted of two 16-player brackets, and has been
             {{ macros::link(href="/season/1/standings", text="backfilled to this site") }},
             but was originally hosted on
             Challonge (
