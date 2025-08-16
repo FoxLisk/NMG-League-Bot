@@ -21,6 +21,7 @@ async fn main() -> anyhow::Result<()> {
             format!("swiss_{uuid}_{i}"),
             None,
             None,
+            None,
         )
         .save(&mut db)?;
         players.push(p);

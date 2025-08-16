@@ -1,4 +1,4 @@
-use crate::schema::players;
+use crate::schema::players::{self};
 use crate::{save_fn, update_fn};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
@@ -79,7 +79,7 @@ impl Player {
         } else {
             // uhh... it'd be nice to have user's server nick here but w/e
             let best_name = user.global_name.unwrap_or(user.name);
-            let np = NewPlayer::new(best_name, user.id.to_string(), None, None);
+            let np = NewPlayer::new(best_name, user.id.to_string(), None, None, None);
             let saved = np.save(conn)?;
             Ok((saved, true))
         }
@@ -140,6 +140,7 @@ pub struct NewPlayer {
     pub discord_id: String,
     pub racetime_username: Option<String>,
     pub twitch_user_login: Option<String>,
+    pub racetime_user_id: Option<String>,
 }
 
 impl NewPlayer {
@@ -148,12 +149,14 @@ impl NewPlayer {
         discord_id: S,
         racetime_username: Option<S>,
         twitch_user_login: Option<S>,
+        racetime_user_id: Option<S>,
     ) -> Self {
         Self {
             name: name.into(),
             discord_id: discord_id.into(),
             racetime_username: racetime_username.map(Into::into),
             twitch_user_login: twitch_user_login.map(Into::into),
+            racetime_user_id: racetime_user_id.map(Into::into),
         }
     }
     save_fn!(players::table, Player);

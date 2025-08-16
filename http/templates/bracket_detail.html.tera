@@ -9,6 +9,8 @@
     <h2 class="section-title" title="Bracket id#{{ bracket.bracket.id }}">Bracket: {{ bracket.bracket.name }}</h2>
     <hr class="section-title-separator" />
 
+    {{ macros::backfill_note(bracket=bracket.bracket) }}
+
     {% for round in bracket.rounds %}
     <div class="subsection-container">
         {% if not bracket.is_round_robin %}
@@ -34,7 +36,8 @@
             <tbody>
                 {% for race in round.races %}
                 <tr title="Race id #{{ race.race_id }}">
-                    <td class="{% if race.player_1.winner %} winner-cell {% elif race.player_1.loser %} loser-cell {% endif %}">
+                    <td
+                        class="{% if race.player_1.winner %} winner-cell {% elif race.player_1.loser %} loser-cell {% endif %}">
                         <span>{{ macros::player_detail(name=race.player_1.name) }}</span>
                         {% if race.player_1.status %}
                         <span class="race-time {% if race.player_1.status == 'Forfeit' -%} subdued-text {%- endif %}">
@@ -42,7 +45,8 @@
                         </span>
                         {% endif %}
                     </td>
-                    <td class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}">
+                    <td
+                        class="{% if race.player_2.winner %} winner-cell {% elif race.player_2.loser %} loser-cell {% endif %}">
                         <span>{{ macros::player_detail(name=race.player_2.name) }}</span>
 
                         {% if race.player_2.status %}

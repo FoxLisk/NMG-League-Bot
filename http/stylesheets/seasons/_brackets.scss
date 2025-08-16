@@ -1,6 +1,7 @@
 @use '../common/colors';
 
 #season-sub-page {
+
   // Brackets list page
   ul {
     margin: 1rem 0;
@@ -25,6 +26,10 @@
 
     span.empty-restream-link {
       color: colors.$subdued-text-color;
+    }
+
+    div.backfill-note {
+      margin: 1rem 0.5rem 0.5rem 0.5rem;
     }
   }
 }

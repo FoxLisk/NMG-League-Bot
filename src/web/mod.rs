@@ -424,6 +424,7 @@ fn get_display_bracket(
         let p1 = match players_by_id.get(&race.player_1_id) {
             Some(p) => p,
             None => {
+                info!("Missing player with id {}", race.player_1_id);
                 continue;
             }
         };
@@ -431,6 +432,7 @@ fn get_display_bracket(
         let p2 = match players_by_id.get(&race.player_2_id) {
             Some(p) => p,
             None => {
+                info!("Missing player with id {}", race.player_2_id);
                 continue;
             }
         };
@@ -546,6 +548,7 @@ struct StandingsPlayer {
 #[derive(Serialize)]
 struct StandingsBracket {
     name: String,
+    backfill_note: Option<String>,
     players: Vec<StandingsPlayer>,
 }
 
@@ -625,6 +628,7 @@ fn get_standings_context(
         };
         ctx_brackets.push(StandingsBracket {
             name: bracket.name,
+            backfill_note: bracket.backfill_note,
             players: sps,
         });
     }

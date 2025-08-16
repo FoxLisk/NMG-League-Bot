@@ -27,7 +27,7 @@ pub mod db;
 pub mod models;
 pub mod racetime_types;
 pub mod schema;
-#[cfg(feature = "testing")]
+#[cfg(test)]
 pub mod test_utils;
 pub mod twitch_client;
 pub mod utils;
@@ -119,7 +119,7 @@ pub enum ApplicationCommandOptionError {
     NoSubcommand,
 }
 
-#[derive(Error, Debug,)]
+#[derive(Error, Debug)]
 pub enum NMGLeagueBotError {
     #[error("Twilight HTTP Error: {0}")]
     TwilightHttpError(#[from] twilight_http::Error),
@@ -172,6 +172,9 @@ pub enum NMGLeagueBotError {
 
     #[error("Error getting ApplicationCommand options: {0}")]
     ApplicationCommandOptionError(#[from] ApplicationCommandOptionError),
+
+    #[error("Unable to parse finish time")]
+    ParseFinishTimeError,
 
     #[error("Other error: {0}")]
     Other(String),

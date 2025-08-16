@@ -9,6 +9,9 @@
     {% for bracket in brackets %}
     <div class="bracket-standings-container">
         <h2 class="bracket-title">Bracket: {{ bracket.name }}</h2>
+
+        {{ macros::backfill_note(bracket=bracket) }}
+
         <table class="bracket-standings">
             <thead>
                 <tr>

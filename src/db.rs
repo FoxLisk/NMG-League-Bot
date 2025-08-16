@@ -62,7 +62,7 @@ impl DieselConnectionManager {
         Self { path }
     }
 
-    #[cfg(feature = "testing")]
+    /// This is dangerous and is meant to be used in tests
     pub fn new_from_path<S: Into<String>>(path: S) -> Self {
         Self { path: path.into() }
     }

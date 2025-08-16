@@ -377,7 +377,6 @@ mod tests {
     use diesel::prelude::*;
     use diesel::SqliteConnection;
     use itertools::Itertools;
-    use nmg_league_bot::models::bracket_race_infos::NewCommentatorSignup;
     use nmg_league_bot::models::bracket_races;
     use nmg_league_bot::models::bracket_races::BracketRace;
     use nmg_league_bot::models::bracket_races::NewBracketRace;
@@ -395,7 +394,6 @@ mod tests {
         schema::players,
     };
     use rocket::local::asynchronous::Client;
-    use rustls::sign;
     use twilight_model::id::Id;
 
     use crate::web::api::ApiBracket;
@@ -407,12 +405,10 @@ mod tests {
     /// this builds a rocket instance. it won't be a "full" rocket instance, the idea is to have a minimal one
     /// for testing just the API. this is not fully realistic, though so maybe that's a mistake...?
     async fn setup() -> anyhow::Result<Client> {
+        let conn = DieselConnectionManager::new_from_path(":memory:");
         // this runs migrations, so we need to run it even though we're not using the connection it builds
-        let p: Pool<DieselConnectionManager> = Pool::builder()
-            .max_size(1)
-            .build(DieselConnectionManager::new_from_path(":memory:"))
-            .await
-            .unwrap();
+        let p: Pool<DieselConnectionManager> =
+            Pool::builder().max_size(1).build(conn).await.unwrap();
         {
             let mut db = p.get().await?;
             run_migrations(&mut db)?;
@@ -480,7 +476,7 @@ mod tests {
     async fn test_get_one_player_result() -> anyhow::Result<()> {
         let c = setup().await?;
         let p = run_with_db(&c, |db| {
-            NewPlayer::new("test", "1234", None, None)
+            NewPlayer::new("test", "1234", None, None, None)
                 .save(db)
                 .map_err(From::from)
         })
@@ -496,9 +492,9 @@ mod tests {
     async fn test_filter_players() -> anyhow::Result<()> {
         let c = setup().await?;
         let players = run_with_db(&c, |db| {
-            NewPlayer::new("test", "1", None, None).save(db)?;
-            NewPlayer::new("test2", "2", None, None).save(db)?;
-            NewPlayer::new("test3", "3", None, None).save(db)?;
+            NewPlayer::new("test", "1", None, None, None).save(db)?;
+            NewPlayer::new("test2", "2", None, None, None).save(db)?;
+            NewPlayer::new("test3", "3", None, None, None).save(db)?;
             players::table.load::<Player>(db).map_err(From::from)
         })
         .await?;
@@ -549,8 +545,8 @@ mod tests {
             let ns = NewSeason::new("Any% NMG", "alttp", "Any% NMG", db)?.save(db)?;
             let b = NewBracket::new(&ns, "bracket 1", BracketType::Swiss).save(db)?;
             let round = NewBracketRound::new(&b, 1).save(db)?;
-            let p1 = NewPlayer::new("p1", "1", None, None).save(db)?;
-            let p2 = NewPlayer::new("p2", "2", None, None).save(db)?;
+            let p1 = NewPlayer::new("p1", "1", None, None, None).save(db)?;
+            let p2 = NewPlayer::new("p2", "2", None, None, None).save(db)?;
             NewPlayerBracketEntry::new(&b, &p1).save(db)?;
             NewPlayerBracketEntry::new(&b, &p2).save(db)?;
             bracket_races::insert_bulk(&vec![NewBracketRace::new(&b, &round, &p1, &p2)], db)?;
@@ -612,11 +608,11 @@ mod tests {
             let ns = NewSeason::new("Any% NMG", "alttp", "Any% NMG", db)?.save(db)?;
             let b = NewBracket::new(&ns, "bracket 1", BracketType::Swiss).save(db)?;
             let round = NewBracketRound::new(&b, 1).save(db)?;
-            let p1 = NewPlayer::new("p1", "1", None, None).save(db)?;
-            let p2 = NewPlayer::new("p2", "2", None, None).save(db)?;
+            let p1 = NewPlayer::new("p1", "1", None, None, None).save(db)?;
+            let p2 = NewPlayer::new("p2", "2", None, None, None).save(db)?;
 
-            let p3 = NewPlayer::new("p3", "3", None, None).save(db)?;
-            let p4 = NewPlayer::new("p4", "4", None, None).save(db)?;
+            let p3 = NewPlayer::new("p3", "3", None, None, None).save(db)?;
+            let p4 = NewPlayer::new("p4", "4", None, None, None).save(db)?;
             NewPlayerBracketEntry::new(&b, &p1).save(db)?;
             NewPlayerBracketEntry::new(&b, &p2).save(db)?;
             NewPlayerBracketEntry::new(&b, &p3).save(db)?;

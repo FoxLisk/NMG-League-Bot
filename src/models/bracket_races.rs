@@ -2,6 +2,7 @@ use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
+use crate::models::season::Season;
 use crate::save_fn;
 use crate::schema::bracket_races;
 use crate::update_fn;
@@ -20,6 +21,7 @@ use swiss_pairings::MatchResult;
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
     Forfeit,
+    /// finish time in seconds
     Finish(u32),
 }
 
@@ -51,6 +53,26 @@ pub enum Outcome {
     Tie,
     P1Win,
     P2Win,
+}
+
+impl From<(&PlayerResult, &PlayerResult)> for Outcome {
+    fn from(results: (&PlayerResult, &PlayerResult)) -> Self {
+        let (p1, p2) = results;
+        match (p1, p2) {
+            (PlayerResult::Forfeit, PlayerResult::Forfeit) => Outcome::Tie,
+            (PlayerResult::Forfeit, _) => Outcome::P2Win,
+            (_, PlayerResult::Forfeit) => Outcome::P1Win,
+            (PlayerResult::Finish(p1t), PlayerResult::Finish(p2t)) => {
+                if p1t < p2t {
+                    Outcome::P1Win
+                } else if p1t > p2t {
+                    Outcome::P2Win
+                } else {
+                    Outcome::Tie
+                }
+            }
+        }
+    }
 }
 
 #[derive(Queryable, Identifiable, AsChangeset, Debug, Serialize, Clone, Selectable)]
@@ -259,20 +281,7 @@ impl BracketRace {
             }
         };
 
-        let outcome = match (p1, p2) {
-            (PlayerResult::Forfeit, PlayerResult::Forfeit) => Outcome::Tie,
-            (PlayerResult::Forfeit, _) => Outcome::P2Win,
-            (_, PlayerResult::Forfeit) => Outcome::P1Win,
-            (PlayerResult::Finish(p1t), PlayerResult::Finish(p2t)) => {
-                if p1t < p2t {
-                    Outcome::P1Win
-                } else if p1t > p2t {
-                    Outcome::P2Win
-                } else {
-                    Outcome::Tie
-                }
-            }
-        };
+        let outcome: Outcome = From::from((&p1, &p2));
         self.outcome = Some(serde_json::to_string(&outcome)?);
         self.set_state(BracketRaceState::Finished);
         Ok(())
@@ -313,15 +322,15 @@ impl BracketRace {
 #[derive(Insertable, Debug)]
 #[diesel(table_name=bracket_races)]
 pub struct NewBracketRace {
-    bracket_id: i32,
-    round_id: i32,
+    pub bracket_id: i32,
+    pub round_id: i32,
     pub player_1_id: i32,
     pub player_2_id: i32,
-    async_race_id: Option<i32>,
-    state: String,
-    player_1_result: Option<String>,
-    player_2_result: Option<String>,
-    outcome: Option<String>,
+    pub async_race_id: Option<i32>,
+    pub state: String,
+    pub player_1_result: Option<String>,
+    pub player_2_result: Option<String>,
+    pub outcome: Option<String>,
 }
 
 pub fn insert_bulk(
@@ -353,4 +362,5 @@ impl NewBracketRace {
         }
     }
 
+    save_fn!(bracket_races::table, BracketRace);
 }

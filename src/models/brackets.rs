@@ -44,6 +44,8 @@ pub struct Bracket {
     pub season_id: i32,
     state: String,
     bracket_type: String,
+    /// set for backfilled brackets to give a little context on the bracket pages
+    pub backfill_note: Option<String>,
 }
 
 impl Bracket {}

@@ -1,5 +1,7 @@
 use crate::config::CONFIG;
 use crate::models::bracket_race_infos::BracketRaceInfo;
+use crate::models::bracket_races::PlayerResult;
+use crate::NMGLeagueBotError;
 use chrono::{Duration, NaiveDateTime};
 use diesel::SqliteConnection;
 use enum_iterator::Sequence;
@@ -50,6 +52,16 @@ pub fn parse_hms(s: &str) -> Option<u32> {
 
 pub fn format_duration_hms(d: Duration) -> String {
     format_hms(d.num_seconds() as u64)
+}
+
+pub fn parse_race_result(result: &str) -> Result<PlayerResult, NMGLeagueBotError> {
+    if result == "forfeit" {
+        Ok(PlayerResult::Forfeit)
+    } else {
+        Ok(PlayerResult::Finish(
+            parse_hms(result).ok_or(NMGLeagueBotError::ParseFinishTimeError)?,
+        ))
+    }
 }
 
 pub fn env_default<K: AsRef<OsStr>, D: FromStr>(key: K, default: D) -> D {

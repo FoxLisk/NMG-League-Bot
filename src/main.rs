@@ -20,7 +20,7 @@ extern crate diesel_enum_derive;
 extern crate log4rs;
 extern crate nmg_league_bot;
 extern crate oauth2;
-#[cfg(feature = "racetime")]
+#[cfg(feature = "racetime_bot")]
 extern crate racetime;
 extern crate rand;
 extern crate regex;
