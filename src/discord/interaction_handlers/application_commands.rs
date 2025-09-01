@@ -955,8 +955,8 @@ async fn validate_twitch_username(
     state: &Arc<DiscordState>,
 ) -> Result<Option<String>, NMGLeagueBotError> {
     let username = tolerate_twitch_links(username);
-    let logins = vec![(&username).into()];
-    let req = GetUsersRequest::logins(&logins);
+    let logins = vec![&username];
+    let req = GetUsersRequest::logins(logins);
     let mut users = state.twitch_client_bundle.req_get(req).await?;
     // just sort of assuming len == 1 here
     if let Some(u) = users.data.pop() {
