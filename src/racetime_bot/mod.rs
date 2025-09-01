@@ -191,6 +191,7 @@ async fn create_room_for_race(
     // TODO: something nicer? bracket name? round number?
     let race_name = format!("NMG League race: {} vs {}", p1.name, p2.name);
     let sr = StartRace {
+        ranked: true,
         goal: szn.rtgg_goal_name,
         goal_is_custom: false,
         team_race: false,
@@ -330,7 +331,7 @@ async fn gethistory(
     while let Ok(hst) = handler.gethistory_rx.try_recv() {
         debug!("There was a a history message already in the channel {hst:?}");
     }
-    if let Err(e) = ctx.send_raw(&json!({"action": "gethistory"})).await {
+    if let Err(e) = ctx.get_history().await {
         warn!("Error sending gethistory: {e}");
         return None;
     }
@@ -360,6 +361,8 @@ async fn initial_setup(
             "Hello and welcome to your race! Auto-start is on. \
                Admins and ZSR staff can type !promote to get race monitor status if needed. \
                Have fun and good luck!",
+            false,
+            vec![],
         )
         .await
     {
@@ -416,10 +419,11 @@ async fn initial_setup(
     for player in [&p1, &p2] {
         let filenames = Filenames::new_random();
         if let Err(e) = ctx
-            .send_message(&format!(
-                "{}: please use the filenames {filenames}",
-                player.name
-            ))
+            .send_message(
+                &format!("{}: please use the filenames {filenames}", player.name),
+                false,
+                vec![],
+            )
             .await
         {
             warn!("{e}");
@@ -429,7 +433,7 @@ async fn initial_setup(
 }
 
 async fn send_message(msg: &str, ctx: &RaceContext<RacetimeState>) {
-    if let Err(e) = ctx.send_message(msg).await {
+    if let Err(e) = ctx.send_message(msg, false, vec![]).await {
         warn!("Error sending message to racetime room: {e}");
     }
 }
