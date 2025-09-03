@@ -370,7 +370,7 @@ impl RaceController {
 
     async fn gethistory(&mut self, ctx: &RaceContext<RacetimeState>) -> Option<Vec<ChatMessage>> {
         while let Ok(hst) = self.gethistory_rx.try_recv() {
-            debug!("There was a a history message already in the channel {hst:?}");
+            debug!("There was a history message already in the channel {hst:?}");
         }
         if let Err(e) = ctx.get_history().await {
             warn!("Error sending gethistory: {e}");
