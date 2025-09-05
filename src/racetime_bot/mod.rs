@@ -27,6 +27,28 @@ use tokio::sync::broadcast::Receiver as BroadcastReceiver;
 use tokio::sync::mpsc::{channel, Receiver as MpscReceiver, Receiver, Sender};
 use tokio::sync::Mutex;
 
+/**
+ * racetime::Bot has a call stack that looks like:
+ *
+ * run_until: (the main loop)
+ *   if Handler::should_handle(race):
+ *      spawn handler::handle() *in a new task*
+ *         in this task, call Handler::new()
+ *         loop calling handler.chat_message(), etc, until handler.should_stop() returns true
+ *
+ *
+ * so when the framework calls my Handler::new(), we immediately do two things:
+ *   1. launch a new task for handle_race()
+ *   2. create & return new Handler and RaceController
+ *
+ * the Handler is running in one thread, and it's the thing
+ * that responds to all rtgg inputs, including both user inputs (!promote) and system messages (such as responses
+ * to gethistory commands). which means that it cannot, e.g., send a `gethistory` command *and get the response* inside of
+ * one of its own methods.
+ *
+ * so we need a separate thread, which is `handle_race` working the RaceController.
+ */
+
 fn host_info() -> HostInfo {
     HostInfo::new(
         &CONFIG.racetime_host,
@@ -191,6 +213,7 @@ async fn create_room_for_race(
     // TODO: something nicer? bracket name? round number?
     let race_name = format!("NMG League race: {} vs {}", p1.name, p2.name);
     let sr = StartRace {
+        ranked: true,
         goal: szn.rtgg_goal_name,
         goal_is_custom: false,
         team_race: false,
@@ -277,17 +300,166 @@ struct Command {
     msg: ChatMessage,
 }
 
-struct HandlerReceiver {
+/// a RaceController is the sort of control-flow-handling guy who runs in a separate thread to the
+/// Handler. the Handler is used by the Racetime library and called reactively as events come in from
+/// the rtgg room. the RaceController can live outside this flow and do things like send
+/// system messages that the Handler will receive, or do initial setup tasks.
+struct RaceController {
     bri_id: i32,
     should_end: Arc<Mutex<bool>>,
     gethistory_rx: Receiver<Vec<ChatMessage>>,
     command_rx: Receiver<Command>,
 }
 
-impl HandlerReceiver {
+impl RaceController {
     async fn set_end(&mut self) {
         let mut lock = self.should_end.lock().await;
         *lock = true;
+    }
+
+    async fn handle_command(&mut self, cmd: Command, ctx: &RaceContext<RacetimeState>) {
+        match cmd.cmd_name.as_str() {
+            "hello" => {
+                send_message("Hello!", ctx).await;
+            }
+            #[cfg(feature = "testing")]
+            "data" => {
+                debug!("{:?}", ctx.data().await);
+            }
+            #[cfg(feature = "testing")]
+            "end" => {
+                self.set_end().await;
+            }
+            "promote" => {
+                if let Err(e) = handle_promote(ctx, cmd).await {
+                    warn!("Error handling promotion request: {e}");
+                }
+            }
+            _ => {
+                debug!("Unknown command !{}", cmd.cmd_name);
+            }
+        }
+    }
+
+    async fn handle_event(
+        &mut self,
+        ctx: &RaceContext<RacetimeState>,
+    ) -> Result<(), RaceTimeBotError> {
+        tokio::select! {
+            cmd_res = self.command_rx.recv() => {
+                // this means that the *Handler* has hung up, not that there was an error communicating
+                // with rtgg.
+                // that should only happen when the Handler gets dropped.
+                // that occurs when the racetime library thinks it's time to stop
+                // handling a race, either because of some kind of unrecoverable error
+                // or `should_stop()` returning true
+                let cmd = cmd_res.ok_or(RaceTimeBotError::HandlerDisconnect)?;
+                self.handle_command(cmd, ctx).await;
+                Ok(())
+            }
+        }
+    }
+
+    fn get_players(
+        &self,
+        db: &mut SqliteConnection,
+    ) -> Result<(Player, Player), NMGLeagueBotError> {
+        let race = BracketRaceInfo::get_by_id(self.bri_id, db)?.race(db)?;
+        race.players(db).map_err(From::from)
+    }
+
+    async fn gethistory(&mut self, ctx: &RaceContext<RacetimeState>) -> Option<Vec<ChatMessage>> {
+        while let Ok(hst) = self.gethistory_rx.try_recv() {
+            debug!("There was a history message already in the channel {hst:?}");
+        }
+        if let Err(e) = ctx.get_history().await {
+            warn!("Error sending gethistory: {e}");
+            return None;
+        }
+        tokio::time::timeout(Duration::from_secs(5), self.gethistory_rx.recv())
+            .await
+            .ok()
+            .flatten()
+    }
+
+    /// called when a race room is created. sends a welcome message, invites players, opens the room
+    /// if invites fail.  
+    /// Sends a discord message as well.
+    async fn initial_setup(
+        &self,
+        ctx: &RaceContext<RacetimeState>,
+    ) -> Result<(), NMGLeagueBotError> {
+        send_message(
+            "Hello and welcome to your race! Auto-start is on. \
+               Admins and ZSR staff can type !promote to get race monitor status if needed. \
+               Have fun and good luck!",
+            ctx,
+        )
+        .await;
+
+        // if we can't get a db or figure out who the players are, the room really is an error
+        let mut db = ctx.global_state.discord_state.diesel_cxn().await?;
+        let (p1, p2) = self.get_players(db.deref_mut())?;
+
+        // if we can't *invite* them, however, it's probably better to just make the room open
+        // and let them know about it in discord
+        let mut success = true;
+
+        for player in [&p1, &p2] {
+            match &player.racetime_user_id {
+                Some(id) => {
+                    // TODO: check if the invites actually succeeded
+                    if let Err(e) = ctx.invite_user(id).await {
+                        warn!("Error inviting user to race: {e}");
+                        success = false;
+                    }
+                }
+                None => {
+                    success = false;
+                }
+            }
+        }
+        let rd = ctx.data().await;
+
+        if !success {
+            // this fails if the *send* fails, it doesn't wait for a response.
+            // see Self::error for error handling such as it is
+            if let Err(_e) = ctx.set_open().await {
+                // retry once i guess?
+                if let Err(e) = ctx.set_open().await {
+                    warn!("Error setting racetime room {rd:?} open. Giving up cause idk what to do now. {e}");
+                    return Err(RaceTimeBotError::RaceTimeError(e))?;
+                }
+            }
+            info!("Set racetime room {} to open", rd.slug);
+        }
+
+        let p1_m = p1.mention_or_name();
+        let p2_m = p2.mention_or_name();
+        ctx.global_state
+            .discord_state
+            .discord_client
+            .create_message(CONFIG.racetime_room_posting_channel_id)
+            .content(&format!(
+                "{p1_m} {p2_m} your race room is ready! {}",
+                url_from_slug(&rd.slug)
+            ))?
+            .await?;
+
+        for player in [&p1, &p2] {
+            let filenames = Filenames::new_random();
+            if let Err(e) = ctx
+                .send_message(
+                    &format!("{}: please use the filenames {filenames}", player.name),
+                    false,
+                    vec![],
+                )
+                .await
+            {
+                warn!("{e}");
+            }
+        }
+        Ok(())
     }
 }
 
@@ -299,7 +471,7 @@ struct Handler {
 }
 
 impl Handler {
-    fn new(bri_id: i32, slug: String) -> (Self, HandlerReceiver) {
+    fn _new(bri_id: i32, slug: String) -> (Self, RaceController) {
         let (gethistory_tx, gethistory_rx) = channel(10);
         let (command_tx, command_rx) = channel(10);
         let should_end = Arc::new(Mutex::new(false));
@@ -310,7 +482,7 @@ impl Handler {
                 slug,
                 should_end: should_end.clone(),
             },
-            HandlerReceiver {
+            RaceController {
                 bri_id,
                 command_rx,
                 should_end: should_end.clone(),
@@ -323,113 +495,9 @@ impl Handler {
         *lock = true;
     }
 }
-async fn gethistory(
-    handler: &mut HandlerReceiver,
-    ctx: &RaceContext<RacetimeState>,
-) -> Option<Vec<ChatMessage>> {
-    while let Ok(hst) = handler.gethistory_rx.try_recv() {
-        debug!("There was a a history message already in the channel {hst:?}");
-    }
-    if let Err(e) = ctx.send_raw(&json!({"action": "gethistory"})).await {
-        warn!("Error sending gethistory: {e}");
-        return None;
-    }
-    tokio::time::timeout(Duration::from_secs(5), handler.gethistory_rx.recv())
-        .await
-        .ok()
-        .flatten()
-}
-
-fn get_players(
-    handler: &HandlerReceiver,
-    db: &mut SqliteConnection,
-) -> Result<(Player, Player), NMGLeagueBotError> {
-    let race = BracketRaceInfo::get_by_id(handler.bri_id, db)?.race(db)?;
-    race.players(db).map_err(From::from)
-}
-
-/// called when a race room is created. sends a welcome message, invites players, opens the room
-/// if invites fail.  
-/// Sends a discord message as well.
-async fn initial_setup(
-    handler: &HandlerReceiver,
-    ctx: &RaceContext<RacetimeState>,
-) -> Result<(), NMGLeagueBotError> {
-    if let Err(e) = ctx
-        .send_message(
-            "Hello and welcome to your race! Auto-start is on. \
-               Admins and ZSR staff can type !promote to get race monitor status if needed. \
-               Have fun and good luck!",
-        )
-        .await
-    {
-        warn!("{e}");
-    }
-    // if we can't get a db or figure out who the players are, the room really is an error
-    let mut db = ctx.global_state.discord_state.diesel_cxn().await?;
-    let (p1, p2) = get_players(handler, db.deref_mut())?;
-
-    // if we can't *invite* them, however, it's probably better to just make the room open
-    // and let them know about it in discord
-    let mut success = true;
-
-    for player in [&p1, &p2] {
-        match &player.racetime_user_id {
-            Some(id) => {
-                if let Err(e) = ctx.invite_user(id).await {
-                    warn!("Error inviting user to race: {e}");
-                    success = false;
-                }
-            }
-            None => {
-                success = false;
-            }
-        }
-    }
-    let rd = ctx.data().await;
-
-    if !success {
-        // this fails if the *send* fails, it doesn't wait for a response.
-        // see Self::error for error handling such as it is
-        if let Err(_e) = ctx.set_open().await {
-            // retry once i guess?
-            if let Err(e) = ctx.set_open().await {
-                warn!("Error setting racetime room {rd:?} open. Giving up cause idk what to do now. {e}");
-                return Err(RaceTimeBotError::RaceTimeError(e))?;
-            }
-        }
-        info!("Set racetime room {} to open", rd.slug);
-    }
-
-    let p1_m = p1.mention_or_name();
-    let p2_m = p2.mention_or_name();
-    ctx.global_state
-        .discord_state
-        .discord_client
-        .create_message(CONFIG.racetime_room_posting_channel_id)
-        .content(&format!(
-            "{p1_m} {p2_m} your race room is ready! {}",
-            url_from_slug(&rd.slug)
-        ))?
-        .await?;
-
-    for player in [&p1, &p2] {
-        let filenames = Filenames::new_random();
-        if let Err(e) = ctx
-            .send_message(&format!(
-                "{}: please use the filenames {filenames}",
-                player.name
-            ))
-            .await
-        {
-            warn!("{e}");
-        }
-    }
-    Ok(())
-}
 
 async fn send_message(msg: &str, ctx: &RaceContext<RacetimeState>) {
-    if let Err(e) = ctx.send_message(msg).await {
+    if let Err(e) = ctx.send_message(msg, false, vec![]).await {
         warn!("Error sending message to racetime room: {e}");
     }
 }
@@ -517,44 +585,15 @@ async fn handle_promote(
     Ok(())
 }
 
-async fn handle_command(cmd: Command, ctx: &RaceContext<RacetimeState>) {
-    match cmd.cmd_name.as_str() {
-        "hello" => {
-            send_message("Hello!", ctx).await;
-        }
-        #[cfg(feature = "testing")]
-        "data" => {
-            debug!("{:?}", ctx.data().await);
-        }
-        "promote" => {
-            if let Err(e) = handle_promote(ctx, cmd).await {
-                warn!("Error handling promotion request: {e}");
-            }
-        }
-        _ => {
-            debug!("Unknown command !{}", cmd.cmd_name);
-        }
-    }
-}
-
-async fn handle_event(
-    handler: &mut HandlerReceiver,
-    ctx: &RaceContext<RacetimeState>,
-) -> Result<(), RaceTimeBotError> {
-    tokio::select! {
-        cmd_res = handler.command_rx.recv() => {
-            let cmd = cmd_res.ok_or(RaceTimeBotError::HandlerDisconnect)?;
-            handle_command(cmd, ctx).await;
-            Ok(())
-        }
-    }
-}
-
-async fn handle_race(mut handler: HandlerReceiver, rd: RaceData, ctx: RaceContext<RacetimeState>) {
+async fn handle_race(
+    mut controller: RaceController,
+    rd: RaceData,
+    ctx: RaceContext<RacetimeState>,
+) {
     debug!("Handle race task started for {rd:?}");
     // first we do new race stuff:
     // check if we've already handled this
-    let do_initial_setup = if let Some(msgs) = gethistory(&mut handler, &ctx).await {
+    let do_initial_setup = if let Some(msgs) = controller.gethistory(&ctx).await {
         debug!("Got history: {msgs:?}");
         if msgs
             .iter()
@@ -575,17 +614,29 @@ async fn handle_race(mut handler: HandlerReceiver, rd: RaceData, ctx: RaceContex
     };
 
     if do_initial_setup {
-        if let Err(e) = initial_setup(&handler, &ctx).await {
+        if let Err(e) = controller.initial_setup(&ctx).await {
+            send_message(
+                "Encountered an error setting up this race room. Please let FoxLisk know.",
+                &ctx,
+            )
+            .await;
             warn!("Error setting up race room: abandoning I guess? {e}");
-            handler.set_end().await;
+            controller.set_end().await;
         }
     }
 
     // now we wait for events
     loop {
-        if let Err(e) = handle_event(&mut handler, &ctx).await {
-            warn!("Error handling event. Dropping race. {e}");
-            handler.set_end().await;
+        {
+            let lock = controller.should_end.lock().await;
+            if *lock {
+                info!("RaceController ending for race {}", rd.slug);
+                break;
+            }
+        }
+        if let Err(e) = controller.handle_event(&ctx).await {
+            warn!("Error handling event. Dropping race {}. {e}", rd.slug);
+            controller.set_end().await;
             break;
         }
     }
@@ -603,7 +654,7 @@ impl RaceHandler<RacetimeState> for Handler {
         let rd = ctx.data().await;
         let slug = rd.slug.clone();
         let (handler, receiver) = match ctx.global_state.get_bri_id_by_slug(&slug).await {
-            Some(id) => Self::new(id, slug),
+            Some(id) => Self::_new(id, slug),
             None => {
                 return Err(Error::Custom(Box::new(RaceTimeBotError::MissingBRI(slug))));
             }
@@ -661,8 +712,11 @@ impl RaceHandler<RacetimeState> for Handler {
         msgs: Vec<ChatMessage>,
     ) -> Result<(), Error> {
         if let Err(e) = self.gethistory_tx.send(msgs).await {
-            warn!("Error dispatching history: {e} - killing handler");
-            return Err(From::from(RaceTimeBotError::WorkerDisconnect));
+            warn!(
+                "Error dispatching history: {e} - stopping handling race {}",
+                self.slug
+            );
+            return Err(From::from(RaceTimeBotError::RaceControllerDisconnect));
         }
         Ok(())
     }
@@ -676,6 +730,7 @@ impl RaceHandler<RacetimeState> for Handler {
         // this method, the default implementation fails on *any* error from rtgg, including things like
         // "you tried to invite a user with the wrong ID"
         // especially since this is called asynchronously that's very annoying.
+        // probably this should push errors onto a queue that the RaceController can inspect
         debug!("Error from rtgg: {errors:?}");
         for err_msg in errors {
             if err_msg.contains("is not allowed to join this race") {

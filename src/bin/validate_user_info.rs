@@ -116,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
     // this stupid variable is just to get type inference to work
     let whatever = twitches_to_check
         .keys()
-        .map(|s| s.as_str().into())
+        .map(|s| s.as_str())
         .collect::<Vec<_>>();
     let getusers = GetUsersRequest::logins(whatever);
     let twitch_users = twitch_client.req_get(getusers).await?;

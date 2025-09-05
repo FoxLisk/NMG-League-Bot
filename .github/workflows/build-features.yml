@@ -19,5 +19,7 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - run: cargo --version
+    - run: rustc --version
     - name: Build
       run: cargo build --verbose --features ${{ matrix.features }}
