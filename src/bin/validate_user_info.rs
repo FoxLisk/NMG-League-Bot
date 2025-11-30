@@ -8,7 +8,7 @@ use twitch_api::helix::users::GetUsersRequest;
 
 #[derive(Debug, Parser)]
 struct Args {
-    #[arg(long)]
+    #[arg(long, default_value = "https://nmg-league.foxlisk.com")]
     base_url: String,
 
     #[arg(long)]
