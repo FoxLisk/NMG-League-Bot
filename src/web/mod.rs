@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use nmg_league_bot::{BracketRaceState, NMGLeagueBotError};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use rocket::http::Status;
@@ -697,6 +698,23 @@ async fn season_redirect(season_ordinal: i32, mut db: ConnectionWrapper<'_>) -> 
     redirect_for_season(&s)
 }
 
+// apparently /season/current matches the route in /season/<ordinal: i32>, and we have to give it a
+// lower rank to prevent the "collision" from crashing rocket on startup.
+#[get("/season/current/<rest..>", rank = 2)]
+async fn current_season_redirect(rest: PathBuf, mut db: ConnectionWrapper<'_>) -> Redirect {
+    let s = match Season::get_active_season(&mut db) {
+        Ok(Some(s)) => s,
+        Ok(None) | Err(_) => return Redirect::to(uri!(home())),
+    };
+    if rest.to_string_lossy().is_empty() {
+        redirect_for_season(&s)
+    } else {
+        let ext = rest.to_str().unwrap_or("");
+        let url = format!("/season/{}/{}", s.ordinal, ext);
+        Redirect::to(url)
+    }
+}
+
 #[get("/seasons")]
 async fn season_history(
     mut db: ConnectionWrapper<'_>,
@@ -1017,6 +1035,7 @@ pub(crate) async fn launch_website(
                 season_qualifiers,
                 season_redirect,
                 season_history,
+                current_season_redirect,
                 home,
                 player_detail,
                 player_detail_by_id,
