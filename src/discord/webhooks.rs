@@ -73,7 +73,7 @@ impl Webhooks {
         self.http_client.execute_webhook(webhook.id, &webhook.token)
     }
 
-    pub fn prepare_execute_async(&self) -> ExecuteWebhook {
+    pub fn prepare_execute_async(&self) -> ExecuteWebhook<'_> {
         self._execute_webhook(&self.async_channel)
     }
 

@@ -50,7 +50,7 @@ pub enum RunMigrationsError {
 
 pub fn run_migrations(
     conn: &mut SqliteConnection,
-) -> Result<Vec<MigrationVersion>, RunMigrationsError> {
+) -> Result<Vec<MigrationVersion<'_>>, RunMigrationsError> {
     let migrations = diesel_migrations::FileBasedMigrations::from_path("diesel-migrations")?;
     conn.run_pending_migrations(migrations).map_err(From::from)
 }

@@ -28,7 +28,7 @@ use diesel::SqliteConnection;
 use either::Either;
 use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
-use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
+use nmg_league_bot::models::bracket_races::{BracketRace};
 use nmg_league_bot::models::brackets::{Bracket, BracketType, NewBracket};
 use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -98,7 +98,7 @@ impl UpdateResponseBag {
     fn hydrate<'a>(
         &'a self,
         mut ur: UpdateResponse<'a>,
-    ) -> Result<UpdateResponse, MessageValidationError> {
+    ) -> Result<UpdateResponse<'a>, MessageValidationError> {
         if let Some(s) = self.content.as_ref() {
             ur = ur.content(Some(s))?;
         }

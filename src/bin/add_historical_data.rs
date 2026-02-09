@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use diesel::SqliteConnection;
 use itertools::Itertools as _;
 use nmg_league_bot::{
-    db::{raw_diesel_cxn_from_env, run_migrations},
+    db::raw_diesel_cxn_from_env,
     models::{
         bracket_races::{NewBracketRace, Outcome, PlayerResult},
         bracket_rounds::NewBracketRound,

@@ -1,6 +1,5 @@
 //! api lol. the idea is just stuff that returns json i guess
 
-use std::convert::Infallible;
 use std::ops::DerefMut;
 
 use crate::discord;

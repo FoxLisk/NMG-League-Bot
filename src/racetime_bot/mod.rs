@@ -17,7 +17,6 @@ use racetime::handler::RaceContext;
 use racetime::model::{ChatMessage, RaceData, RaceStatusValue};
 use racetime::{Bot, Error, HostInfo, RaceHandler, StartRace};
 use regex::Regex;
-use serde_json::json;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;

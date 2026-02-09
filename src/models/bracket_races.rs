@@ -2,7 +2,6 @@ use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_rounds::BracketRound;
 use crate::models::brackets::Bracket;
 use crate::models::player::Player;
-use crate::models::season::Season;
 use crate::save_fn;
 use crate::schema::bracket_races;
 use crate::update_fn;
@@ -287,7 +286,7 @@ impl BracketRace {
         Ok(())
     }
 
-    pub fn try_into_match_result(&self) -> Result<MatchResult<i32>, MatchResultError> {
+    pub fn try_into_match_result(&self) -> Result<MatchResult<'_, i32>, MatchResultError> {
         if self
             .state()
             .map_err(|_| MatchResultError::RaceNotFinished)?

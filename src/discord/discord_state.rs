@@ -209,7 +209,7 @@ impl DiscordOperations for DiscordState {
         }
     }
 
-    fn interaction_client(&self) -> InteractionClient {
+    fn interaction_client(&self) -> InteractionClient<'_> {
         self.discord_client.interaction(self.application_id.clone())
     }
 
