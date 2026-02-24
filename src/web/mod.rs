@@ -1,6 +1,7 @@
 use itertools::Itertools;
 use nmg_league_bot::{BracketRaceState, NMGLeagueBotError};
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use rocket::http::Status;
@@ -27,7 +28,7 @@ use nmg_league_bot::models::bracket_races::{BracketRace, PlayerResult};
 use nmg_league_bot::models::bracket_rounds::BracketRound;
 use nmg_league_bot::models::brackets::{Bracket, BracketError, BracketType};
 use nmg_league_bot::models::player::Player;
-use nmg_league_bot::models::season::Season;
+use nmg_league_bot::models::season::{Season, SeasonState};
 use nmg_league_bot::utils::format_hms;
 use rocket::request::{FromRequest, Outcome};
 use rocket::response::Redirect;
@@ -674,9 +675,44 @@ async fn season_qualifiers(
     ))
 }
 
+fn redirect_for_season(season: &Season) -> Redirect {
+    match season.get_state() {
+        Ok(s) => match s {
+            SeasonState::Created | SeasonState::QualifiersOpen | SeasonState::QualifiersClosed => {
+                Redirect::to(uri!(season_qualifiers(season_ordinal = season.ordinal)))
+            }
+            SeasonState::Started | SeasonState::Finished => {
+                Redirect::to(uri!(season_standings(season_ordinal = season.ordinal)))
+            }
+        },
+        Err(_) => Redirect::to(uri!(home())),
+    }
+}
+
 #[get("/season/<season_ordinal>")]
-async fn season_redirect(season_ordinal: i32) -> Redirect {
-    Redirect::to(uri!(season_brackets(season_ordinal = season_ordinal)))
+async fn season_redirect(season_ordinal: i32, mut db: ConnectionWrapper<'_>) -> Redirect {
+    let s = match Season::get_by_ordinal(season_ordinal, &mut db) {
+        Ok(s) => s,
+        Err(_) => return Redirect::to(uri!(home())),
+    };
+    redirect_for_season(&s)
+}
+
+// apparently /season/current matches the route in /season/<ordinal: i32>, and we have to give it a
+// lower rank to prevent the "collision" from crashing rocket on startup.
+#[get("/season/current/<rest..>", rank = 2)]
+async fn current_season_redirect(rest: PathBuf, mut db: ConnectionWrapper<'_>) -> Redirect {
+    let s = match Season::get_active_season(&mut db) {
+        Ok(Some(s)) => s,
+        Ok(None) | Err(_) => return Redirect::to(uri!(home())),
+    };
+    if rest.to_string_lossy().is_empty() {
+        redirect_for_season(&s)
+    } else {
+        let ext = rest.to_str().unwrap_or("");
+        let url = format!("/season/{}/{}", s.ordinal, ext);
+        Redirect::to(url)
+    }
 }
 
 #[get("/seasons")]
@@ -999,6 +1035,7 @@ pub(crate) async fn launch_website(
                 season_qualifiers,
                 season_redirect,
                 season_history,
+                current_season_redirect,
                 home,
                 player_detail,
                 player_detail_by_id,
