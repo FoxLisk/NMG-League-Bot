@@ -396,12 +396,6 @@ struct DisplayBracket {
     is_round_robin: bool,
 }
 
-#[derive(Serialize)]
-struct BracketsContext {
-    season: Season,
-    brackets: Vec<DisplayBracket>,
-    base_context: BaseContext,
-}
 
 fn get_display_bracket(
     bracket: Bracket,

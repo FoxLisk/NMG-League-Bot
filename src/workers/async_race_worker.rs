@@ -142,22 +142,9 @@ async fn handle_finished_race(
         }
     };
     // N.B. this level of error handling is realistically unnecessary
-    let ew = match webhooks.prepare_execute_async().content(&c) {
-        Ok(ex) => ex,
-        Err(mve) => {
-            warn!("Message validation error sending {c}: {mve}");
-            match webhooks.prepare_execute_async().content(
-                "A race finished but I can't tell you which one for some reason. Check the logs",
-            ) {
-                Ok(ex) => ex,
-                Err(mve) => {
-                    warn!("Error reporting race {}: {mve}", race.uuid);
-                    return;
-                }
-            }
-        }
-    }
+    let ew = webhooks.prepare_execute_async().content(&c)
     .flags(MessageFlags::SUPPRESS_EMBEDS);
+
 
     if let Err(e) = webhooks.execute_webhook(ew).await {
         warn!("Error executing webhook: {e}");

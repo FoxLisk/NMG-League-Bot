@@ -16,6 +16,7 @@
 				"$rustc"
 			],
 			"label": "rust: cargo build"
+
 		},
 		{
 			"type": "shell",

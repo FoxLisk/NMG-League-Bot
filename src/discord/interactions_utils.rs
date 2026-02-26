@@ -60,6 +60,8 @@ pub fn button_component<S1: Into<String>, S2: Into<String>>(
         label: Some(label.into()),
         style,
         url: None,
+        id: None,
+        sku_id: None,
     })
 }
 
@@ -89,6 +91,7 @@ pub fn autocomplete_result(options: Vec<CommandOptionChoice>) -> InteractionResp
             flags: None,
             title: None,
             tts: None,
+            poll: None,
         }),
     }
 }

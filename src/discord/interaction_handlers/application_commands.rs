@@ -28,7 +28,7 @@ use diesel::SqliteConnection;
 use either::Either;
 use log::{info, warn};
 use nmg_league_bot::config::CONFIG;
-use nmg_league_bot::models::bracket_races::{BracketRace};
+use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::brackets::{Bracket, BracketType, NewBracket};
 use nmg_league_bot::models::player::{NewPlayer, Player};
 use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
@@ -61,7 +61,6 @@ use twilight_model::http::interaction::{
 use twilight_model::id::marker::{ChannelMarker, MessageMarker, UserMarker};
 use twilight_model::id::Id;
 use twilight_model::user::User;
-use twilight_validate::message::MessageValidationError;
 use twitch_api::helix::users::GetUsersRequest;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
@@ -95,14 +94,11 @@ impl UpdateResponseBag {
         }
     }
 
-    fn hydrate<'a>(
-        &'a self,
-        mut ur: UpdateResponse<'a>,
-    ) -> Result<UpdateResponse<'a>, MessageValidationError> {
+    fn hydrate<'a>(&'a self, mut ur: UpdateResponse<'a>) -> UpdateResponse<'a> {
         if let Some(s) = self.content.as_ref() {
-            ur = ur.content(Some(s))?;
+            ur = ur.content(Some(s));
         }
-        Ok(ur)
+        ur
     }
 }
 
@@ -125,45 +121,27 @@ where
         let token = ic.token.clone();
         let client = state.interaction_client();
         let r = func(ac, ic, state.clone()).await;
-        // god DAMN all this error handling is a nightmare
         match r {
             Ok(urb) => {
                 let ur = client.update_response(&token);
-                match urb.hydrate(ur) {
-                    Ok(hydrated_ur) => {
-                        if let Err(e) = hydrated_ur.await {
-                            state.submit_error(format!("Error in long_command_wrapper trying to hydrate UpdateResponse: {e}")).await;
-                        }
-                    }
-                    Err(e) => {
-                        let mut internal_error =
-                            format!("Error occurred constructing an UpdateResponse: {e}");
-                        if let Some(more_error) = match client
-                            .update_response(&token)
-                            .content(Some("An error occurred trying to respond to this request."))
-                        {
-                            Ok(ur) => ur.await.map_err_to_string().err(),
-                            Err(e) => Some(e.to_string()),
-                        } {
-                            internal_error.push_str(&format!(". Additional error occurred expressing this ot the user: {more_error}"));
-                        }
-                        state.submit_error(internal_error).await;
-                    }
+                if let Err(e) = urb.hydrate(ur).await {
+                    state
+                        .submit_error(format!(
+                            "Error in long_command_wrapper trying to hydrate UpdateResponse: {e}"
+                        ))
+                        .await;
                 }
             }
             Err(ErrorResponse {
                 user_facing_error,
-                mut internal_error,
+                internal_error,
             }) => {
-                if let Some(more_intl_errors) = match client
+                client
                     .update_response(&token)
                     .content(Some(&user_facing_error))
-                {
-                    Ok(ur) => ur.await.map_err_to_string().err(),
-                    Err(e) => Some(e.to_string()),
-                } {
-                    internal_error = format!("{internal_error} - also an error occurred trying to communicate this: {more_intl_errors}");
-                }
+                    .await
+                    .map_err_to_string()
+                    .err();
                 state.submit_error(internal_error).await;
             }
         }
@@ -1279,6 +1257,7 @@ async fn handle_add_player_to_bracket_autocomplete(
             flags: None,
             title: None,
             tts: None,
+            poll: None,
         }),
     })
 }
@@ -1452,10 +1431,7 @@ async fn handle_cancel_race_started(
                 .interaction_client()
                 .update_response(&ac.token)
                 .components(Some(&[]))
-                .and_then(|c| c.content(Some(&e)))
-                .map_err(|validation_error| {
-                    format!("Error building message: {}", validation_error)
-                })?
+                .content(Some(&e))
                 .await
                 .map_err(|e| format!("Error updating message: {}", e))
                 .map(|_| ())
@@ -1530,8 +1506,7 @@ async fn update_cancelled_race_message(
         cid,
         "This race has been cancelled by an admin.",
         state,
-    )
-    .map_err(|e| e.to_string())?;
+    );
     update
         .await
         .map_err(|e| format!("Error updating race run message: {}", e))
@@ -1546,13 +1521,13 @@ fn update_interaction_message_to_plain_text<'a>(
     cid: Id<ChannelMarker>,
     text: &'a str,
     state: &'a Arc<DiscordState>,
-) -> Result<UpdateMessage<'a>, MessageValidationError> {
+) -> UpdateMessage<'a> {
     state
         .discord_client
         .update_message(cid, mid)
-        .attachments(&[])?
-        .components(Some(&[]))?
-        .embeds(Some(&[]))?
+        .attachments(&[])
+        .components(Some(&[]))
+        .embeds(Some(&[]))
         .content(Some(text))
 }
 

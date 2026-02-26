@@ -8,7 +8,7 @@ use thiserror::Error;
 use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::message::embed::EmbedField;
-use twilight_model::channel::message::{AllowedMentions, Embed, MentionType, ReactionType};
+use twilight_model::channel::message::{AllowedMentions, Embed, EmojiReactionType, MentionType};
 use twilight_model::channel::Message;
 use twilight_model::gateway::payload::incoming::{ReactionAdd, ReactionRemove};
 use twilight_model::id::marker::UserMarker;
@@ -132,10 +132,10 @@ async fn is_admin_confirmation_reaction(
         }
     };
     match &reaction.emoji {
-        ReactionType::Custom { name, .. } => {
+        EmojiReactionType::Custom { name, .. } => {
             return name.as_ref().map(|s| s == "Linkbot").unwrap_or(false)
         }
-        ReactionType::Unicode { .. } => false,
+        EmojiReactionType::Unicode { .. } => false,
     }
 }
 
@@ -224,7 +224,7 @@ async fn create_tentative_commentary_discussion_post(
     state
         .discord_client
         .create_message(state.channel_config.commentary_discussion.clone())
-        .embeds(&embeds)?
+        .embeds(&embeds)
         .await?
         .model()
         .await
@@ -239,7 +239,7 @@ async fn create_restream_request_post(
     state
         .discord_client
         .create_message(state.channel_config.zsr.clone())
-        .embeds(&embeds)?
+        .embeds(&embeds)
         .await?
         .model()
         .await
@@ -317,7 +317,7 @@ async fn create_commentator_signup_post(
     state
         .discord_client
         .create_message(state.channel_config.sirius_inbox.clone())
-        .embeds(&embeds)?
+        .embeds(&embeds)
         .await?
         .model()
         .await
@@ -386,8 +386,8 @@ async fn handle_restream_request_reaction(
     match state
         .discord_client
         .create_message(state.channel_config.commentary_discussion)
-        .embeds(&embeds)?
-        .content(&pings.join(" "))?
+        .embeds(&embeds)
+        .content(&pings.join(" "))
         .allowed_mentions(Some(&AllowedMentions {
             parse: vec![MentionType::Users],
             ..Default::default()
@@ -424,13 +424,13 @@ async fn handle_restream_request_reaction(
     Ok(())
 }
 
-fn emoji_to_restream_channel(rt: &ReactionType) -> Option<&'static str> {
+fn emoji_to_restream_channel(rt: &EmojiReactionType) -> Option<&'static str> {
     match rt {
-        ReactionType::Custom { name, .. } => name
+        EmojiReactionType::Custom { name, .. } => name
             .as_ref()
             .map(|s| if s == "greenham" { Some("FGfm") } else { None })
             .flatten(),
-        ReactionType::Unicode { name } => match name.as_str() {
+        EmojiReactionType::Unicode { name } => match name.as_str() {
             "1️⃣" => Some("zeldaspeedruns"),
             "2️⃣" => Some("zeldaspeedruns2"),
             "3️⃣" => Some("zeldaspeedruns_3"),

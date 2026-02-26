@@ -293,9 +293,10 @@ async fn post_match_results(
         url: None,
         video: None,
     };
+    // the docs for .embeds() indicate that it returns an error, but in fact it saves the error for later
     let m = c
         .create_message(options.channel_id)
-        .embeds(&vec![embed])?
+        .embeds(&[embed])
         .await?;
     m.model().await.map_err(From::from)
 }
