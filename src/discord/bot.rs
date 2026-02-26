@@ -409,9 +409,6 @@ fn get_field_from_modal_components(
             }
             _ => {}
         }
-        // modal interaction components can be ActionRows, but they can't have sub-components?
-        // I don't really get what's going on here, but I think a modal is basically just
-        // an action row + some text inputs. that's all I'm doing, anyway, so it's fine
     }
     None
 }

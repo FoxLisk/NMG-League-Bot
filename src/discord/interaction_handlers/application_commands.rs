@@ -127,7 +127,7 @@ where
                 if let Err(e) = urb.hydrate(ur).await {
                     state
                         .submit_error(format!(
-                            "Error in long_command_wrapper trying to hydrate UpdateResponse: {e}"
+                            "Error in long_command_wrapper trying to send message to user: {e}"
                         ))
                         .await;
                 }
