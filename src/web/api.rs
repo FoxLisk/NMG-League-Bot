@@ -2,13 +2,11 @@
 
 use std::ops::DerefMut;
 
-use crate::discord;
 use crate::web::auth::Admin;
 use crate::web::ConnectionWrapper;
 use diesel::SqliteConnection;
 use log::debug;
 use log::warn;
-use nmg_league_bot::models::bracket_race_infos;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_race_infos::CommentatorSignup;
 use nmg_league_bot::models::bracket_races::BracketRace;

@@ -78,20 +78,12 @@ impl Webhooks {
     }
 
     pub async fn message_async(&self, content: &str) -> Result<(), String> {
-        self.execute_webhook(
-            self.prepare_execute_async()
-                .content(content)
-                .map_err(|e| e.to_string())?,
-        )
-        .await
+        self.execute_webhook(self.prepare_execute_async().content(content))
+            .await
     }
 
     pub async fn message_error(&self, content: &str) -> Result<(), String> {
-        self.execute_webhook(
-            self._execute_webhook(&self.error_channel)
-                .content(content)
-                .map_err(|e| e.to_string())?,
-        )
-        .await
+        self.execute_webhook(self._execute_webhook(&self.error_channel).content(content))
+            .await
     }
 }

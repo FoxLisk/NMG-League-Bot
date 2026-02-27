@@ -104,7 +104,7 @@ pub async fn run_bot(
     // the info in the current season, but then if there's no current season we just don't run the bot?
     // that would be fine-ish but we'd have to think about stopping and restarting the bot, etc.
     // just gonna use conf for now
-    let b = Bot::new_with_host(
+    let b = match Bot::new_with_host(
         hi,
         &CONFIG.racetime_category,
         &CONFIG.racetime_client_id,
@@ -112,7 +112,13 @@ pub async fn run_bot(
         rt_state.clone(),
     )
     .await
-    .unwrap();
+    {
+        Ok(_b) => _b,
+        Err(e) => {
+            warn!("Error initializing racetime bot; shutting down. Error: {e}");
+            return;
+        }
+    };
 
     let new_room_sender = b.extra_room_sender();
     tokio::spawn(create_rooms(
@@ -442,7 +448,7 @@ impl RaceController {
             .content(&format!(
                 "{p1_m} {p2_m} your race room is ready! {}",
                 url_from_slug(&rd.slug)
-            ))?
+            ))
             .await?;
 
         for player in [&p1, &p2] {

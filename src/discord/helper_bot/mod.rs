@@ -15,7 +15,9 @@ use diesel::SqliteConnection;
 use itertools::Itertools as _;
 use log::{info, warn};
 use nmg_league_bot::{
-    config::CONFIG, db::DieselConnectionManager, models::{
+    config::CONFIG,
+    db::DieselConnectionManager,
+    models::{
         bracket_race_infos::BracketRaceInfo,
         bracket_races::BracketRace,
         brackets::Bracket,
@@ -23,7 +25,9 @@ use nmg_league_bot::{
         player::Player,
         race_events::{NewRaceEvent, RaceEvent},
         season::SeasonState,
-    }, schema::{self}, BracketRaceState, NMGLeagueBotError, RaceEventError
+    },
+    schema::{self},
+    BracketRaceState, NMGLeagueBotError, RaceEventError,
 };
 use tokio::sync::broadcast::Receiver;
 use twilight_model::{
@@ -297,8 +301,8 @@ async fn update_discord_events(
             } else {
                 helper_bot
                     .update_scheduled_event(guild_id, event.id)
-                    .description(new_status.description.as_ref().map(|s| s.as_str()))?
-                    .name(&new_status.name)?
+                    .description(new_status.description.as_ref().map(|s| s.as_str()))
+                    .name(&new_status.name)
                     .scheduled_start_time(&new_status.start_timestamp()?)
                     .scheduled_end_time(Some(&new_status.end_timestamp()?))
                     .location(Some(&new_status.location))
@@ -320,7 +324,7 @@ async fn update_discord_events(
                     &new_status.location,
                     &new_status.start_timestamp()?,
                     &new_status.end_timestamp()?,
-                )?
+                )
                 .await?;
             Ok(Some(resp.model().await?))
         }

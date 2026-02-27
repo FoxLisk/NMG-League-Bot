@@ -16,12 +16,8 @@ use nmg_league_bot::{
     schema, ApplicationCommandOptionError, NMGLeagueBotError,
 };
 use tokio::sync::broadcast::Receiver;
-use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_gateway::{
-    stream::{self, ShardEventStream},
-    Config, Event, Intents,
-};
+use twilight_gateway::{Event, EventTypeFlags, Intents, Shard, ShardId, StreamExt};
 use twilight_http::{
     client::InteractionClient,
     request::scheduled_event::{CreateGuildScheduledEvent, UpdateGuildScheduledEvent},
@@ -114,17 +110,13 @@ impl HelperBot {
         // i *think* all I care about out are what guilds I'm in
         let intents = Intents::GUILDS;
 
-        let cfg = Config::builder(CONFIG.helper_bot_discord_token.clone(), intents).build();
-
-        let mut shards = stream::create_recommended(&bot.client, cfg, |_, builder| builder.build())
-            .await
-            // TODO: surface this unwrap? idk
-            .unwrap()
-            .collect::<Vec<_>>();
-
-        // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
-        // convince the compiler that i have an iterator of mutable references in a simpler way
-        let mut events = ShardEventStream::new(shards.iter_mut());
+        // we were never actually handling multiple shards correctly; and, seeing as we're never going to be in
+        // 2500+ guilds, we can just assume away sharding and just use one "shard"
+        let mut shard = Shard::new(
+            ShardId::ONE,
+            CONFIG.helper_bot_discord_token.clone(),
+            intents,
+        );
 
         if cfg!(feature = "testing") {
             if let Err(e) = bot.interaction_client().set_global_commands(&vec![]).await {
@@ -145,20 +137,24 @@ impl HelperBot {
             }
         }
 
+    
         loop {
             tokio::select! {
-                Some((_shard_id, evt)) = events.next() => {
+                evt = shard.next_event(EventTypeFlags::all()) => {
                     match evt {
-                        Ok(event) => {
+                        Some(Ok(event)) => {
                             bot.cache.update(&event);
                             bot.handle_event(event).await;
                         }
-                        Err(e) => {
+                        Some(Err(e)) => {
                             warn!("Got error receiving discord event: {e}");
-                            if e.is_fatal() {
-                                info!("Helper bot shutting down due to fatal error");
+                            // twilight no longer has a concept of "is_fatal()" for these errors...
+                            // none of the numerated error types look *obviously* fatal to me, and probably
+                            // i don't want to reconnect on every error...??? idk
+                        }
+                        None => {
+                                info!("Helper bot shutting down due to end of event stream");
                                 break;
-                            }
                         }
                     }
                 },
@@ -202,7 +198,18 @@ impl HelperBot {
 
     async fn handle_event(&self, event: Event) {
         match event {
-            Event::GuildCreate(gc) => {
+            Event::GuildCreate(gc_wrapped) => {
+                let gc = match *gc_wrapped {
+                    twilight_model::gateway::payload::incoming::GuildCreate::Unavailable(
+                        unavailable_guild,
+                    ) => {
+                        warn!("Joined unavailable guild: {unavailable_guild:?}");
+                        return;
+                    }
+                    twilight_model::gateway::payload::incoming::GuildCreate::Available(guild) => {
+                        guild
+                    }
+                };
                 info!("Joined guild {}: {}", gc.id, gc.name);
                 let cmds = application_command_definitions();
                 // set guild commands in testing only. in real life we want to do global application commands.

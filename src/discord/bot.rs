@@ -6,14 +6,12 @@ use lazy_static::lazy_static;
 use log::{debug, info, warn};
 use nmg_league_bot::config::CONFIG;
 use racetime_api::client::RacetimeClient;
-use tokio_stream::StreamExt;
 use twilight_cache_inmemory::InMemoryCache;
-use twilight_gateway::stream::ShardEventStream;
-use twilight_gateway::{stream, Config};
+use twilight_gateway::{EventTypeFlags, Shard, ShardId, StreamExt as _};
 use twilight_http::Client;
 use twilight_model::application::interaction::message_component::MessageComponentInteractionData;
 use twilight_model::application::interaction::modal::{
-    ModalInteractionData, ModalInteractionDataActionRow,
+    ModalInteractionComponent, ModalInteractionData,
 };
 use twilight_model::application::interaction::InteractionData;
 use twilight_model::channel::message::component::{ButtonStyle, TextInput, TextInputStyle};
@@ -74,16 +72,11 @@ pub(crate) fn launch(
         twitch_client_bundle,
     ));
 
-    tokio::spawn(run_bot(
-        CONFIG.discord_token.clone(),
-        state.clone(),
-        shutdown,
-    ));
+    tokio::spawn(run_bot(state.clone(), shutdown));
     state
 }
 
 async fn run_bot(
-    token: String,
     state: Arc<DiscordState>,
     mut shutdown: tokio::sync::broadcast::Receiver<Shutdown>,
 ) {
@@ -98,33 +91,27 @@ async fn run_bot(
         // subsequent http requests
         | Intents::GUILD_PRESENCES;
 
-    let cfg = Config::builder(token.clone(), intents).build();
+    // we were never actually handling multiple shards correctly; and, seeing as we're never going to be in
+    // 2500+ guilds, we can just assume away sharding and just use one "shard"
+    let mut shard = Shard::new(ShardId::ONE, CONFIG.discord_token.clone(), intents);
 
-    let mut shards =
-        stream::create_recommended(&state.discord_client, cfg, |_, builder| builder.build())
-            .await
-            .unwrap()
-            .collect::<Vec<_>>();
-
-    // N.B. collecting these into a vec and then using `.iter_mut()` is stupid, but idk how to
-    // convince the compiler that i have an iterator of mutable references in a simpler way
-    let mut events = ShardEventStream::new(shards.iter_mut());
+    info!("Main bot starting...");
 
     loop {
         tokio::select! {
-            Some((_shard_id, evt)) = events.next() => {
+            Some(evt) = shard.next_event(EventTypeFlags::all()) => {
                 match evt {
                     Ok(event) => {
+                        info!("Main discord bot got event: {event:?}");
                         state.cache.update(&event);
                         state.standby.process(&event);
                         tokio::spawn(handle_event(event, state.clone()));
                     }
                     Err(e) => {
-                        warn!("Got error receiving discord event: {e}");
-                        if e.is_fatal() {
-                            info!("Twilight bot shutting down due to fatal error");
-                            break;
-                        }
+                            warn!("Got error receiving discord event: {e}");
+                            // twilight no longer has a concept of "is_fatal()" for these errors...
+                            // none of the numerated error types look *obviously* fatal to me, and probably
+                            // i don't want to reconnect on every error...??? idk
                     }
                 }
             },
@@ -271,8 +258,9 @@ fn handle_async_run_forfeit_button() -> InteractionResponse {
         "Forfeit",
         "Enter \"forfeit\" if you want to forfeit",
         vec![Component::TextInput(TextInput {
+            id: None,
             custom_id: CUSTOM_ID_FORFEIT_MODAL_INPUT.to_string(),
-            label: "Type \"forfeit\" to forfeit.".to_string(),
+            label: Some("Type \"forfeit\" to forfeit.".to_string()),
             max_length: Some(7),
             min_length: Some(7),
             placeholder: None,
@@ -385,8 +373,9 @@ async fn handle_async_run_finish(
         "Please enter finish time in **H:MM:SS** format",
         "Enter finish time in **H:MM:SS** format",
         vec![Component::TextInput(TextInput {
+            id: None,
             custom_id: CUSTOM_ID_USER_TIME.to_string(),
-            label: "Finish time:".to_string(),
+            label: Some("Finish time:".to_string()),
             max_length: Some(100),
             min_length: Some(5),
             placeholder: None,
@@ -398,18 +387,27 @@ async fn handle_async_run_finish(
     Ok(Some(ir))
 }
 
+/// NOTE: This function was written to work with v1 components. the only thing it handles
+/// is finding specifically a TextInput with the given custom_id
 fn get_field_from_modal_components(
-    rows: Vec<ModalInteractionDataActionRow>,
+    components: Vec<ModalInteractionComponent>,
     custom_id: &str,
 ) -> Option<String> {
-    for row in rows {
-        for cmp in row.components {
-            // modal interaction components can be ActionRows, but they can't have sub-components?
-            // I don't really get what's going on here, but I think a modal is basically just
-            // an action row + some text inputs. that's all I'm doing, anyway, so it's fine
-            if cmp.custom_id == custom_id {
-                return cmp.value;
+    info!("Got these components: {components:?}");
+    for cmp in components {
+        match cmp {
+            ModalInteractionComponent::TextInput(modal_interaction_text_input) => {
+                if modal_interaction_text_input.custom_id == custom_id {
+                    return Some(modal_interaction_text_input.value);
+                }
             }
+            ModalInteractionComponent::ActionRow(action_row) => {
+                let recursed = get_field_from_modal_components(action_row.components, custom_id);
+                if recursed.is_some() {
+                    return recursed;
+                }
+            }
+            _ => {}
         }
     }
     None
@@ -429,7 +427,7 @@ async fn handle_user_time_modal(
     )
     .ok_or(ErrorResponse::new(
         USER_FACING_ERROR,
-        "Error getting user time form modal.",
+        "Error getting user time from modal.",
     ))?;
     let mut conn = state
         .diesel_cxn()
@@ -460,13 +458,16 @@ async fn handle_user_time_modal(
 }
 
 fn handle_async_vod_ready() -> InteractionResponse {
+    // TODO: "Label is recommended for use over an Action Row in modals. Action Row with Text Inputs in modals are now deprecated."
+    // https://docs.discord.com/developers/components/reference
     let ir = create_modal(
         CUSTOM_ID_VOD_MODAL,
         "Please enter your VoD URL",
         "VoD URL",
         vec![Component::TextInput(TextInput {
+            id: None,
             custom_id: CUSTOM_ID_VOD_MODAL_INPUT.to_string(),
-            label: "Enter VoD here".to_string(),
+            label: Some("Enter VoD here".to_string()),
             max_length: None,
             min_length: Some(5),
             placeholder: None,
@@ -560,10 +561,10 @@ async fn _handle_interaction(
                 handle_application_interaction(ac, interaction, &state).await
             }
             InteractionData::MessageComponent(mc) => {
-                handle_button_interaction(mc, interaction, &state).await
+                handle_button_interaction(*mc, interaction, &state).await
             }
             InteractionData::ModalSubmit(ms) => {
-                handle_modal_submission(ms, interaction, &state).await
+                handle_modal_submission(*ms, interaction, &state).await
             }
 
             _ => {
@@ -625,7 +626,7 @@ async fn set_application_commands(
     let commands = application_command_definitions();
     let resp = state
         .interaction_client()
-        .set_guild_commands(gc.id.clone(), &commands)
+        .set_guild_commands(gc.id().clone(), &commands)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -641,10 +642,12 @@ async fn set_application_commands(
 async fn handle_event(event: Event, state: Arc<DiscordState>) {
     match event {
         Event::GuildCreate(gc) => {
+            // TODO: probably we should bail if it's a GuildCreate::Unavailable?
             if let Err(e) = set_application_commands(&gc, state).await {
                 warn!(
                     "Error setting application commands for guild {:?}: {}",
-                    gc.id, e
+                    gc.id(),
+                    e
                 );
             }
         }

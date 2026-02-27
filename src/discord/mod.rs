@@ -132,14 +132,14 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         .discord_client
         .create_message(dm)
         .components(&[Component::ActionRow(ActionRow {
+            id: None,
             components: vec![interactions_utils::button_component(
                 "Start run",
                 CUSTOM_ID_START_RUN,
                 ButtonStyle::Primary,
             )],
         })])
-        .and_then(|cm| cm.content(&content))
-        .map_err(|e| e.to_string())?
+        .content(&content)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -445,7 +445,6 @@ async fn create_commportunities_post(
         .discord_client
         .create_message(state.channel_config.commportunities.clone())
         .embeds(&embeds)
-        .map_err_to_string()?
         .await
         .map_err_to_string()?;
 
