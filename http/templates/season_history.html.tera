@@ -10,6 +10,12 @@
     </div>
     <div class="page-content-container">
         <div class="previous-season-item">
+            <h3 class="season-title">Season 11: Any% NMG</h3>
+            I'm not sure why all these updates specify the number of
+            {{macros::link(href="/season/11/standings", text="brackets")}} anymore.
+        </div>
+        <hr class="season-separator" />
+        <div class="previous-season-item">
             <h3 class="season-title">Season 10: Any% NMG</h3>
             This time we were back to exactly
             {{macros::link(href="/season/10/standings", text="three swiss brackets")}}.
