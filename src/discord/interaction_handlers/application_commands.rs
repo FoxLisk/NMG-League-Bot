@@ -54,11 +54,19 @@ use twilight_model::application::interaction::{Interaction, InteractionType};
 use twilight_model::channel::message::component::ButtonStyle;
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{Embed, MessageFlags};
+use twilight_model::channel::permission_overwrite::{
+    PermissionOverwrite as ChannelPermissionOverwrite, PermissionOverwriteType,
+};
+use twilight_model::channel::ChannelType;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
+use twilight_model::guild::Permissions;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
-use twilight_model::id::marker::{ChannelMarker, MessageMarker, UserMarker};
+use twilight_model::http::permission_overwrite::PermissionOverwrite as HttpPermissionOverwrite;
+use twilight_model::id::marker::{
+    ChannelMarker, GenericMarker, MessageMarker, RoleMarker, UserMarker,
+};
 use twilight_model::id::Id;
 use twilight_model::user::User;
 use twitch_api::helix::users::GetUsersRequest;
@@ -249,9 +257,15 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_set_season_state(ac, state).await.map(Option::from))
         }
 
-        CREATE_BRACKET_CMD => {
-            admin_command_wrapper(handle_create_bracket(ac, state).await.map(Option::from))
-        }
+        CREATE_BRACKET_CMD => match interaction.kind {
+            InteractionType::ApplicationCommand => {
+                long_command_wrapper(handle_create_bracket, ac, interaction, state.clone())
+            }
+            _ => Ok(Some(plain_interaction_response(format!(
+                "Unexpected InteractionType for {}",
+                CREATE_BRACKET_CMD
+            )))),
+        },
         FINISH_BRACKET_CMD => {
             admin_command_wrapper(handle_finish_bracket(ac, state).await.map(Option::from))
         }
@@ -1613,9 +1627,20 @@ async fn handle_see_unscheduled_races(
 }
 
 async fn handle_create_bracket(
+    ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: Arc<DiscordState>,
+) -> Result<UpdateResponseBag, ErrorResponse> {
+    Ok(match _handle_create_bracket(ac, &state).await {
+        Ok(u) => u,
+        Err(e) => UpdateResponseBag::new_content(e),
+    })
+}
+
+async fn _handle_create_bracket(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
-) -> Result<InteractionResponse, String> {
+) -> Result<UpdateResponseBag, String> {
     let name = get_opt_s!("name", &mut ac.options, String)?;
     let bracket_type = get_opt_s!("bracket_type", &mut ac.options, String)?;
     let bt: BracketType = serde_json::from_str(&bracket_type).map_err_to_string()?;
@@ -1623,9 +1648,192 @@ async fn handle_create_bracket(
     let szn = Season::get_active_season(conn.deref_mut())
         .and_then(|os| os.ok_or(diesel::result::Error::NotFound))
         .map_err_to_string()?;
-    let nb = NewBracket::new(&szn, name, bt);
-    nb.save(conn.deref_mut()).map_err(|e| e.to_string())?;
-    Ok(plain_interaction_response("Bracket created!"))
+    let nb = NewBracket::new(&szn, name.clone(), bt);
+
+    create_bracket_resources(state, &name, &nb, conn.deref_mut()).await?;
+
+    Ok(UpdateResponseBag::new_content("Bracket created!"))
+}
+
+async fn create_bracket_resources(
+    state: &Arc<DiscordState>,
+    name: &str,
+    nb: &NewBracket,
+    conn: &mut SqliteConnection,
+) -> Result<(), String> {
+    let guild_id = CONFIG.guild_id;
+    let admin_role = find_role_by_name(state, guild_id, &CONFIG.discord_admin_role_name)
+        .ok_or_else(|| {
+            format!(
+                "Could not find admin role `{}` in the guild cache.",
+                CONFIG.discord_admin_role_name
+            )
+        })?;
+    let league_chat = find_channel_by_name(state, guild_id, "league-chat").ok_or_else(|| {
+        "Could not find the `league-chat` channel in the guild cache.".to_string()
+    })?;
+    let mut created_role_id: Option<Id<RoleMarker>> = None;
+    let mut created_channel_id: Option<Id<ChannelMarker>> = None;
+
+    let setup_result: Result<(), String> = async {
+        let mut role_request = state.discord_client.create_role(guild_id).name(name);
+        if let Some(color) = bracket_role_colour(name) {
+            role_request = role_request.color(color);
+        }
+        let role = role_request
+            .await
+            .map_err_to_string()?
+            .model()
+            .await
+            .map_err_to_string()?;
+
+        created_role_id = Some(role.id);
+
+        let bracket_role_overwrites = [
+            ChannelPermissionOverwrite {
+                allow: Permissions::empty(),
+                deny: Permissions::VIEW_CHANNEL,
+                id: guild_id.cast::<GenericMarker>(),
+                kind: PermissionOverwriteType::Role,
+            },
+            ChannelPermissionOverwrite {
+                allow: Permissions::VIEW_CHANNEL
+                    | Permissions::SEND_MESSAGES
+                    | Permissions::READ_MESSAGE_HISTORY,
+                deny: Permissions::empty(),
+                id: role.id.cast::<GenericMarker>(),
+                kind: PermissionOverwriteType::Role,
+            },
+            ChannelPermissionOverwrite {
+                allow: Permissions::VIEW_CHANNEL
+                    | Permissions::SEND_MESSAGES
+                    | Permissions::READ_MESSAGE_HISTORY,
+                deny: Permissions::empty(),
+                id: admin_role.id.cast::<GenericMarker>(),
+                kind: PermissionOverwriteType::Role,
+            },
+        ];
+
+        let channel_name = bracket_channel_name(name);
+        let mut channel_request = state
+            .discord_client
+            .create_guild_channel(guild_id, &channel_name)
+            .kind(ChannelType::GuildText)
+            .permission_overwrites(&bracket_role_overwrites);
+        if let Some(parent_id) = league_chat.parent_id {
+            channel_request = channel_request.parent_id(parent_id);
+        }
+        let channel = channel_request
+            .await
+            .map_err_to_string()?
+            .model()
+            .await
+            .map_err_to_string()?;
+        created_channel_id = Some(channel.id);
+
+        let league_chat_overwrite = HttpPermissionOverwrite {
+            allow: Some(
+                Permissions::VIEW_CHANNEL
+                    | Permissions::SEND_MESSAGES
+                    | Permissions::READ_MESSAGE_HISTORY,
+            ),
+            deny: None,
+            id: role.id.cast::<GenericMarker>(),
+            kind: twilight_model::http::permission_overwrite::PermissionOverwriteType::Role,
+        };
+        state
+            .discord_client
+            .update_channel_permission(league_chat.id, &league_chat_overwrite)
+            .await
+            .map_err_to_string()?;
+
+        nb.save(conn).map_err_to_string()?;
+        Ok(())
+    }
+    .await;
+
+    if let Err(e) = setup_result {
+        info!("Error with setup result: {e}");
+        if let Some(channel_id) = created_channel_id {
+            if let Err(delete_err) = state.discord_client.delete_channel(channel_id).await {
+                warn!("Error deleting bracket channel {channel_id} after failure: {delete_err}");
+            }
+        }
+        if let Some(role_id) = created_role_id {
+            if let Err(delete_err) = state.discord_client.delete_role(guild_id, role_id).await {
+                warn!("Error deleting bracket role {role_id} after failure: {delete_err}");
+            }
+        }
+        return Err(e);
+    }
+
+    Ok(())
+}
+
+fn bracket_role_colour(name: &str) -> Option<u32> {
+    match name.trim() {
+        "Tower of Hera" => Some(0xE91E63),
+        "Desert Palace" => Some(0x3498DB),
+        "Eastern Palace" => Some(0x2ECC71),
+        "Hyrule Castle" => Some(0x546E7A),
+        _ => None,
+    }
+}
+
+fn bracket_channel_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    let mut last_was_dash = false;
+
+    for c in name.trim().chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+            last_was_dash = false;
+        } else if (c.is_ascii_whitespace() || c == '-' || c == '_')
+            && !last_was_dash
+            && !out.is_empty()
+        {
+            out.push('-');
+            last_was_dash = true;
+        }
+    }
+
+    if out.ends_with('-') {
+        out.pop();
+    }
+
+    out
+}
+
+fn find_role_by_name(
+    state: &Arc<DiscordState>,
+    guild_id: Id<twilight_model::id::marker::GuildMarker>,
+    role_name: &str,
+) -> Option<twilight_model::guild::Role> {
+    let roles = state.cache.guild_roles(guild_id)?;
+    for role_id in roles.value() {
+        if let Some(role) = state.cache.role(*role_id) {
+            if role.name == role_name {
+                return Some(role.resource().clone());
+            }
+        }
+    }
+    None
+}
+
+fn find_channel_by_name(
+    state: &Arc<DiscordState>,
+    guild_id: Id<twilight_model::id::marker::GuildMarker>,
+    channel_name: &str,
+) -> Option<twilight_model::channel::Channel> {
+    let channels = state.cache.guild_channels(guild_id)?;
+    for channel_id in channels.value() {
+        if let Some(channel) = state.cache.channel(*channel_id) {
+            if channel.name.as_deref() == Some(channel_name) {
+                return Some(channel.value().clone());
+            }
+        }
+    }
+    None
 }
 
 async fn handle_finish_bracket(
@@ -1769,7 +1977,8 @@ async fn handle_generate_pairings(
 #[cfg(test)]
 mod tests {
     use crate::discord::interaction_handlers::application_commands::{
-        datetime_from_options, normalize_racetime_name, tolerate_twitch_links,
+        bracket_channel_name, bracket_role_colour, datetime_from_options, normalize_racetime_name,
+        tolerate_twitch_links,
     };
     use chrono::{Datelike, Timelike};
 
@@ -1810,6 +2019,28 @@ mod tests {
             "a b c#1234",
             normalize_racetime_name(weird_spaces_stray_space)
         );
+    }
+
+    #[test]
+    fn test_bracket_channel_name() {
+        assert_eq!("a", bracket_channel_name("A"));
+        assert_eq!("gold-bracket", bracket_channel_name("Gold Bracket"));
+        assert_eq!(
+            "gold-bracket-finals",
+            bracket_channel_name(" Gold_Bracket Finals ")
+        );
+        assert_eq!("alpha-beta", bracket_channel_name("Alpha!!! Beta"));
+        assert_eq!("abc123", bracket_channel_name("ABC123"));
+        assert_eq!("tower-of-hera", bracket_channel_name("Tower of Hera"));
+    }
+
+    #[test]
+    fn test_bracket_role_colour() {
+        assert_eq!(Some(0xE91E63), bracket_role_colour("Tower of Hera"));
+        assert_eq!(Some(0x3498DB), bracket_role_colour("Desert Palace"));
+        assert_eq!(Some(0x2ECC71), bracket_role_colour("Eastern Palace"));
+        assert_eq!(Some(0x546E7A), bracket_role_colour("Hyrule Castle"));
+        assert_eq!(None, bracket_role_colour("Gold Bracket"));
     }
 
     #[test]
