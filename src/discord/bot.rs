@@ -30,13 +30,16 @@ use twilight_util::builder::InteractionResponseDataBuilder;
 use crate::discord::application_command_definitions::application_command_definitions;
 use crate::discord::components::action_row;
 use crate::discord::constants::{
+    CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL,
     CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
     CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
     CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
 use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interaction_handlers::application_commands::handle_application_interaction;
+use crate::discord::interaction_handlers::application_commands::{
+    handle_add_players_to_bracket_modal_submit, handle_application_interaction,
+};
 use crate::discord::interactions_utils::{
     button_component, plain_interaction_response, update_resp_to_plain_content,
 };
@@ -536,6 +539,9 @@ async fn handle_modal_submission(
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction_data.custom_id.as_str() {
+        custom_id if custom_id.starts_with(CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL) => {
+            handle_add_players_to_bracket_modal_submit(interaction_data, interaction, state).await
+        }
         CUSTOM_ID_USER_TIME_MODAL => {
             handle_user_time_modal(interaction_data, interaction, state).await
         }

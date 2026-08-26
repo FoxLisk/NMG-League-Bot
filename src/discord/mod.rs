@@ -71,6 +71,9 @@ pub mod constants {
 
     pub const CUSTOM_ID_USER_TIME: &str = "user_time";
     pub const CUSTOM_ID_USER_TIME_MODAL: &str = "user_time_modal";
+    pub const CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL: &str = "add_players_to_bracket_modal";
+    pub const CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_USER_SELECT: &str =
+        "add_players_to_bracket_user_select";
 
     pub const CREATE_ASYNC_CMD: &str = "create_async";
     pub const CANCEL_ASYNC_CMD: &str = "cancel_async";
@@ -80,7 +83,8 @@ pub mod constants {
     pub const CREATE_BRACKET_CMD: &str = "create_bracket";
     pub const FINISH_BRACKET_CMD: &str = "finish_bracket";
 
-    pub const ADD_PLAYER_TO_BRACKET_CMD: &str = "add_player_to_bracket";
+    pub const ADD_PLAYERS_TO_BRACKET_CMD: &str = "add_players_to_bracket";
+    pub const ADD_PLAYERS_TO_BRACKET_MAX_USERS: usize = 25;
 
     pub const CREATE_PLAYER_CMD: &str = "create_player";
     pub const SCHEDULE_RACE_CMD: &str = "schedule_race";

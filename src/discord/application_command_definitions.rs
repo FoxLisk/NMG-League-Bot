@@ -1,6 +1,6 @@
 use crate::discord::command_option_default;
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
+    ADD_PLAYERS_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
     CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
     GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
     SEE_UNSCHEDULED_RACES_CMD, SET_RESTREAM_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
@@ -184,21 +184,12 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .build();
 
-    let add_player_to_bracket = CommandBuilder::new(
-        ADD_PLAYER_TO_BRACKET_CMD.to_string(),
-        "Add a player to a bracket".to_string(),
+    let add_players_to_bracket = CommandBuilder::new(
+        ADD_PLAYERS_TO_BRACKET_CMD.to_string(),
+        "Choose a bracket, then pick players in a modal".to_string(),
         CommandType::ChatInput,
     )
     .default_member_permissions(Permissions::MANAGE_GUILD)
-    .option(CommandOption {
-        description: format!("The player. Add with /{}", ADD_PLAYER_TO_BRACKET_CMD),
-        description_localizations: None,
-        name: "user".to_string(),
-        name_localizations: None,
-        required: Some(true),
-        kind: CommandOptionType::User,
-        ..command_option_default()
-    })
     .option(CommandOption {
         autocomplete: Some(true),
         description: "The bracket to add to".to_string(),
@@ -208,7 +199,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         name: "bracket".to_string(),
         name_localizations: None,
         required: Some(true),
-        kind: CommandOptionType::String,
+        kind: CommandOptionType::Integer,
         ..command_option_default()
     })
     .build();
@@ -704,7 +695,7 @@ pub fn application_command_definitions() -> Vec<Command> {
         create_bracket,
         finish_bracket,
         create_player,
-        add_player_to_bracket,
+        add_players_to_bracket,
         schedule_race,
         report_race,
         generate_pairings,

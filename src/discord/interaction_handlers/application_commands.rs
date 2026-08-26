@@ -1,10 +1,13 @@
 use crate::discord::components::action_row;
 use crate::discord::constants::{
-    ADD_PLAYER_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
-    CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
-    GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD,
-    SEE_UNSCHEDULED_RACES_CMD, SET_RESTREAM_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD,
-    UPDATE_FINISHED_RACE_CMD, UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
+    ADD_PLAYERS_TO_BRACKET_CMD, ADD_PLAYERS_TO_BRACKET_MAX_USERS,
+    CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
+    CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD,
+    CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL, CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_USER_SELECT,
+    FINISH_BRACKET_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD,
+    SCHEDULE_RACE_CMD, SEE_UNSCHEDULED_RACES_CMD, SET_RESTREAM_CMD,
+    SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD,
+    UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
 
 use crate::discord::discord_state::DiscordOperations;
@@ -24,6 +27,7 @@ use std::future::Future;
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 
 use diesel::result::Error;
+use diesel::Connection;
 use diesel::SqliteConnection;
 use either::Either;
 use log::{info, warn};
@@ -41,6 +45,7 @@ use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
 use regex::{Regex, RegexBuilder};
+use std::collections::HashSet;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_http::request::application::interaction::UpdateResponse;
@@ -50,8 +55,13 @@ use twilight_model::application::command::{CommandOptionChoice, CommandOptionCho
 use twilight_model::application::interaction::application_command::{
     CommandData, CommandDataOption,
 };
+use twilight_model::application::interaction::modal::{
+    ModalInteractionComponent, ModalInteractionData,
+};
 use twilight_model::application::interaction::{Interaction, InteractionType};
-use twilight_model::channel::message::component::ButtonStyle;
+use twilight_model::channel::message::component::{
+    ButtonStyle, Component, Label, SelectMenuType,
+};
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{Embed, MessageFlags};
 use twilight_model::channel::permission_overwrite::{
@@ -69,6 +79,7 @@ use twilight_model::id::marker::{
 };
 use twilight_model::id::Id;
 use twilight_model::user::User;
+use twilight_util::builder::message::SelectMenuBuilder;
 use twitch_api::helix::users::GetUsersRequest;
 
 const REALLY_CANCEL_ID: &'static str = "really_cancel";
@@ -219,8 +230,8 @@ pub async fn handle_application_interaction(
                 .await
                 .map(|i| Some(i)),
         ),
-        ADD_PLAYER_TO_BRACKET_CMD => admin_command_wrapper(
-            handle_add_player_to_bracket(ac, interaction, state)
+        ADD_PLAYERS_TO_BRACKET_CMD => admin_command_wrapper(
+            handle_add_players_to_bracket(ac, interaction, state)
                 .await
                 .map(|i| Some(i)),
         ),
@@ -1158,77 +1169,262 @@ async fn handle_create_player(
     }
 }
 
-async fn handle_add_player_to_bracket(
+async fn handle_add_players_to_bracket(
     ac: Box<CommandData>,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
     match interaction.kind {
         InteractionType::ApplicationCommand => {
-            handle_add_player_to_bracket_submit(ac, interaction, state).await
+            handle_add_players_to_bracket_submit(ac, interaction, state).await
         }
         InteractionType::ApplicationCommandAutocomplete => {
-            handle_add_player_to_bracket_autocomplete(ac, interaction, state).await
+            handle_add_players_to_bracket_autocomplete(ac, interaction, state).await
         }
         _ => Err(format!(
             "Unexpected InteractionType for {}",
-            ADD_PLAYER_TO_BRACKET_CMD
+            ADD_PLAYERS_TO_BRACKET_CMD
         )),
     }
 }
 
-async fn handle_add_player_to_bracket_submit(
+fn add_players_to_bracket_modal_custom_id(bracket_id: i32) -> String {
+    format!("{CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL}:{bracket_id}")
+}
+
+fn bracket_id_from_add_players_modal_custom_id(custom_id: &str) -> Option<i32> {
+    let (prefix, bracket_id) = custom_id.split_once(':')?;
+    if prefix != CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL {
+        return None;
+    }
+    bracket_id.parse().ok()
+}
+
+async fn get_active_bracket_by_id(
+    bracket_id: i32,
+    state: &Arc<DiscordState>,
+) -> Result<Bracket, String> {
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let szn = Season::get_active_season(cxn.deref_mut())
+        .map_err(|e| e.to_string())?
+        .ok_or("There's no active season.".to_string())?;
+
+    szn.brackets(cxn.deref_mut())
+        .map_err(|e| e.to_string())?
+        .into_iter()
+        .find(|b| b.id == bracket_id)
+        .ok_or(format!(
+            "Cannot find bracket {bracket_id} in Season {}",
+            szn.ordinal
+        ))
+}
+
+#[derive(Default)]
+struct AddPlayersSummary {
+    added: Vec<String>,
+    created: Vec<String>,
+    already_in_bracket: Vec<String>,
+}
+
+async fn add_users_to_bracket(
+    bracket: Bracket,
+    users: Vec<User>,
+    state: &Arc<DiscordState>,
+) -> Result<String, String> {
+    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
+    let summary = cxn
+        .transaction::<AddPlayersSummary, diesel::result::Error, _>(|conn| {
+            let mut summary = AddPlayersSummary::default();
+            let mut existing_player_ids = bracket
+                .players(conn)?
+                .into_iter()
+                .map(|player| player.id)
+                .collect::<HashSet<_>>();
+
+            for user in users {
+                let (player, created) = Player::get_or_create_from_discord_user(user, conn)?;
+                if !existing_player_ids.insert(player.id) {
+                    summary.already_in_bracket.push(player.name);
+                    continue;
+                }
+
+                NewPlayerBracketEntry::new(&bracket, &player).save(conn)?;
+                if created {
+                    summary.created.push(player.name.clone());
+                }
+                summary.added.push(player.name);
+            }
+
+            Ok(summary)
+        })
+        .map_err(|e| e.to_string())?;
+
+    let mut message_parts = vec![];
+    if summary.added.is_empty() {
+        message_parts.push(format!("No new players were added to {}.", bracket.name));
+    } else {
+        message_parts.push(format!(
+            "Added {} to {}.",
+            summary.added.join(", "),
+            bracket.name
+        ));
+    }
+    if !summary.created.is_empty() {
+        message_parts.push(format!(
+            "New player records created (missing user info): {}.",
+            summary.created.join(", ")
+        ));
+    }
+    if !summary.already_in_bracket.is_empty() {
+        message_parts.push(format!(
+            "Already in {}: {}.",
+            bracket.name,
+            summary.already_in_bracket.join(", ")
+        ));
+    }
+
+    Ok(message_parts.join(" "))
+}
+
+fn add_players_to_bracket_modal_response(bracket: &Bracket) -> InteractionResponse {
+    let user_select = SelectMenuBuilder::new(
+        CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_USER_SELECT,
+        SelectMenuType::User,
+    )
+    .min_values(1)
+    .max_values(ADD_PLAYERS_TO_BRACKET_MAX_USERS as u8)
+    .required(true)
+    .placeholder("Select one or more players")
+    .build();
+
+    InteractionResponse {
+        kind: InteractionResponseType::Modal,
+        data: Some(InteractionResponseData {
+            custom_id: Some(add_players_to_bracket_modal_custom_id(bracket.id)),
+            title: Some("Add Players to Bracket".to_string()),
+            components: Some(vec![Component::Label(Label {
+                id: None,
+                label: "Choose players to add".to_string(),
+                description: Some(format!("Bracket: {}", bracket.name)),
+                component: Box::new(Component::SelectMenu(user_select)),
+            })]),
+            ..Default::default()
+        }),
+    }
+}
+
+fn get_user_select_from_modal_component(
+    component: ModalInteractionComponent,
+    custom_id: &str,
+) -> Option<Vec<Id<UserMarker>>> {
+    match component {
+        ModalInteractionComponent::UserSelect(select) => {
+            if select.custom_id == custom_id {
+                Some(select.values)
+            } else {
+                None
+            }
+        }
+        ModalInteractionComponent::ActionRow(action_row) => {
+            for component in action_row.components {
+                if let Some(values) = get_user_select_from_modal_component(component, custom_id) {
+                    return Some(values);
+                }
+            }
+            None
+        }
+        ModalInteractionComponent::Label(label) => {
+            get_user_select_from_modal_component(*label.component, custom_id)
+        }
+        _ => None,
+    }
+}
+
+fn users_from_modal_selection(
+    user_ids: Vec<Id<UserMarker>>,
+    resolved: Option<twilight_model::application::interaction::InteractionDataResolved>,
+    state: &Arc<DiscordState>,
+) -> Result<Vec<User>, String> {
+    let resolved_users = resolved.map(|r| r.users).unwrap_or_default();
+    let mut users = vec![];
+    let mut seen = HashSet::new();
+
+    for user_id in user_ids {
+        if !seen.insert(user_id) {
+            continue;
+        }
+        let user = resolved_users
+            .get(&user_id)
+            .cloned()
+            .or_else(|| state.get_user(user_id))
+            .ok_or_else(|| format!("Cannot find selected user {user_id}"))?;
+        users.push(user);
+    }
+
+    if users.is_empty() {
+        return Err("Please select at least one user.".to_string());
+    }
+
+    Ok(users)
+}
+
+pub async fn handle_add_players_to_bracket_modal_submit(
+    mut interaction_data: ModalInteractionData,
+    _interaction: Box<InteractionCreate>,
+    state: &Arc<DiscordState>,
+) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let bracket_id = bracket_id_from_add_players_modal_custom_id(&interaction_data.custom_id)
+        .ok_or_else(|| {
+            ErrorResponse::new(
+                "Unable to add players to the bracket.",
+                format!(
+                    "Unexpected custom id for add_players_to_bracket modal: {}",
+                    interaction_data.custom_id
+                ),
+            )
+        })?;
+
+    let user_ids = std::mem::take(&mut interaction_data.components)
+        .into_iter()
+        .find_map(|component| {
+            get_user_select_from_modal_component(
+                component,
+                CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_USER_SELECT,
+            )
+        })
+        .ok_or_else(|| {
+            ErrorResponse::new(
+                "Unable to add players to the bracket.",
+                "No user select values found on add_players_to_bracket modal submit.",
+            )
+        })?;
+
+    let users = users_from_modal_selection(user_ids, interaction_data.resolved.take(), state)
+        .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
+    let bracket = get_active_bracket_by_id(bracket_id, state)
+        .await
+        .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
+    let result = add_users_to_bracket(bracket, users, state)
+        .await
+        .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
+    Ok(Some(plain_interaction_response(result)))
+}
+
+async fn handle_add_players_to_bracket_submit(
     mut ac: Box<CommandData>,
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<InteractionResponse, String> {
-    let discord_id = get_opt_s!("user", &mut ac.options, User)?;
-    let bracket_name = get_opt_s!("bracket", &mut ac.options, String)?;
-    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let user = state.get_user(discord_id).ok_or("Cannot find that user")?;
-
-    let (player, created) = match Player::get_or_create_from_discord_user(user, cxn.deref_mut()) {
-        Ok(p) => p,
-        Err(e) => {
-            return Err(format!("Error getting or creating player: {e}"));
-        }
-    };
-
-    let update_pls_suffix = if created {
-        format!(" This player was freshly created and has no user info!")
-    } else {
-        "".to_string()
-    };
-
-    let szn = Season::get_active_season(cxn.deref_mut())
-        .map_err(|e| e.to_string())?
-        .ok_or("There's no active season.".to_string())?;
-    let bracket = szn
-        .brackets(cxn.deref_mut())
-        .map_err(|e| e.to_string())?
-        .into_iter()
-        .find(|b| b.name == bracket_name)
-        .ok_or(format!(
-            "Cannot find bracket {} in Season {}",
-            bracket_name, szn.ordinal
-        ))?;
-
-    let npbe = NewPlayerBracketEntry::new(&bracket, &player);
-    npbe.save(cxn.deref_mut())
-        .map(|_| {
-            plain_interaction_response(format!(
-                "{} added to {}.{update_pls_suffix}",
-                player.name, bracket.name
-            ))
-        })
-        .map_err(|e| e.to_string())
+    let bracket_id = get_opt_s!("bracket", &mut ac.options, Integer)?;
+    let bracket = get_active_bracket_by_id(bracket_id as i32, state).await?;
+    Ok(add_players_to_bracket_modal_response(&bracket))
 }
 
 async fn get_bracket_autocompletes(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
 ) -> Result<Vec<CommandOptionChoice>, String> {
-    get_focused_opt!("bracket", &mut ac.options, String).map_err_to_string()?;
+    get_focused_opt!("bracket", &mut ac.options, Integer).map_err_to_string()?;
 
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let szn = Season::get_active_season(cxn.deref_mut())
@@ -1240,12 +1436,12 @@ async fn get_bracket_autocompletes(
         .map(|b| CommandOptionChoice {
             name: b.name.clone(),
             name_localizations: None,
-            value: CommandOptionChoiceValue::String(b.name),
+            value: CommandOptionChoiceValue::Integer(b.id as i64),
         })
         .collect())
 }
 
-async fn handle_add_player_to_bracket_autocomplete(
+async fn handle_add_players_to_bracket_autocomplete(
     ac: Box<CommandData>,
     _interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
