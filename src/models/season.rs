@@ -258,9 +258,8 @@ impl NewSeason {
         rtgg_goal_name: S,
         conn: &mut SqliteConnection,
     ) -> Result<Self, diesel::result::Error> {
-        use diesel::dsl::max;
         let ordinal: i32 = (seasons::table
-            .select(max(schema::seasons::dsl::ordinal))
+            .select(diesel::dsl::max(schema::seasons::dsl::ordinal))
             .first::<Option<i32>>(conn)?)
         .unwrap_or(0)
             + 1;

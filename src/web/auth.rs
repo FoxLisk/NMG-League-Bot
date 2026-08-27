@@ -138,7 +138,7 @@ impl<'r> FromRequest<'r> for Admin {
             Some(c) => c.value(),
             None => {
                 debug!("No session cookie");
-                return Outcome::Forward(());
+                return Outcome::Forward(Status::Unauthorized);
             }
         };
         let st = SessionToken::new(cookie.to_string());
@@ -148,7 +148,7 @@ impl<'r> FromRequest<'r> for Admin {
         {
             Outcome::Success(s) => s,
             _ => {
-                return Outcome::Forward(());
+                return Outcome::Forward(Status::Unauthorized);
             }
         };
         let uid = {
@@ -157,8 +157,8 @@ impl<'r> FromRequest<'r> for Admin {
                 Ok(u) => u,
                 Err(e) => {
                     info!("User not found for session token {}: {:?}", st, e);
-                    request.cookies().remove(Cookie::named(SESSION_COOKIE_NAME));
-                    return Outcome::Forward(());
+                    request.cookies().remove(Cookie::from(SESSION_COOKIE_NAME));
+                    return Outcome::Forward(Status::Unauthorized);
                 }
             }
         };
@@ -166,7 +166,7 @@ impl<'r> FromRequest<'r> for Admin {
         let state = match request.guard::<&State<Arc<DiscordState>>>().await {
             Outcome::Success(s) => s,
             _ => {
-                return Outcome::Forward(());
+                return Outcome::Forward(Status::Unauthorized);
             }
         };
         match state.has_nmg_league_admin_role(uid).await {
@@ -180,10 +180,10 @@ impl<'r> FromRequest<'r> for Admin {
                     .unwrap_or("Unknown username".to_string());
                 debug!("Logging out {un} because they no longer have admin status");
                 sm.log_out_user(&st);
-                request.cookies().remove(Cookie::named(SESSION_COOKIE_NAME));
-                Outcome::Failure((Status::Forbidden, ()))
+                request.cookies().remove(Cookie::from(SESSION_COOKIE_NAME));
+                Outcome::Error((Status::Forbidden, ()))
             }
-            _ => Outcome::Forward(()),
+            _ => Outcome::Forward(Status::Unauthorized),
         }
     }
 }
@@ -264,9 +264,9 @@ async fn discord_login(
                         .unwrap_or(tokio::time::Duration::from_secs(60 * 60)),
             )
         };
-        let cookie = Cookie::build(SESSION_COOKIE_NAME, st.to_string())
+        let cookie = Cookie::build((SESSION_COOKIE_NAME, st.to_string()))
             .max_age(Duration::days(30))
-            .finish();
+            .build();
         cookies.add(cookie);
         info!("User {} has logged in as an admin", user_info.name);
         Ok(Template::render(

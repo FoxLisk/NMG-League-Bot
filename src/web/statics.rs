@@ -18,18 +18,18 @@ impl<'r> FromRequest<'r> for StaticAsset {
         let path = request.uri().path();
         let filename = match path.segments().last() {
             Some(f) => f,
-            None => return Outcome::Failure((rocket::http::Status::NotFound, ())),
+            None => return Outcome::Forward(rocket::http::Status::NotFound),
         };
         let suffix = match filename.rsplit('.').next() {
             None => {
-                return Outcome::Failure((rocket::http::Status::NotFound, ()));
+                return Outcome::Forward(rocket::http::Status::NotFound);
             }
             Some(s) => s,
         };
         if STATIC_SUFFIXES.contains(&suffix) {
             Outcome::Success(StaticAsset {})
         } else {
-            Outcome::Failure((rocket::http::Status::NotFound, ()))
+            Outcome::Forward(rocket::http::Status::NotFound)
         }
     }
 }

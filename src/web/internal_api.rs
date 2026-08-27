@@ -26,13 +26,13 @@ impl<'r> FromRequest<'r> for InternalAdmin {
             Err(e) => {
                 warn!("Error with AUTHZ_REGEX, unable to authorize for internal API: {e}");
 
-                return Outcome::Failure((Status::InternalServerError, ()));
+                return Outcome::Error((Status::InternalServerError, ()));
             }
         };
         let az = match request.headers().get_one("Authorization") {
             Some(az) => az,
             None => {
-                return Outcome::Failure((Status::Unauthorized, ()));
+                return Outcome::Error((Status::Unauthorized, ()));
             }
         };
         if let Some(provided_token) = re
@@ -44,7 +44,7 @@ impl<'r> FromRequest<'r> for InternalAdmin {
                 return Outcome::Success(Self {});
             }
         }
-        Outcome::Failure((Status::Unauthorized, ()))
+        Outcome::Error((Status::Unauthorized, ()))
     }
 }
 

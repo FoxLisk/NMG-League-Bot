@@ -81,12 +81,12 @@ impl<'r> FromRequest<'r> for ConnectionWrapper<'r> {
         {
             Outcome::Success(pool) => pool,
             _ => {
-                return Outcome::Failure((Status::InternalServerError, ()));
+                return Outcome::Error((Status::InternalServerError, ()));
             }
         };
         match pool.get().await {
             Ok(a) => Outcome::Success(ConnectionWrapper(a)),
-            Err(_) => Outcome::Failure((Status::InternalServerError, ())),
+            Err(_) => Outcome::Error((Status::InternalServerError, ())),
         }
     }
 }
