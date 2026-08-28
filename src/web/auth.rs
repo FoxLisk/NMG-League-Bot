@@ -188,17 +188,23 @@ impl<'r> FromRequest<'r> for Admin {
     }
 }
 
-// this has a "bug" where it doesn't check if you're logged in or not. this should probably
-// have a redirect if you have an Admin guard. but i don't feel like thinking about it right now.
 #[get("/login")]
-async fn login_page(client: &State<OauthClient>, mut db: ConnectionWrapper<'_>) -> Template {
+async fn login_page(
+    admin: Option<Admin>,
+    client: &State<OauthClient>,
+    mut db: ConnectionWrapper<'_>,
+) -> Result<Template, Redirect> {
+    if admin.is_some() {
+        return Err(Redirect::to("/"));
+    }
+
     let url = client.auth_url();
-    let bc = BaseContext::new(&mut db, &None);
+    let bc = BaseContext::new(&mut db, &admin);
     let ctx = context! {
         url: url.to_string(),
         base_context: bc,
     };
-    Template::render("login", ctx)
+    Ok(Template::render("login", ctx))
 }
 
 #[get("/discord_login?<code>&<state>&<error_description>")]

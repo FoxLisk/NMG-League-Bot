@@ -916,12 +916,16 @@ where
 
             history.add_race(race, round, id, &player_map);
         }
-        let mut histories: Vec<SeasonHistory> = season_histories.into_values().collect();
+        let mut histories: Vec<SeasonHistory> = season_histories
+            .into_values()
+            .filter(|history| !history.races.is_empty())
+            .collect();
         histories.sort_by_key(|s| s.season.season_ordinal);
         Ok(PlayerHistory { seasons: histories })
     }
 
     let player_history = match get_player_history(db, player.id) {
+        Ok(p) if p.seasons.is_empty() => None,
         Ok(p) => Some(p),
         Err(e) => {
             warn!("Error getting player season history: {e}");
