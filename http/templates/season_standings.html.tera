@@ -8,7 +8,7 @@
 <div id="standings-page-container" class="stats-container">
     {% for bracket in brackets %}
     <div class="bracket-standings-container">
-        <h2 class="bracket-title">Bracket: {{ bracket.name }}</h2>
+        <h2 class="bracket-title">Bracket: <a href="{{ bracket.url }}">{{ bracket.name }}</a></h2>
 
         {{ macros::backfill_note(bracket=bracket) }}
 

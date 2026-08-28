@@ -543,6 +543,7 @@ struct StandingsPlayer {
 #[derive(Serialize)]
 struct StandingsBracket {
     name: String,
+    url: String,
     backfill_note: Option<String>,
     players: Vec<StandingsPlayer>,
 }
@@ -622,6 +623,11 @@ fn get_standings_context(
                 .collect()
         };
         ctx_brackets.push(StandingsBracket {
+            url: uri!(bracket_detail(
+                season_ordinal = szn.ordinal,
+                bracket_id = bracket.id
+            ))
+            .to_string(),
             name: bracket.name,
             backfill_note: bracket.backfill_note,
             players: sps,

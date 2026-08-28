@@ -45,7 +45,7 @@ use racetime_api::endpoint::Query;
 use racetime_api::endpoints::UserSearch;
 use racetime_api::types::UserSearchResult;
 use regex::{Regex, RegexBuilder};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use std::sync::Arc;
 use twilight_http::request::application::interaction::UpdateResponse;
@@ -437,6 +437,12 @@ async fn _handle_schedule_race_cmd(
         }
     };
 
+    if dt.timestamp() <= Utc::now().timestamp() {
+        return Ok(UpdateResponseBag::new_content(
+            "Please choose a date and time in the future.",
+        ));
+    }
+
     let mut cxn = state
         .diesel_cxn()
         .await
@@ -588,7 +594,23 @@ async fn scheduled_races_autocomplete(
     // TODO: we are simply assuming that this is an autocomplete for the "race" field, because it's annoying to verify right now
 
     let mut conn = state.diesel_cxn().await.map_err_to_string()?;
-    let scheduled_races = BracketRace::scheduled(&mut conn).map_err_to_string()?;
+    let mut scheduled_races = BracketRace::scheduled(&mut conn).map_err_to_string()?;
+    let race_infos = scheduled_races
+        .iter()
+        .map(|race| {
+            race.info(&mut conn)
+                .map(|info| (race.id, info))
+                .map_err_to_string()
+        })
+        .collect::<Result<HashMap<_, _>, _>>()?;
+    scheduled_races.sort_by_key(|race| {
+        std::cmp::Reverse(
+            race_infos
+                .get(&race.id)
+                .and_then(|info| info.scheduled_for)
+                .unwrap_or_default(),
+        )
+    });
     let mut options = Vec::with_capacity(scheduled_races.len());
 
     let pids = scheduled_races
@@ -608,7 +630,16 @@ async fn scheduled_races_autocomplete(
         let title = {
             let p1 = name(race.player_1_id);
             let p2 = name(race.player_2_id);
-            format!("{p1} vs {p2}")
+            let scheduled = race_infos
+                .get(&race.id)
+                .and_then(|info| info.scheduled())
+                .map(|time| {
+                    time.with_timezone(&chrono_tz::US::Eastern)
+                        .format("%a %b %-d, %-I:%M %p %Z")
+                        .to_string()
+                })
+                .unwrap_or("Unknown time".to_string());
+            format!("{p1} vs {p2} - {scheduled}")
         };
 
         options.push(CommandOptionChoice {
