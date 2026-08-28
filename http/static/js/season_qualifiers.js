@@ -104,6 +104,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     let qualifiers = await get_qualifiers(season_ordinal);
     try {
         var obsolete_hidden = true;
+        function effect_obsolete_hidden() {
+            let obsolete_rows = document.querySelectorAll('tr.obsolete-qualifier-times');
+            if (obsolete_hidden) {
+                obsolete_rows.forEach(r => { r.classList.add('hidden'); });
+                toggle_obsolete_button.textContent = 'Show obsolete';
+            } else {
+                obsolete_rows.forEach(r => { r.classList.remove('hidden'); });
+                toggle_obsolete_button.textContent = 'Hide obsolete';
+            }
+        }
         function rebuild() {
             tbody.innerHTML = "";
             let rows = build_rows(qualifiers);
@@ -116,27 +126,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 wrapper.classList.remove('hidden');
             }
             rows.map(r => tbody.appendChild(r));
-            let obsolete_rows = document.querySelectorAll('tr.obsolete-qualifier-times');
             toggle_obsolete_button.classList.remove("hidden");
             table.classList.remove('hidden');
-            function effect_obsolete_hidden() {
-                if (obsolete_hidden) {
-                    // hide things
-                    obsolete_rows.forEach(r => { r.classList.add('hidden'); });
-                    toggle_obsolete_button.textContent = 'Show obsolete';
-                } else {
-                    // show things
-                    obsolete_rows.forEach(r => { r.classList.remove('hidden'); });
-                    toggle_obsolete_button.textContent = 'Hide obsolete';
-                }
-            }
             effect_obsolete_hidden();
-            toggle_obsolete_button.addEventListener('click', e => {
-                e.preventDefault();
-                obsolete_hidden = !obsolete_hidden;
-                effect_obsolete_hidden();
-            });
         }
+        toggle_obsolete_button.addEventListener('click', e => {
+            e.preventDefault();
+            obsolete_hidden = !obsolete_hidden;
+            effect_obsolete_hidden();
+        });
         tbody.addEventListener('click', async e => {
             let delete_ = e.target.closest('.delete-qualifier');
             if (!delete_) {
