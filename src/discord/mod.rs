@@ -52,6 +52,7 @@ mod webhooks;
 mod application_command_definitions;
 mod components;
 pub(crate) mod discord_state;
+mod interaction_context;
 mod interaction_diagnostics;
 mod interaction_handlers;
 mod interactions_utils;

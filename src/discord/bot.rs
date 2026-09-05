@@ -1,3 +1,4 @@
+use crate::discord::interaction_context::InteractionContext;
 use crate::discord::interaction_diagnostics::InteractionDiagnostics;
 use core::default::Default;
 use std::sync::Arc;
@@ -192,9 +193,10 @@ If anything goes wrong, tell an admin there was an issue with run `{}`
 
 async fn handle_async_run_start(
     _component_data: MessageComponentInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const USER_FACING_ERROR: &str = "There was an error starting your race. Please ping FoxLisk.";
     let mid = interaction
         .message
@@ -290,12 +292,13 @@ lazy_static! {
 // this is the method that handles the last forfeit step, after the player enters 'forfeit' and submits that
 async fn handle_run_forfeit_modal(
     mut interaction_data: ModalInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const USER_FACING_ERROR: &str =
         "Something went wrong forfeiting this race. Please ping FoxLisk.";
-    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
+    let mid = interaction_to_message_id(interaction, USER_FACING_ERROR)?;
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction_data.components),
         CUSTOM_ID_FORFEIT_MODAL_INPUT,
@@ -352,11 +355,12 @@ fn create_modal(
 }
 
 async fn handle_async_run_finish(
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const USER_FACING_ERROR: &str = "Something went wrong finishing this run. Please ping FoxLisk.";
-    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
+    let mid = interaction_to_message_id(interaction, USER_FACING_ERROR)?;
     let mut conn = state
         .diesel_cxn()
         .await
@@ -423,12 +427,13 @@ fn get_field_from_modal_components(
 
 async fn handle_user_time_modal(
     mut interaction_data: ModalInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const USER_FACING_ERROR: &str =
         "Something went wrong reporting your time. Please ping FoxLisk.";
-    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
+    let mid = interaction_to_message_id(interaction, USER_FACING_ERROR)?;
     let ut = get_field_from_modal_components(
         std::mem::take(&mut interaction_data.components),
         CUSTOM_ID_USER_TIME,
@@ -489,11 +494,12 @@ fn handle_async_vod_ready() -> InteractionResponse {
 
 async fn handle_vod_modal(
     mut interaction_data: ModalInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const USER_FACING_ERROR: &str = "Something went wrong reporting your VoD. Please ping FoxLisk.";
-    let mid = interaction_to_message_id(&interaction, USER_FACING_ERROR)?;
+    let mid = interaction_to_message_id(interaction, USER_FACING_ERROR)?;
     let user_input = get_field_from_modal_components(
         std::mem::take(&mut interaction_data.components),
         CUSTOM_ID_VOD_MODAL_INPUT,
@@ -523,13 +529,12 @@ async fn handle_vod_modal(
 
 async fn handle_button_interaction(
     interaction_data: MessageComponentInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction_data.custom_id.as_str() {
-        CUSTOM_ID_START_RUN => handle_async_run_start(interaction_data, interaction, state).await,
+        CUSTOM_ID_START_RUN => handle_async_run_start(interaction_data, ctx).await,
         CUSTOM_ID_FORFEIT_RUN => Ok(Some(handle_async_run_forfeit_button())),
-        CUSTOM_ID_FINISH_RUN => handle_async_run_finish(interaction, state).await,
+        CUSTOM_ID_FINISH_RUN => handle_async_run_finish(ctx).await,
         CUSTOM_ID_VOD_READY => Ok(Some(handle_async_vod_ready())),
         _ => {
             info!("Unhandled button: {:?}", interaction_data);
@@ -540,27 +545,15 @@ async fn handle_button_interaction(
 
 async fn handle_modal_submission(
     interaction_data: ModalInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-    diagnostics: &InteractionDiagnostics,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction_data.custom_id.as_str() {
         custom_id if custom_id.starts_with(CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL) => {
-            handle_add_players_to_bracket_modal_submit(
-                interaction_data,
-                interaction,
-                state,
-                diagnostics,
-            )
-            .await
+            handle_add_players_to_bracket_modal_submit(interaction_data, ctx).await
         }
-        CUSTOM_ID_USER_TIME_MODAL => {
-            handle_user_time_modal(interaction_data, interaction, state).await
-        }
-        CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction_data, interaction, state).await,
-        CUSTOM_ID_FORFEIT_MODAL => {
-            handle_run_forfeit_modal(interaction_data, interaction, state).await
-        }
+        CUSTOM_ID_USER_TIME_MODAL => handle_user_time_modal(interaction_data, ctx).await,
+        CUSTOM_ID_VOD_MODAL => handle_vod_modal(interaction_data, ctx).await,
+        CUSTOM_ID_FORFEIT_MODAL => handle_run_forfeit_modal(interaction_data, ctx).await,
         _ => {
             info!("Unhandled modal: {:?}", interaction_data);
             Ok(None)
@@ -569,25 +562,19 @@ async fn handle_modal_submission(
 }
 
 async fn _handle_interaction(
-    mut interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-    diagnostics: &InteractionDiagnostics,
+    data: Option<InteractionData>,
+    ctx: &Arc<InteractionContext>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
-    let data = std::mem::take(&mut interaction.0.data);
     if let Some(id) = data {
         match id {
             InteractionData::ApplicationCommand(ac) => {
-                handle_application_interaction(ac, interaction, &state, diagnostics).await
+                handle_application_interaction(ac, ctx).await
             }
-            InteractionData::MessageComponent(mc) => {
-                handle_button_interaction(*mc, interaction, &state).await
-            }
-            InteractionData::ModalSubmit(ms) => {
-                handle_modal_submission(*ms, interaction, &state, diagnostics).await
-            }
+            InteractionData::MessageComponent(mc) => handle_button_interaction(*mc, ctx).await,
+            InteractionData::ModalSubmit(ms) => handle_modal_submission(*ms, ctx).await,
 
             _ => {
-                warn!("Unhandled interaction: {:?}", interaction);
+                warn!("Unhandled interaction: {:?}", ctx.interaction);
                 Ok(None)
             }
         }
@@ -600,24 +587,26 @@ async fn _handle_interaction(
 /// Handles an interaction. This attempts to dispatch to the relevant processing code, and then
 /// creates any responses as specified, and alerts admins via webhook if there is a problem.
 async fn handle_interaction(
-    interaction: Box<InteractionCreate>,
+    mut interaction: Box<InteractionCreate>,
     state: Arc<DiscordState>,
     diagnostics: InteractionDiagnostics,
 ) {
-    let interaction_id = interaction.id;
-    let token = interaction.token.clone();
-
     let interaction_debug = format!("{interaction:?}");
     debug!("Handling interaction: {interaction_debug}");
+    let data = interaction.data.take();
+    let ctx = Arc::new(InteractionContext {
+        interaction,
+        state,
+        diagnostics,
+    });
     let handler_started = Instant::now();
-    let (user_resp, admin_message) =
-        match _handle_interaction(interaction, &state, &diagnostics).await {
-            Ok(o) => (o, None),
-            Err(e) => (
-                Some(plain_interaction_response(e.user_facing_error)),
-                Some(e.internal_error),
-            ),
-        };
+    let (user_resp, admin_message) = match _handle_interaction(data, &ctx).await {
+        Ok(o) => (o, None),
+        Err(e) => (
+            Some(plain_interaction_response(e.user_facing_error)),
+            Some(e.internal_error),
+        ),
+    };
     let handler_ms = handler_started.elapsed().as_millis();
     let handler_outcome = if admin_message.is_some() {
         "failed before the response attempt"
@@ -640,9 +629,7 @@ async fn handle_interaction(
         .unwrap_or_else(|| "none".into());
     if let Some(u) = user_resp {
         info!("handle_interaction trying to send response {:?}", u);
-        let result = state
-            .create_response_err_to_str(interaction_id, &token, &u)
-            .await;
+        let result = ctx.respond(&u).await;
         request_finished = Instant::now();
         response_outcome = "succeeded";
         if let Err(more_errors) = result {
@@ -668,14 +655,14 @@ async fn handle_interaction(
             "Initial acknowledgment: {response_outcome}\nCommand outcome: {handler_outcome}; command elapsed: {handler_ms} ms\n{final_message}"
         );
         let report = if response_failed {
-            diagnostics.initial_response_failure_report(
+            ctx.diagnostics.initial_response_failure_report(
                 &format!("initial response {response_kind}"),
                 request_started,
                 request_finished,
                 &details,
             )
         } else {
-            diagnostics.report(
+            ctx.diagnostics.report(
                 &format!("initial response {response_kind}"),
                 request_started,
                 request_finished,
@@ -683,7 +670,7 @@ async fn handle_interaction(
             )
         };
         warn!("{report}");
-        state.submit_error(report).await;
+        ctx.state.submit_error(report).await;
     }
 }
 

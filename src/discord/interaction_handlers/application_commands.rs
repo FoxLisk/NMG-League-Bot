@@ -13,7 +13,7 @@ use crate::discord::constants::{
 
 use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
-use crate::discord::interaction_diagnostics::InteractionDiagnostics;
+use crate::discord::interaction_context::InteractionContext;
 use crate::discord::interactions_utils::{
     autocomplete_result, button_component, get_subcommand_options, interaction_to_custom_id,
     plain_ephemeral_response, plain_interaction_response, update_resp_to_plain_content,
@@ -129,31 +129,25 @@ impl UpdateResponseBag {
 async fn long_command_wrapper<F, Fut, S>(
     func: F,
     ac: Box<CommandData>,
-    ic: Box<InteractionCreate>,
-    state: Arc<S>,
-    diagnostics: &InteractionDiagnostics,
+    ctx: Arc<InteractionContext<S>>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse>
 where
     S: DiscordOperations + Send + Sync + 'static,
-    F: FnOnce(Box<CommandData>, Box<InteractionCreate>, Arc<S>) -> Fut + Send + 'static,
+    F: FnOnce(Box<CommandData>, Arc<InteractionContext<S>>) -> Fut + Send + 'static,
     Fut: Future<Output = Result<UpdateResponseBag, ErrorResponse>> + Send + 'static,
 {
     // Await Discord's acknowledgment before starting work or editing the original response.
     let request_started = Instant::now();
-    if let Err(error) = state
-        .create_response_err_to_str(
-            ic.id,
-            &ic.token,
-            &InteractionResponse {
-                kind: InteractionResponseType::DeferredChannelMessageWithSource,
-                data: None,
-            },
-        )
+    if let Err(error) = ctx
+        .respond(&InteractionResponse {
+            kind: InteractionResponseType::DeferredChannelMessageWithSource,
+            data: None,
+        })
         .await
     {
         let request_finished = Instant::now();
-        state
-            .submit_error(diagnostics.initial_response_failure_report(
+        ctx.state
+            .submit_error(ctx.diagnostics.initial_response_failure_report(
                 "initial deferral (DeferredChannelMessageWithSource)",
                 request_started,
                 request_finished,
@@ -163,12 +157,9 @@ where
         // Report directly: returning Err would make the dispatcher attempt another initial response.
         return Ok(None);
     }
-    let diagnostics = diagnostics.clone();
     tokio::spawn(async move {
-        // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
-        let token = ic.token.clone();
         let work_started = Instant::now();
-        let r = func(ac, ic, state.clone()).await;
+        let r = func(ac, ctx.clone()).await;
         let work_ms = work_started.elapsed().as_millis();
         let (response, handler_error) = match r {
             Ok(response) => (response, None),
@@ -181,12 +172,15 @@ where
             ),
         };
         let request_started = Instant::now();
-        let client = state.interaction_client();
-        let update_error = response.hydrate(client.update_response(&token)).await.err();
+        let client = ctx.state.interaction_client();
+        let update_error = response
+            .hydrate(client.update_response(&ctx.interaction.token))
+            .await
+            .err();
         let request_finished = Instant::now();
         if handler_error.is_some() || update_error.is_some() {
-            state
-                .submit_error(diagnostics.report(
+            ctx.state
+                .submit_error(ctx.diagnostics.report(
                     "edit deferred response (initial acknowledgment succeeded)",
                     request_started,
                     request_finished,
@@ -206,26 +200,19 @@ where
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
 pub async fn handle_application_interaction(
     ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-    diagnostics: &InteractionDiagnostics,
+    ctx: &Arc<InteractionContext>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     // general (non-admin) commands
     match ac.name.as_str() {
         SCHEDULE_RACE_CMD => {
             return match interaction.kind {
                 InteractionType::ApplicationCommand => {
-                    long_command_wrapper(
-                        _handle_schedule_race_cmd,
-                        ac,
-                        interaction,
-                        state.clone(),
-                        diagnostics,
-                    )
-                    .await
+                    long_command_wrapper(_handle_schedule_race_cmd, ac, ctx.clone()).await
                 }
                 InteractionType::ApplicationCommandAutocomplete => {
-                    handle_schedule_race_autocomplete(ac, interaction, &state)
+                    handle_schedule_race_autocomplete(ac, ctx)
                         .map(|i| Some(i))
                         .map_err(|e| ErrorResponse::new("Unexpected error thinking about days.", e))
                 }
@@ -236,21 +223,21 @@ pub async fn handle_application_interaction(
             };
         }
         SUBMIT_QUALIFIER_CMD => {
-            return handle_submit_qualifier(ac, interaction, state).await;
+            return handle_submit_qualifier(ac, ctx).await;
         }
         UPDATE_USER_INFO_CMD => {
-            return handle_update_user_info(ac, interaction, state).await;
+            return handle_update_user_info(ac, ctx).await;
         }
         CHECK_USER_INFO_CMD => {
-            return handle_check_user_info(ac, interaction, state).await;
+            return handle_check_user_info(ac, ctx).await;
         }
         USER_PROFILE_CMD => {
-            return handle_user_profile(ac, interaction, state).await;
+            return handle_user_profile(ac, ctx).await;
         }
 
         _ => {}
     };
-    match state.application_command_run_by_admin(&interaction).await {
+    match state.application_command_run_by_admin(interaction).await {
         Ok(true) => {}
         Ok(false) => {
             return Ok(Some(plain_interaction_response(
@@ -271,13 +258,11 @@ pub async fn handle_application_interaction(
                 "This response should fail because the test interaction was allowed to expire.",
             )))
         }
-        CREATE_PLAYER_CMD => admin_command_wrapper(
-            handle_create_player(ac, interaction, state)
-                .await
-                .map(|i| Some(i)),
-        ),
+        CREATE_PLAYER_CMD => {
+            admin_command_wrapper(handle_create_player(ac, ctx).await.map(|i| Some(i)))
+        }
         ADD_PLAYERS_TO_BRACKET_CMD => admin_command_wrapper(
-            handle_add_players_to_bracket(ac, interaction, state)
+            handle_add_players_to_bracket(ac, ctx)
                 .await
                 .map(|i| Some(i)),
         ),
@@ -291,19 +276,12 @@ pub async fn handle_application_interaction(
         RESCHEDULE_RACE_CMD => {
             match interaction.kind {
                 InteractionType::ApplicationCommand => {
-                    long_command_wrapper(
-                        handle_reschedule_race_cmd,
-                        ac,
-                        interaction,
-                        state.clone(),
-                        diagnostics,
-                    )
-                    .await
+                    long_command_wrapper(handle_reschedule_race_cmd, ac, ctx.clone()).await
                 }
                 InteractionType::ApplicationCommandAutocomplete => {
                     // N.B. this will have to change if/when i add race id autocompletion
                     admin_command_wrapper(
-                        handle_schedule_race_autocomplete(ac, interaction, state).map(|i| Some(i)),
+                        handle_schedule_race_autocomplete(ac, ctx).map(|i| Some(i)),
                     )
                 }
                 _ => Ok(Some(plain_interaction_response(format!(
@@ -313,31 +291,17 @@ pub async fn handle_application_interaction(
             }
         }
 
-        CANCEL_ASYNC_CMD => admin_command_wrapper(handle_cancel_race(ac, interaction, state).await),
+        CANCEL_ASYNC_CMD => admin_command_wrapper(handle_cancel_race(ac, ctx).await),
         CREATE_SEASON_CMD => {
             admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
         SET_SEASON_STATE_CMD => {
-            long_command_wrapper(
-                handle_set_season_state,
-                ac,
-                interaction,
-                state.clone(),
-                diagnostics,
-            )
-            .await
+            long_command_wrapper(handle_set_season_state, ac, ctx.clone()).await
         }
 
         CREATE_BRACKET_CMD => match interaction.kind {
             InteractionType::ApplicationCommand => {
-                long_command_wrapper(
-                    handle_create_bracket,
-                    ac,
-                    interaction,
-                    state.clone(),
-                    diagnostics,
-                )
-                .await
+                long_command_wrapper(handle_create_bracket, ac, ctx.clone()).await
             }
             _ => Ok(Some(plain_interaction_response(format!(
                 "Unexpected InteractionType for {}",
@@ -363,14 +327,10 @@ pub async fn handle_application_interaction(
 
         COMMENTATORS_CMD => admin_command_wrapper(match interaction.kind {
             InteractionType::ApplicationCommand => {
-                handle_commentator_command(ac, interaction, state)
-                    .await
-                    .map(Some)
+                handle_commentator_command(ac, ctx).await.map(Some)
             }
             InteractionType::ApplicationCommandAutocomplete => {
-                scheduled_races_autocomplete(ac, interaction, state)
-                    .await
-                    .map(Some)
+                scheduled_races_autocomplete(ac, ctx).await.map(Some)
             }
             _ => Ok(Some(plain_interaction_response(format!(
                 "Unexpected InteractionType for {}",
@@ -379,13 +339,9 @@ pub async fn handle_application_interaction(
         }),
 
         SET_RESTREAM_CMD => admin_command_wrapper(match interaction.kind {
-            InteractionType::ApplicationCommand => {
-                handle_set_restream(ac, interaction, state).await.map(Some)
-            }
+            InteractionType::ApplicationCommand => handle_set_restream(ac, ctx).await.map(Some),
             InteractionType::ApplicationCommandAutocomplete => {
-                scheduled_races_autocomplete(ac, interaction, state)
-                    .await
-                    .map(Some)
+                scheduled_races_autocomplete(ac, ctx).await.map(Some)
             }
             _ => Ok(Some(plain_interaction_response(format!(
                 "Unexpected InteractionType for {}",
@@ -484,15 +440,16 @@ fn get_datetime_from_scheduling_cmd(
 
 async fn _handle_schedule_race_cmd(
     mut ac: Box<CommandData>,
-    mut interaction: Box<InteractionCreate>,
-    state: Arc<DiscordState>,
+    ctx: Arc<InteractionContext>,
 ) -> Result<UpdateResponseBag, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
-    let member = std::mem::take(&mut interaction.member).ok_or(ErrorResponse::new(
+    let member = interaction.member.as_ref().ok_or(ErrorResponse::new(
         BLAND_USER_FACING_ERROR,
         "No member found on schedule_race command!",
     ))?;
-    let user = member.user.ok_or(ErrorResponse::new(
+    let user = member.user.as_ref().ok_or(ErrorResponse::new(
         BLAND_USER_FACING_ERROR,
         "No user found on member struct for a schedule_race command!",
     ))?;
@@ -623,7 +580,7 @@ async fn _handle_schedule_race_cmd(
         },
     };
 
-    match discord::schedule_race(the_race, dt, &state).await {
+    match discord::schedule_race(the_race, dt, state).await {
         Ok(s) => Ok(UpdateResponseBag::new_content(s)),
         Err(ScheduleRaceError::RaceFinished) => Ok(UpdateResponseBag::new_content(
             "Your race for this round is already finished.",
@@ -634,8 +591,7 @@ async fn _handle_schedule_race_cmd(
 
 fn handle_schedule_race_autocomplete(
     mut ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    _state: &Arc<DiscordState>,
+    _ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
     get_focused_opt!("day", &mut ac.options, String).map_err_to_string()?;
 
@@ -655,9 +611,9 @@ fn handle_schedule_race_autocomplete(
 
 async fn scheduled_races_autocomplete(
     _ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let state = &ctx.state;
     // TODO: we are simply assuming that this is an autocomplete for the "race" field, because it's annoying to verify right now
 
     let mut conn = state.diesel_cxn().await.map_err_to_string()?;
@@ -720,9 +676,9 @@ async fn scheduled_races_autocomplete(
 
 async fn handle_commentator_command(
     mut ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let state = &ctx.state;
     let (cmd_s, mut subcommand_opts) =
         get_subcommand_options(std::mem::take(&mut ac.options)).map_err_to_string()?;
     enum Cmd {
@@ -774,9 +730,9 @@ async fn handle_commentator_command(
 
 async fn handle_set_restream(
     mut ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let state = &ctx.state;
     let race_id = get_opt_s!("race", &mut ac.options, Integer)?;
     let channel = get_opt_s!("channel", &mut ac.options, String)?;
     let mut conn = state.diesel_cxn().await.map_err_to_string()?;
@@ -826,9 +782,10 @@ fn normalize_racetime_name(name: &str) -> String {
 
 async fn handle_update_user_info(
     mut ac: Box<CommandData>,
-    mut interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
     let nickname = get_opt_s!("nickname", &mut ac.options, String).ok();
     let twitch = get_opt_s!("twitch", &mut ac.options, String).ok();
@@ -838,7 +795,7 @@ async fn handle_update_user_info(
             "You did not provide any information to update.",
         )));
     }
-    let user = get_user_from_interaction(&mut interaction).ok_or(ErrorResponse::new(
+    let user = get_user_from_interaction(interaction).ok_or(ErrorResponse::new(
         BLAND_USER_FACING_ERROR,
         "Unable to find user on handle_update_user_info command",
     ))?;
@@ -922,9 +879,9 @@ async fn handle_update_user_info(
 
 async fn handle_user_profile(
     ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let state = &ctx.state;
     fn get_user(ac: Box<CommandData>) -> Result<User, &'static str> {
         let id = ac
             .target_id
@@ -952,11 +909,12 @@ async fn handle_user_profile(
 
 async fn handle_check_user_info(
     mut _ac: Box<CommandData>,
-    mut interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
-    let user = get_user_from_interaction(&mut interaction).ok_or(ErrorResponse::new(
+    let user = get_user_from_interaction(interaction).ok_or(ErrorResponse::new(
         BLAND_USER_FACING_ERROR,
         "Unable to find user on handle_check_user_info command",
     ))?;
@@ -1111,18 +1069,18 @@ async fn validate_racetime_username(
     }
 }
 
-/// destroys interaction.member
-fn get_user_from_interaction(interaction: &mut Box<InteractionCreate>) -> Option<User> {
-    std::mem::take(&mut interaction.member)?.user
+fn get_user_from_interaction(interaction: &InteractionCreate) -> Option<User> {
+    interaction.member.as_ref()?.user.clone()
 }
 
 async fn handle_submit_qualifier(
     mut ac: Box<CommandData>,
-    mut interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     const BLAND_USER_FACING_ERROR: &str = "Internal error. Sorry.";
-    let user = get_user_from_interaction(&mut interaction).ok_or(ErrorResponse::new(
+    let user = get_user_from_interaction(interaction).ok_or(ErrorResponse::new(
         BLAND_USER_FACING_ERROR,
         "Unable to find user on handle_submit_qualifier command",
     ))?;
@@ -1204,13 +1162,14 @@ fn active_season_with_quals_open(
 
 async fn handle_reschedule_race_cmd(
     ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: Arc<DiscordState>,
+    ctx: Arc<InteractionContext>,
 ) -> Result<UpdateResponseBag, ErrorResponse> {
-    Ok(match _handle_reschedule_race_cmd(ac, state).await {
-        Ok(u) => u,
-        Err(e) => UpdateResponseBag::new_content(e),
-    })
+    Ok(
+        match _handle_reschedule_race_cmd(ac, ctx.state.clone()).await {
+            Ok(u) => u,
+            Err(e) => UpdateResponseBag::new_content(e),
+        },
+    )
 }
 
 async fn _handle_reschedule_race_cmd(
@@ -1237,9 +1196,9 @@ async fn _handle_reschedule_race_cmd(
 
 async fn handle_create_player(
     mut ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let state = &ctx.state;
     let discord_user = get_opt_s!("user", &mut ac.options, User)?;
     let rt_un = get_opt_s!("rtgg_username", &mut ac.options, String)?;
     let twitch_name = get_opt_s!("twitch_username", &mut ac.options, String)?;
@@ -1269,15 +1228,13 @@ async fn handle_create_player(
 
 async fn handle_add_players_to_bracket(
     ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let interaction = &ctx.interaction;
     match interaction.kind {
-        InteractionType::ApplicationCommand => {
-            handle_add_players_to_bracket_submit(ac, interaction, state).await
-        }
+        InteractionType::ApplicationCommand => handle_add_players_to_bracket_submit(ac, ctx).await,
         InteractionType::ApplicationCommandAutocomplete => {
-            handle_add_players_to_bracket_autocomplete(ac, interaction, state).await
+            handle_add_players_to_bracket_autocomplete(ac, ctx).await
         }
         _ => Err(format!(
             "Unexpected InteractionType for {}",
@@ -1509,10 +1466,10 @@ fn users_from_modal_selection(
 
 pub async fn handle_add_players_to_bracket_modal_submit(
     mut interaction_data: ModalInteractionData,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
-    diagnostics: &InteractionDiagnostics,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
+    let state = &ctx.state;
+    let diagnostics = &ctx.diagnostics;
     let bracket_id = bracket_id_from_add_players_modal_custom_id(&interaction_data.custom_id)
         .ok_or_else(|| {
             ErrorResponse::new(
@@ -1546,15 +1503,11 @@ pub async fn handle_add_players_to_bracket_modal_submit(
         .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
     // A batch of role assignments may take longer than Discord's response deadline.
     let request_started = Instant::now();
-    if let Err(error) = state
-        .create_response(
-            interaction.id,
-            &interaction.token,
-            &InteractionResponse {
-                kind: InteractionResponseType::DeferredChannelMessageWithSource,
-                data: None,
-            },
-        )
+    if let Err(error) = ctx
+        .respond(&InteractionResponse {
+            kind: InteractionResponseType::DeferredChannelMessageWithSource,
+            data: None,
+        })
         .await
     {
         let request_finished = Instant::now();
@@ -1575,7 +1528,7 @@ pub async fn handle_add_players_to_bracket_modal_submit(
     let request_started = Instant::now();
     if let Err(e) = state
         .interaction_client()
-        .update_response(&interaction.token)
+        .update_response(&ctx.interaction.token)
         .content(Some(&result))
         .await
     {
@@ -1594,9 +1547,9 @@ pub async fn handle_add_players_to_bracket_modal_submit(
 
 async fn handle_add_players_to_bracket_submit(
     mut ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let state = &ctx.state;
     let bracket_id = get_opt_s!("bracket", &mut ac.options, Integer)?;
     let bracket = get_active_bracket_by_id(bracket_id as i32, state).await?;
     Ok(add_players_to_bracket_modal_response(&bracket))
@@ -1625,9 +1578,9 @@ async fn get_bracket_autocompletes(
 
 async fn handle_add_players_to_bracket_autocomplete(
     ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<InteractionResponse, String> {
+    let state = &ctx.state;
     // just to validate that we're autocompleting what we think we are.
     let options = match get_bracket_autocompletes(ac, state).await {
         Ok(o) => o,
@@ -1719,9 +1672,10 @@ async fn handle_create_race(
 
 async fn handle_cancel_race(
     mut ac: Box<CommandData>,
-    interaction: Box<InteractionCreate>,
-    state: &Arc<DiscordState>,
+    ctx: &InteractionContext,
 ) -> Result<Option<InteractionResponse>, String> {
+    let interaction = &ctx.interaction;
+    let state = &ctx.state;
     let race_id = get_opt_s!("race_id", &mut ac.options, Integer)?;
 
     if !ac.options.is_empty() {
@@ -1773,7 +1727,7 @@ async fn handle_cancel_race(
 // this method returns () because it is taking over the interaction flow. we're adding a new
 // interaction cycle and not operating on the original interaction anymore.
 async fn handle_cancel_race_started(
-    ac: Box<InteractionCreate>,
+    ac: &InteractionCreate,
     race: AsyncRace,
     r1: AsyncRaceRun,
     r2: AsyncRaceRun,
@@ -1925,10 +1879,9 @@ fn update_interaction_message_to_plain_text<'a>(
 
 async fn handle_set_season_state(
     ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: Arc<DiscordState>,
+    ctx: Arc<InteractionContext>,
 ) -> Result<UpdateResponseBag, ErrorResponse> {
-    Ok(match _handle_set_season_state(ac, &state).await {
+    Ok(match _handle_set_season_state(ac, &ctx.state).await {
         Ok(message) => UpdateResponseBag::new_content(message),
         Err(e) => UpdateResponseBag::new_content(e),
     })
@@ -2189,10 +2142,9 @@ async fn handle_see_unscheduled_races(
 
 async fn handle_create_bracket(
     ac: Box<CommandData>,
-    _interaction: Box<InteractionCreate>,
-    state: Arc<DiscordState>,
+    ctx: Arc<InteractionContext>,
 ) -> Result<UpdateResponseBag, ErrorResponse> {
-    Ok(match _handle_create_bracket(ac, &state).await {
+    Ok(match _handle_create_bracket(ac, &ctx.state).await {
         Ok(u) => u,
         Err(e) => UpdateResponseBag::new_content(e),
     })
@@ -2539,6 +2491,7 @@ async fn handle_generate_pairings(
 mod tests {
     use super::{long_command_wrapper, UpdateResponseBag};
     use crate::discord::discord_state::MockDiscordOperations;
+    use crate::discord::interaction_context::InteractionContext;
     use crate::discord::interaction_diagnostics::InteractionDiagnostics;
     use crate::discord::interaction_handlers::application_commands::{
         bracket_channel_name, bracket_role_colour, datetime_from_options, normalize_racetime_name,
@@ -2588,7 +2541,9 @@ mod tests {
         state
             .expect_create_response_err_to_str()
             .times(1)
-            .returning(move |_, _, response| {
+            .returning(move |id, token, response| {
+                assert_eq!(id, Id::new(123456789123456789));
+                assert_eq!(token, "test-token-do-not-report");
                 assert_eq!(
                     response.kind,
                     InteractionResponseType::DeferredChannelMessageWithSource
@@ -2599,16 +2554,22 @@ mod tests {
         let (command, interaction, diagnostics) = deferred_test_input();
         let (started_tx, started_rx) = tokio::sync::oneshot::channel();
         let result = long_command_wrapper(
-            move |_, _, _| async move {
+            move |command, ctx| async move {
                 assert!(acknowledged.load(Ordering::SeqCst));
+                assert_eq!(command.name, "schedule_race");
+                assert_eq!(ctx.interaction.id, Id::new(123456789123456789));
+                assert_eq!(ctx.interaction.token, "test-token-do-not-report");
+                assert!(ctx.interaction.data.is_none());
                 started_tx.send(()).unwrap();
                 // Keep the job alive without making a real HTTP edit. Runtime teardown cancels it.
                 std::future::pending::<Result<UpdateResponseBag, ErrorResponse>>().await
             },
             command,
-            interaction,
-            Arc::new(state),
-            &diagnostics,
+            Arc::new(InteractionContext {
+                interaction,
+                state: Arc::new(state),
+                diagnostics,
+            }),
         )
         .await
         .unwrap();
@@ -2642,15 +2603,17 @@ mod tests {
             .return_const(());
         let (command, interaction, diagnostics) = deferred_test_input();
         let result = long_command_wrapper(
-            |_, _, _| {
+            |_, _| {
                 panic!("work must not be invoked after failed acknowledgment");
                 #[allow(unreachable_code)]
                 std::future::ready(Ok(UpdateResponseBag::default()))
             },
             command,
-            interaction,
-            Arc::new(state),
-            &diagnostics,
+            Arc::new(InteractionContext {
+                interaction,
+                state: Arc::new(state),
+                diagnostics,
+            }),
         )
         .await
         .unwrap();
