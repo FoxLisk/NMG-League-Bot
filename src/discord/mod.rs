@@ -52,6 +52,7 @@ mod webhooks;
 mod application_command_definitions;
 mod components;
 pub(crate) mod discord_state;
+mod interaction_diagnostics;
 mod interaction_handlers;
 mod interactions_utils;
 mod reaction_handlers;
@@ -94,6 +95,8 @@ pub mod constants {
     pub const USER_PROFILE_CMD: &str = "See user profile";
 
     pub const CHECK_USER_INFO_CMD: &str = "check_user_info";
+    #[cfg(feature = "testing")]
+    pub const TEST_INTERACTION_ERROR_CMD: &str = "test_interaction_error";
     pub const RESCHEDULE_RACE_CMD: &str = "reschedule_race";
     pub const REPORT_RACE_CMD: &str = "report_race";
     pub const UPDATE_FINISHED_RACE_CMD: &str = "update_finished_race";

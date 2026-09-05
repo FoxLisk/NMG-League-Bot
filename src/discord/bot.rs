@@ -1,5 +1,7 @@
+use crate::discord::interaction_diagnostics::InteractionDiagnostics;
 use core::default::Default;
 use std::sync::Arc;
+use std::time::Instant;
 
 use diesel::SqliteConnection;
 use lazy_static::lazy_static;
@@ -30,10 +32,9 @@ use twilight_util::builder::InteractionResponseDataBuilder;
 use crate::discord::application_command_definitions::application_command_definitions;
 use crate::discord::components::action_row;
 use crate::discord::constants::{
-    CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL,
-    CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL, CUSTOM_ID_FORFEIT_MODAL_INPUT,
-    CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME, CUSTOM_ID_USER_TIME_MODAL,
-    CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
+    CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL, CUSTOM_ID_FINISH_RUN, CUSTOM_ID_FORFEIT_MODAL,
+    CUSTOM_ID_FORFEIT_MODAL_INPUT, CUSTOM_ID_FORFEIT_RUN, CUSTOM_ID_START_RUN, CUSTOM_ID_USER_TIME,
+    CUSTOM_ID_USER_TIME_MODAL, CUSTOM_ID_VOD_MODAL, CUSTOM_ID_VOD_MODAL_INPUT, CUSTOM_ID_VOD_READY,
 };
 use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
@@ -105,10 +106,14 @@ async fn run_bot(
             Some(evt) = shard.next_event(EventTypeFlags::all()) => {
                 match evt {
                     Ok(event) => {
+                        let diagnostics = match &event {
+                            Event::InteractionCreate(ic) => Some(InteractionDiagnostics::new(ic)),
+                            _ => None,
+                        };
                         info!("Main discord bot got event: {event:?}");
                         state.cache.update(&event);
                         state.standby.process(&event);
-                        tokio::spawn(handle_event(event, state.clone()));
+                        tokio::spawn(handle_event(event, state.clone(), diagnostics));
                     }
                     Err(e) => {
                             warn!("Got error receiving discord event: {e}");
@@ -537,10 +542,17 @@ async fn handle_modal_submission(
     interaction_data: ModalInteractionData,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
+    diagnostics: &InteractionDiagnostics,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     match interaction_data.custom_id.as_str() {
         custom_id if custom_id.starts_with(CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL) => {
-            handle_add_players_to_bracket_modal_submit(interaction_data, interaction, state).await
+            handle_add_players_to_bracket_modal_submit(
+                interaction_data,
+                interaction,
+                state,
+                diagnostics,
+            )
+            .await
         }
         CUSTOM_ID_USER_TIME_MODAL => {
             handle_user_time_modal(interaction_data, interaction, state).await
@@ -559,18 +571,19 @@ async fn handle_modal_submission(
 async fn _handle_interaction(
     mut interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
+    diagnostics: &InteractionDiagnostics,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     let data = std::mem::take(&mut interaction.0.data);
     if let Some(id) = data {
         match id {
             InteractionData::ApplicationCommand(ac) => {
-                handle_application_interaction(ac, interaction, &state).await
+                handle_application_interaction(ac, interaction, &state, diagnostics).await
             }
             InteractionData::MessageComponent(mc) => {
                 handle_button_interaction(*mc, interaction, &state).await
             }
             InteractionData::ModalSubmit(ms) => {
-                handle_modal_submission(*ms, interaction, &state).await
+                handle_modal_submission(*ms, interaction, &state, diagnostics).await
             }
 
             _ => {
@@ -586,18 +599,30 @@ async fn _handle_interaction(
 
 /// Handles an interaction. This attempts to dispatch to the relevant processing code, and then
 /// creates any responses as specified, and alerts admins via webhook if there is a problem.
-async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<DiscordState>) {
+async fn handle_interaction(
+    interaction: Box<InteractionCreate>,
+    state: Arc<DiscordState>,
+    diagnostics: InteractionDiagnostics,
+) {
     let interaction_id = interaction.id;
     let token = interaction.token.clone();
 
     let interaction_debug = format!("{interaction:?}");
     debug!("Handling interaction: {interaction_debug}");
-    let (user_resp, admin_message) = match _handle_interaction(interaction, &state).await {
-        Ok(o) => (o, None),
-        Err(e) => (
-            Some(plain_interaction_response(e.user_facing_error)),
-            Some(e.internal_error),
-        ),
+    let handler_started = Instant::now();
+    let (user_resp, admin_message) =
+        match _handle_interaction(interaction, &state, &diagnostics).await {
+            Ok(o) => (o, None),
+            Err(e) => (
+                Some(plain_interaction_response(e.user_facing_error)),
+                Some(e.internal_error),
+            ),
+        };
+    let handler_ms = handler_started.elapsed().as_millis();
+    let handler_outcome = if admin_message.is_some() {
+        "failed before the response attempt"
+    } else {
+        "completed successfully before the response attempt"
     };
 
     let mut final_message = String::new();
@@ -605,23 +630,60 @@ async fn handle_interaction(interaction: Box<InteractionCreate>, state: Arc<Disc
         final_message.push_str(&format!("Encountered an error: {}", m));
     }
 
+    let request_started = Instant::now();
+    let mut request_finished = request_started;
+    let mut response_outcome = "not attempted";
+    let mut response_failed = false;
+    let response_kind = user_resp
+        .as_ref()
+        .map(|u| format!("{:?}", u.kind))
+        .unwrap_or_else(|| "none".into());
     if let Some(u) = user_resp {
         info!("handle_interaction trying to send response {:?}", u);
-        if let Some(more_errors) = state
+        let result = state
             .create_response_err_to_str(interaction_id, &token, &u)
-            .await
-            .err()
-        {
-            final_message.push_str(&format!(
-                "Unable to communicate error to user: {}",
-                more_errors
-            ));
+            .await;
+        request_finished = Instant::now();
+        response_outcome = "succeeded";
+        if let Err(more_errors) = result {
+            response_outcome = "not confirmed";
+            response_failed = true;
+            final_message = format!(
+                "Unable to send initial interaction response: {}\nResponse preview: {}\n{}",
+                more_errors,
+                u.data
+                    .as_ref()
+                    .and_then(|d| d.content.as_deref())
+                    .unwrap_or("[no text content]")
+                    .chars()
+                    .take(250)
+                    .collect::<String>(),
+                final_message,
+            );
         }
     }
 
     if !final_message.is_empty() {
-        warn!("{final_message} - interaction being handled was {interaction_debug}");
-        state.submit_error(final_message).await;
+        let details = format!(
+            "Initial acknowledgment: {response_outcome}\nCommand outcome: {handler_outcome}; command elapsed: {handler_ms} ms\n{final_message}"
+        );
+        let report = if response_failed {
+            diagnostics.initial_response_failure_report(
+                &format!("initial response {response_kind}"),
+                request_started,
+                request_finished,
+                &details,
+            )
+        } else {
+            diagnostics.report(
+                &format!("initial response {response_kind}"),
+                request_started,
+                request_finished,
+                &details,
+            )
+        };
+        warn!("{report}");
+        state.submit_error(report).await;
     }
 }
 
@@ -645,7 +707,11 @@ async fn set_application_commands(
     Ok(())
 }
 
-async fn handle_event(event: Event, state: Arc<DiscordState>) {
+async fn handle_event(
+    event: Event,
+    state: Arc<DiscordState>,
+    diagnostics: Option<InteractionDiagnostics>,
+) {
     match event {
         Event::GuildCreate(gc) => {
             // TODO: probably we should bail if it's a GuildCreate::Unavailable?
@@ -665,7 +731,8 @@ async fn handle_event(event: Event, state: Arc<DiscordState>) {
             debug!("Guild updated event: {:?}", gu);
         }
         Event::InteractionCreate(ic) => {
-            handle_interaction(ic, state).await;
+            let diagnostics = diagnostics.unwrap_or_else(|| InteractionDiagnostics::new(&ic));
+            handle_interaction(ic, state, diagnostics).await;
         }
         Event::Ready(r) => {
             info!("Ready! {:?}", r);

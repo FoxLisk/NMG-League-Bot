@@ -1,4 +1,6 @@
 use crate::discord::command_option_default;
+#[cfg(feature = "testing")]
+use crate::discord::constants::TEST_INTERACTION_ERROR_CMD;
 use crate::discord::constants::{
     ADD_PLAYERS_TO_BRACKET_CMD, CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
     CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD, FINISH_BRACKET_CMD,
@@ -19,6 +21,15 @@ use twilight_model::guild::Permissions;
 use twilight_util::builder::command::CommandBuilder;
 
 pub fn application_command_definitions() -> Vec<Command> {
+    #[cfg(feature = "testing")]
+    let test_interaction_error = CommandBuilder::new(
+        TEST_INTERACTION_ERROR_CMD.to_string(),
+        "Intentionally expire a direct interaction to test error reporting".to_string(),
+        CommandType::ChatInput,
+    )
+    .default_member_permissions(Permissions::MANAGE_GUILD)
+    .build();
+
     let create_async_race = CommandBuilder::new(
         CREATE_ASYNC_CMD.to_string(),
         "Create an asynchronous race for two players".to_string(),
@@ -686,7 +697,7 @@ pub fn application_command_definitions() -> Vec<Command> {
     })
     .build();
 
-    vec![
+    let commands = vec![
         // slash commands
         create_async_race,
         cancel_async_race,
@@ -706,8 +717,15 @@ pub fn application_command_definitions() -> Vec<Command> {
         check_user_info,
         see_unscheduled_races,
         set_restream,
+        commentator_bundle,
         // user command[s]
         user_profile,
-        commentator_bundle,
-    ]
+    ];
+    #[cfg(feature = "testing")]
+    let commands = {
+        let mut commands = commands;
+        commands.push(test_interaction_error);
+        commands
+    };
+    commands
 }

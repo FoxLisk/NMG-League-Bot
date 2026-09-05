@@ -1,4 +1,6 @@
 use crate::discord::components::action_row;
+#[cfg(feature = "testing")]
+use crate::discord::constants::TEST_INTERACTION_ERROR_CMD;
 use crate::discord::constants::{
     ADD_PLAYERS_TO_BRACKET_CMD, ADD_PLAYERS_TO_BRACKET_MAX_USERS, CANCEL_ASYNC_CMD,
     CHECK_USER_INFO_CMD, COMMENTATORS_CMD, CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD,
@@ -11,6 +13,7 @@ use crate::discord::constants::{
 
 use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
+use crate::discord::interaction_diagnostics::InteractionDiagnostics;
 use crate::discord::interactions_utils::{
     autocomplete_result, button_component, get_subcommand_options, interaction_to_custom_id,
     plain_ephemeral_response, plain_interaction_response, update_resp_to_plain_content,
@@ -22,6 +25,7 @@ use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use once_cell::sync::Lazy;
 use reqwest::Url;
 use std::future::Future;
+use std::time::Instant;
 
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 
@@ -122,52 +126,81 @@ impl UpdateResponseBag {
 /// Discord requires you to respond to interactions within 3 seconds. This function is to handle the
 /// "Send a DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE response, then do the slow work, then update the
 /// response" workflow.
-fn long_command_wrapper<F, Fut>(
+async fn long_command_wrapper<F, Fut, S>(
     func: F,
     ac: Box<CommandData>,
     ic: Box<InteractionCreate>,
-    state: Arc<DiscordState>,
+    state: Arc<S>,
+    diagnostics: &InteractionDiagnostics,
 ) -> Result<Option<InteractionResponse>, ErrorResponse>
 where
-    F: FnOnce(Box<CommandData>, Box<InteractionCreate>, Arc<DiscordState>) -> Fut + Send + 'static,
+    S: DiscordOperations + Send + Sync + 'static,
+    F: FnOnce(Box<CommandData>, Box<InteractionCreate>, Arc<S>) -> Fut + Send + 'static,
     Fut: Future<Output = Result<UpdateResponseBag, ErrorResponse>> + Send + 'static,
 {
-    // first we spawn off the long-running job
+    // Await Discord's acknowledgment before starting work or editing the original response.
+    let request_started = Instant::now();
+    if let Err(error) = state
+        .create_response_err_to_str(
+            ic.id,
+            &ic.token,
+            &InteractionResponse {
+                kind: InteractionResponseType::DeferredChannelMessageWithSource,
+                data: None,
+            },
+        )
+        .await
+    {
+        let request_finished = Instant::now();
+        state
+            .submit_error(diagnostics.initial_response_failure_report(
+                "initial deferral (DeferredChannelMessageWithSource)",
+                request_started,
+                request_finished,
+                &format!("Command work not started; acknowledgment not confirmed.\n{error}"),
+            ))
+            .await;
+        // Report directly: returning Err would make the dispatcher attempt another initial response.
+        return Ok(None);
+    }
+    let diagnostics = diagnostics.clone();
     tokio::spawn(async move {
         // it's really gross that i can't seem to design this stuff to avoid copying interaction tokens
         let token = ic.token.clone();
-        let client = state.interaction_client();
+        let work_started = Instant::now();
         let r = func(ac, ic, state.clone()).await;
-        match r {
-            Ok(urb) => {
-                let ur = client.update_response(&token);
-                if let Err(e) = urb.hydrate(ur).await {
-                    state
-                        .submit_error(format!(
-                            "Error in long_command_wrapper trying to send message to user: {e}"
-                        ))
-                        .await;
-                }
-            }
+        let work_ms = work_started.elapsed().as_millis();
+        let (response, handler_error) = match r {
+            Ok(response) => (response, None),
             Err(ErrorResponse {
                 user_facing_error,
                 internal_error,
-            }) => {
-                client
-                    .update_response(&token)
-                    .content(Some(&user_facing_error))
-                    .await
-                    .map_err_to_string()
-                    .err();
-                state.submit_error(internal_error).await;
-            }
+            }) => (
+                UpdateResponseBag::new_content(user_facing_error),
+                Some(internal_error),
+            ),
+        };
+        let request_started = Instant::now();
+        let client = state.interaction_client();
+        let update_error = response.hydrate(client.update_response(&token)).await.err();
+        let request_finished = Instant::now();
+        if handler_error.is_some() || update_error.is_some() {
+            state
+                .submit_error(diagnostics.report(
+                    "edit deferred response (initial acknowledgment succeeded)",
+                    request_started,
+                    request_finished,
+                    &format!(
+                    "Work elapsed: {work_ms} ms\nResponse update: {}\nHandler: {}",
+                    update_error.map(|e| e.to_string()).unwrap_or_else(|| "succeeded".into()),
+                    handler_error.unwrap_or_else(|| "returned Ok".into()),
+                ),
+                ))
+                .await;
         }
     });
-    // then we immediately return so discord knows we're thinking about it
-    Ok(Some(InteractionResponse {
-        kind: InteractionResponseType::DeferredChannelMessageWithSource,
-        data: None,
-    }))
+    // This helper owns the response; the dispatcher must not send another acknowledgment.
+    Ok(None)
 }
 
 /// N.B. interaction.data is already ripped out, here, and is passed in as the first parameter
@@ -175,13 +208,21 @@ pub async fn handle_application_interaction(
     ac: Box<CommandData>,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
+    diagnostics: &InteractionDiagnostics,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     // general (non-admin) commands
     match ac.name.as_str() {
         SCHEDULE_RACE_CMD => {
             return match interaction.kind {
                 InteractionType::ApplicationCommand => {
-                    long_command_wrapper(_handle_schedule_race_cmd, ac, interaction, state.clone())
+                    long_command_wrapper(
+                        _handle_schedule_race_cmd,
+                        ac,
+                        interaction,
+                        state.clone(),
+                        diagnostics,
+                    )
+                    .await
                 }
                 InteractionType::ApplicationCommandAutocomplete => {
                     handle_schedule_race_autocomplete(ac, interaction, &state)
@@ -223,6 +264,13 @@ pub async fn handle_application_interaction(
 
     // admin commands
     match ac.name.as_str() {
+        #[cfg(feature = "testing")]
+        TEST_INTERACTION_ERROR_CMD => {
+            tokio::time::sleep(std::time::Duration::from_secs(4)).await;
+            Ok(Some(plain_ephemeral_response(
+                "This response should fail because the test interaction was allowed to expire.",
+            )))
+        }
         CREATE_PLAYER_CMD => admin_command_wrapper(
             handle_create_player(ac, interaction, state)
                 .await
@@ -243,7 +291,14 @@ pub async fn handle_application_interaction(
         RESCHEDULE_RACE_CMD => {
             match interaction.kind {
                 InteractionType::ApplicationCommand => {
-                    long_command_wrapper(handle_reschedule_race_cmd, ac, interaction, state.clone())
+                    long_command_wrapper(
+                        handle_reschedule_race_cmd,
+                        ac,
+                        interaction,
+                        state.clone(),
+                        diagnostics,
+                    )
+                    .await
                 }
                 InteractionType::ApplicationCommandAutocomplete => {
                     // N.B. this will have to change if/when i add race id autocompletion
@@ -263,12 +318,26 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
         SET_SEASON_STATE_CMD => {
-            long_command_wrapper(handle_set_season_state, ac, interaction, state.clone())
+            long_command_wrapper(
+                handle_set_season_state,
+                ac,
+                interaction,
+                state.clone(),
+                diagnostics,
+            )
+            .await
         }
 
         CREATE_BRACKET_CMD => match interaction.kind {
             InteractionType::ApplicationCommand => {
-                long_command_wrapper(handle_create_bracket, ac, interaction, state.clone())
+                long_command_wrapper(
+                    handle_create_bracket,
+                    ac,
+                    interaction,
+                    state.clone(),
+                    diagnostics,
+                )
+                .await
             }
             _ => Ok(Some(plain_interaction_response(format!(
                 "Unexpected InteractionType for {}",
@@ -1442,6 +1511,7 @@ pub async fn handle_add_players_to_bracket_modal_submit(
     mut interaction_data: ModalInteractionData,
     interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
+    diagnostics: &InteractionDiagnostics,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     let bracket_id = bracket_id_from_add_players_modal_custom_id(&interaction_data.custom_id)
         .ok_or_else(|| {
@@ -1475,7 +1545,8 @@ pub async fn handle_add_players_to_bracket_modal_submit(
         .await
         .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
     // A batch of role assignments may take longer than Discord's response deadline.
-    state
+    let request_started = Instant::now();
+    if let Err(error) = state
         .create_response(
             interaction.id,
             &interaction.token,
@@ -1485,19 +1556,36 @@ pub async fn handle_add_players_to_bracket_modal_submit(
             },
         )
         .await
-        .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e.to_string()))?;
+    {
+        let request_finished = Instant::now();
+        state
+            .submit_error(diagnostics.initial_response_failure_report(
+                "initial deferral (DeferredChannelMessageWithSource)",
+                request_started,
+                request_finished,
+                &format!("Bracket changes not started; acknowledgment not confirmed.\n{error}"),
+            ))
+            .await;
+        // Do not turn a failed callback into another initial-response attempt in the dispatcher.
+        return Ok(None);
+    }
     let result = add_users_to_bracket(bracket, users, state)
         .await
         .unwrap_or_else(|e| format!("Unable to add players to the bracket: {e}"));
+    let request_started = Instant::now();
     if let Err(e) = state
         .interaction_client()
         .update_response(&interaction.token)
         .content(Some(&result))
         .await
     {
+        let request_finished = Instant::now();
         state
-            .submit_error(format!(
-                "Unable to update add_players_to_bracket response: {e}"
+            .submit_error(diagnostics.report(
+                "edit deferred response (initial acknowledgment succeeded)",
+                request_started,
+                request_finished,
+                &format!("Unable to update add_players_to_bracket response: {e}\nResult: {result}"),
             ))
             .await;
     }
@@ -2449,14 +2537,128 @@ async fn handle_generate_pairings(
 
 #[cfg(test)]
 mod tests {
+    use super::{long_command_wrapper, UpdateResponseBag};
+    use crate::discord::discord_state::MockDiscordOperations;
+    use crate::discord::interaction_diagnostics::InteractionDiagnostics;
     use crate::discord::interaction_handlers::application_commands::{
         bracket_channel_name, bracket_role_colour, datetime_from_options, normalize_racetime_name,
         season_cleanup_plan, tolerate_twitch_links,
     };
+    use crate::discord::ErrorResponse;
     use chrono::{Datelike, Timelike};
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    };
+    use twilight_model::application::interaction::{Interaction, InteractionData};
     use twilight_model::channel::Channel;
+    use twilight_model::gateway::payload::incoming::InteractionCreate;
     use twilight_model::guild::Role;
+    use twilight_model::http::interaction::InteractionResponseType;
     use twilight_model::id::Id;
+
+    fn deferred_test_input() -> (
+        Box<super::CommandData>,
+        Box<InteractionCreate>,
+        InteractionDiagnostics,
+    ) {
+        let mut interaction: Interaction = serde_json::from_value(serde_json::json!({
+            "id": "123456789123456789", "application_id": "123",
+            "type": 2, "token": "test-token-do-not-report",
+            "data": { "id": "456", "name": "schedule_race", "type": 1 },
+            "entitlements": [], "authorizing_integration_owners": {},
+        }))
+        .unwrap();
+        let diagnostics = InteractionDiagnostics::new(&interaction);
+        let Some(InteractionData::ApplicationCommand(command)) = interaction.data.take() else {
+            panic!("expected application command");
+        };
+        (
+            command,
+            Box::new(InteractionCreate(interaction)),
+            diagnostics,
+        )
+    }
+
+    #[tokio::test]
+    async fn deferred_command_acknowledges_before_starting_work() {
+        let acknowledged = Arc::new(AtomicBool::new(false));
+        let acknowledged_by_callback = acknowledged.clone();
+        let mut state = MockDiscordOperations::new();
+        state
+            .expect_create_response_err_to_str()
+            .times(1)
+            .returning(move |_, _, response| {
+                assert_eq!(
+                    response.kind,
+                    InteractionResponseType::DeferredChannelMessageWithSource
+                );
+                acknowledged_by_callback.store(true, Ordering::SeqCst);
+                Ok(())
+            });
+        let (command, interaction, diagnostics) = deferred_test_input();
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let result = long_command_wrapper(
+            move |_, _, _| async move {
+                assert!(acknowledged.load(Ordering::SeqCst));
+                started_tx.send(()).unwrap();
+                // Keep the job alive without making a real HTTP edit. Runtime teardown cancels it.
+                std::future::pending::<Result<UpdateResponseBag, ErrorResponse>>().await
+            },
+            command,
+            interaction,
+            Arc::new(state),
+            &diagnostics,
+        )
+        .await
+        .unwrap();
+        assert!(
+            result.is_none(),
+            "dispatcher must not send a second acknowledgment"
+        );
+        tokio::time::timeout(std::time::Duration::from_secs(1), started_rx)
+            .await
+            .unwrap()
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn deferred_command_failed_ack_reports_context_without_work_or_second_response() {
+        let mut state = MockDiscordOperations::new();
+        state
+            .expect_create_response_err_to_str()
+            .times(1)
+            .returning(|_, _, _| Err("Unknown interaction (10062)".into()));
+        state
+            .expect_submit_error::<String>()
+            .times(1)
+            .withf(|report| {
+                report.contains("/schedule_race")
+                    && report.contains("Command work not started")
+                    && report.contains("10062")
+                    && report.contains("Receipt to request:")
+                    && !report.contains("test-token-do-not-report")
+            })
+            .return_const(());
+        let (command, interaction, diagnostics) = deferred_test_input();
+        let result = long_command_wrapper(
+            |_, _, _| {
+                panic!("work must not be invoked after failed acknowledgment");
+                #[allow(unreachable_code)]
+                std::future::ready(Ok(UpdateResponseBag::default()))
+            },
+            command,
+            interaction,
+            Arc::new(state),
+            &diagnostics,
+        )
+        .await
+        .unwrap();
+        assert!(
+            result.is_none(),
+            "dispatcher must not retry the initial response"
+        );
+    }
 
     fn cleanup_channel(id: u64, name: &str, kind: u8, parent_id: Option<u64>) -> Channel {
         serde_json::from_value(serde_json::json!({
