@@ -1262,6 +1262,17 @@ async fn add_users_to_bracket(
     users: Vec<User>,
     state: &Arc<DiscordState>,
 ) -> Result<String, String> {
+    let guild_id = CONFIG.guild_id;
+    let role = find_role_by_name(state, guild_id, &bracket.name).ok_or_else(|| {
+        format!(
+            "Could not find bracket role `{}` in the guild cache. No players were added.",
+            bracket.name
+        )
+    })?;
+    let role_targets = users
+        .iter()
+        .map(|user| (user.id, user.name.clone()))
+        .collect::<Vec<_>>();
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let summary = cxn
         .transaction::<AddPlayersSummary, diesel::result::Error, _>(|conn| {
@@ -1289,6 +1300,24 @@ async fn add_users_to_bracket(
             Ok(summary)
         })
         .map_err(|e| e.to_string())?;
+    drop(cxn);
+
+    // Assign roles only after the entries commit, including existing players so retries
+    // can repair a missing role without creating duplicate bracket entries.
+    let mut role_failures = vec![];
+    for (user_id, name) in role_targets {
+        if let Err(e) = state
+            .discord_client
+            .add_guild_member_role(guild_id, user_id, role.id)
+            .await
+        {
+            warn!(
+                "Error assigning bracket role {} to user {user_id}: {e}",
+                role.id
+            );
+            role_failures.push(name);
+        }
+    }
 
     let mut message_parts = vec![];
     if summary.added.is_empty() {
@@ -1311,6 +1340,18 @@ async fn add_users_to_bracket(
             "Already in {}: {}.",
             bracket.name,
             summary.already_in_bracket.join(", ")
+        ));
+    }
+    if role_failures.is_empty() {
+        message_parts.push(format!(
+            "All selected players have the `{}` role.",
+            role.name
+        ));
+    } else {
+        message_parts.push(format!(
+            "Could not assign the `{}` role to: {}. Bracket entries were saved. Check the bot's role permissions and hierarchy, then select these players again to retry.",
+            role.name,
+            role_failures.join(", ")
         ));
     }
 
@@ -1401,7 +1442,7 @@ fn users_from_modal_selection(
 
 pub async fn handle_add_players_to_bracket_modal_submit(
     mut interaction_data: ModalInteractionData,
-    _interaction: Box<InteractionCreate>,
+    interaction: Box<InteractionCreate>,
     state: &Arc<DiscordState>,
 ) -> Result<Option<InteractionResponse>, ErrorResponse> {
     let bracket_id = bracket_id_from_add_players_modal_custom_id(&interaction_data.custom_id)
@@ -1435,10 +1476,34 @@ pub async fn handle_add_players_to_bracket_modal_submit(
     let bracket = get_active_bracket_by_id(bracket_id, state)
         .await
         .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
+    // A batch of role assignments may take longer than Discord's response deadline.
+    state
+        .create_response(
+            interaction.id,
+            &interaction.token,
+            &InteractionResponse {
+                kind: InteractionResponseType::DeferredChannelMessageWithSource,
+                data: None,
+            },
+        )
+        .await
+        .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e.to_string()))?;
     let result = add_users_to_bracket(bracket, users, state)
         .await
-        .map_err(|e| ErrorResponse::new("Unable to add players to the bracket.", e))?;
-    Ok(Some(plain_interaction_response(result)))
+        .unwrap_or_else(|e| format!("Unable to add players to the bracket: {e}"));
+    if let Err(e) = state
+        .interaction_client()
+        .update_response(&interaction.token)
+        .content(Some(&result))
+        .await
+    {
+        state
+            .submit_error(format!(
+                "Unable to update add_players_to_bracket response: {e}"
+            ))
+            .await;
+    }
+    Ok(None)
 }
 
 async fn handle_add_players_to_bracket_submit(
