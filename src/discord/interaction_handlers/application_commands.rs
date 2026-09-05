@@ -1,12 +1,11 @@
 use crate::discord::components::action_row;
 use crate::discord::constants::{
-    ADD_PLAYERS_TO_BRACKET_CMD, ADD_PLAYERS_TO_BRACKET_MAX_USERS,
-    CANCEL_ASYNC_CMD, CHECK_USER_INFO_CMD, COMMENTATORS_CMD,
-    CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD, CREATE_SEASON_CMD,
-    CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL, CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_USER_SELECT,
-    FINISH_BRACKET_CMD, GENERATE_PAIRINGS_CMD, REPORT_RACE_CMD, RESCHEDULE_RACE_CMD,
-    SCHEDULE_RACE_CMD, SEE_UNSCHEDULED_RACES_CMD, SET_RESTREAM_CMD,
-    SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD,
+    ADD_PLAYERS_TO_BRACKET_CMD, ADD_PLAYERS_TO_BRACKET_MAX_USERS, CANCEL_ASYNC_CMD,
+    CHECK_USER_INFO_CMD, COMMENTATORS_CMD, CREATE_ASYNC_CMD, CREATE_BRACKET_CMD, CREATE_PLAYER_CMD,
+    CREATE_SEASON_CMD, CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_MODAL,
+    CUSTOM_ID_ADD_PLAYERS_TO_BRACKET_USER_SELECT, FINISH_BRACKET_CMD, GENERATE_PAIRINGS_CMD,
+    REPORT_RACE_CMD, RESCHEDULE_RACE_CMD, SCHEDULE_RACE_CMD, SEE_UNSCHEDULED_RACES_CMD,
+    SET_RESTREAM_CMD, SET_SEASON_STATE_CMD, SUBMIT_QUALIFIER_CMD, UPDATE_FINISHED_RACE_CMD,
     UPDATE_USER_INFO_CMD, USER_PROFILE_CMD,
 };
 
@@ -59,17 +58,16 @@ use twilight_model::application::interaction::modal::{
     ModalInteractionComponent, ModalInteractionData,
 };
 use twilight_model::application::interaction::{Interaction, InteractionType};
-use twilight_model::channel::message::component::{
-    ButtonStyle, Component, Label, SelectMenuType,
-};
+use twilight_model::channel::message::component::{ButtonStyle, Component, Label, SelectMenuType};
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{Embed, MessageFlags};
 use twilight_model::channel::permission_overwrite::{
     PermissionOverwrite as ChannelPermissionOverwrite, PermissionOverwriteType,
 };
-use twilight_model::channel::ChannelType;
+use twilight_model::channel::{Channel, ChannelType};
 use twilight_model::gateway::payload::incoming::InteractionCreate;
-use twilight_model::guild::Permissions;
+use twilight_model::guild::{Permissions, Role};
+use twilight_model::http::channel_position::Position;
 use twilight_model::http::interaction::{
     InteractionResponse, InteractionResponseData, InteractionResponseType,
 };
@@ -265,7 +263,7 @@ pub async fn handle_application_interaction(
             admin_command_wrapper(handle_create_season(ac, state).await.map(Option::from))
         }
         SET_SEASON_STATE_CMD => {
-            admin_command_wrapper(handle_set_season_state(ac, state).await.map(Option::from))
+            long_command_wrapper(handle_set_season_state, ac, interaction, state.clone())
         }
 
         CREATE_BRACKET_CMD => match interaction.kind {
@@ -1838,9 +1836,20 @@ fn update_interaction_message_to_plain_text<'a>(
 }
 
 async fn handle_set_season_state(
+    ac: Box<CommandData>,
+    _interaction: Box<InteractionCreate>,
+    state: Arc<DiscordState>,
+) -> Result<UpdateResponseBag, ErrorResponse> {
+    Ok(match _handle_set_season_state(ac, &state).await {
+        Ok(message) => UpdateResponseBag::new_content(message),
+        Err(e) => UpdateResponseBag::new_content(e),
+    })
+}
+
+async fn _handle_set_season_state(
     mut ac: Box<CommandData>,
     state: &Arc<DiscordState>,
-) -> Result<InteractionResponse, String> {
+) -> Result<String, String> {
     let season_ordinal = get_opt_s!("season_ordinal", &mut ac.options, Integer)?;
     let new_state_raw = get_opt_s!("new_state", &mut ac.options, String)?;
     let new_state: SeasonState =
@@ -1848,11 +1857,183 @@ async fn handle_set_season_state(
     let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
     let mut season =
         Season::get_by_ordinal(season_ordinal as i32, cxn.deref_mut()).map_err_to_string()?;
+    // Names are reused across seasons. Repeating Finished for an old season must
+    // not clean up a newer season's Discord resources.
+    if season.get_state().map_err_to_string()? == new_state {
+        return Ok("Season is already in that state.".to_string());
+    }
+    match new_state {
+        SeasonState::Finished => finish_season(&mut season, cxn.deref_mut(), state).await,
+        new_state => {
+            season
+                .set_state(new_state, cxn.deref_mut())
+                .map_err_to_string()?;
+            season.update(cxn.deref_mut()).map_err_to_string()?;
+            Ok("Update successful.".to_string())
+        }
+    }
+}
+
+async fn finish_season(
+    season: &mut Season,
+    cxn: &mut SqliteConnection,
+    state: &Arc<DiscordState>,
+) -> Result<String, String> {
+    // Validate and persist the transition before attempting Discord cleanup.
     season
-        .set_state(new_state, cxn.deref_mut())
+        .set_state(SeasonState::Finished, cxn)
         .map_err_to_string()?;
-    season.update(cxn.deref_mut()).map_err_to_string()?;
-    Ok(plain_interaction_response("Update successful."))
+    season.update(cxn).map_err_to_string()?;
+
+    let cleanup_result = async {
+        let bracket_names = season
+            .brackets(cxn)
+            .map_err_to_string()?
+            .into_iter()
+            .map(|bracket| bracket.name)
+            .collect::<Vec<_>>();
+        cleanup_season_discord_resources(&bracket_names, state).await
+    }
+    .await;
+
+    match cleanup_result {
+        Ok(summary) => Ok(format!("Season {} finished. {summary}", season.ordinal)),
+        Err(e) => {
+            warn!(
+                "Season {} finished, but Discord cleanup failed: {e}",
+                season.ordinal
+            );
+            Ok(format!(
+                "Season {} finished, but Discord cleanup was incomplete: {e} Please finish the remaining cleanup manually.",
+                season.ordinal
+            ))
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct SeasonCleanupPlan {
+    channel_moves: Vec<Position>,
+    roles: Vec<(Id<RoleMarker>, String)>,
+}
+
+fn season_cleanup_plan(
+    bracket_names: &[String],
+    channels: &[Channel],
+    roles: &[Role],
+) -> Result<SeasonCleanupPlan, String> {
+    let mut plan = SeasonCleanupPlan::default();
+    if bracket_names.is_empty() {
+        return Ok(plan);
+    }
+    let archives = channels
+        .iter()
+        .filter(|channel| {
+            channel.kind == ChannelType::GuildCategory && channel.name.as_deref() == Some("Archive")
+        })
+        .collect::<Vec<_>>();
+    let archive = match archives.as_slice() {
+        [archive] => archive,
+        [] => return Err("Could not find the `Archive` category.".to_string()),
+        _ => return Err("Multiple categories are named `Archive`; cannot choose one.".to_string()),
+    };
+
+    let mut seen_names = HashSet::new();
+    for name in bracket_names {
+        if !seen_names.insert(name) {
+            continue;
+        }
+        let channel_name = bracket_channel_name(name);
+        let matching_channels = channels
+            .iter()
+            .filter(|channel| {
+                channel.kind == ChannelType::GuildText
+                    && channel.name.as_deref() == Some(channel_name.as_str())
+                    && channel.parent_id != Some(archive.id)
+            })
+            .collect::<Vec<_>>();
+        match matching_channels.as_slice() {
+            [channel] => plan.channel_moves.push(Position {
+                id: channel.id,
+                parent_id: Some(Some(archive.id)),
+                // Moving with lock_permissions is Discord's Sync Permissions action.
+                lock_permissions: Some(Some(true)),
+                position: None,
+            }),
+            // Already archived or deleted, including after a partially completed cleanup.
+            [] => {}
+            _ => {
+                return Err(format!(
+                    "Multiple unarchived channels match `{channel_name}`; cannot choose one."
+                ))
+            }
+        }
+
+        let matching_roles = roles
+            .iter()
+            .filter(|role| role.name == *name)
+            .collect::<Vec<_>>();
+        match matching_roles.as_slice() {
+            [role] => plan.roles.push((role.id, role.name.clone())),
+            [] => {} // Already deleted; allow cleanup to be retried.
+            _ => return Err(format!("Multiple roles match `{name}`; cannot choose one.")),
+        }
+    }
+    Ok(plan)
+}
+
+async fn cleanup_season_discord_resources(
+    bracket_names: &[String],
+    state: &Arc<DiscordState>,
+) -> Result<String, String> {
+    if bracket_names.is_empty() {
+        return Ok("No bracket resources to clean up.".to_string());
+    }
+    let guild_id = CONFIG.guild_id;
+    // Fetch current resources so retries do not depend on gateway cache updates.
+    let channels = state
+        .discord_client
+        .guild_channels(guild_id)
+        .await
+        .map_err_to_string()?
+        .models()
+        .await
+        .map_err_to_string()?;
+    let roles = state
+        .discord_client
+        .roles(guild_id)
+        .await
+        .map_err_to_string()?
+        .models()
+        .await
+        .map_err_to_string()?;
+    // Resolve all names before making changes; ambiguous names must not delete the wrong role.
+    let plan = season_cleanup_plan(bracket_names, &channels, &roles)?;
+    for position in &plan.channel_moves {
+        // Discord permits only one parent_id change per request.
+        state
+            .discord_client
+            .update_guild_channel_positions(guild_id, std::slice::from_ref(position))
+            .await
+            .map_err(|e| {
+                format!(
+                    "Could not move channel {} to Archive and sync permissions: {e}",
+                    position.id
+                )
+            })?;
+    }
+    // Keep roles until every channel has been archived successfully.
+    for (role_id, name) in &plan.roles {
+        state
+            .discord_client
+            .delete_role(guild_id, *role_id)
+            .await
+            .map_err(|e| format!("Could not delete bracket role `{name}`: {e}"))?;
+    }
+    Ok(format!(
+        "Moved {} bracket channel(s) to Archive with synced permissions and deleted {} bracket role(s).",
+        plan.channel_moves.len(), plan.roles.len()
+    ))
 }
 
 async fn handle_create_season(
@@ -2270,9 +2451,112 @@ async fn handle_generate_pairings(
 mod tests {
     use crate::discord::interaction_handlers::application_commands::{
         bracket_channel_name, bracket_role_colour, datetime_from_options, normalize_racetime_name,
-        tolerate_twitch_links,
+        season_cleanup_plan, tolerate_twitch_links,
     };
     use chrono::{Datelike, Timelike};
+    use twilight_model::channel::Channel;
+    use twilight_model::guild::Role;
+    use twilight_model::id::Id;
+
+    fn cleanup_channel(id: u64, name: &str, kind: u8, parent_id: Option<u64>) -> Channel {
+        serde_json::from_value(serde_json::json!({
+            "id": id.to_string(),
+            "name": name,
+            "type": kind,
+            "parent_id": parent_id.map(|id| id.to_string()),
+        }))
+        .unwrap()
+    }
+
+    fn cleanup_role(id: u64, name: &str) -> Role {
+        serde_json::from_value(serde_json::json!({
+            "id": id.to_string(), "name": name, "color": 0,
+            "colors": {"primary_color": 0}, "hoist": false,
+            "managed": false, "mentionable": false,
+            "permissions": "0", "position": 1, "flags": 0,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn season_cleanup_targets_only_current_bracket_resources_and_syncs_permissions() {
+        let channels = vec![
+            cleanup_channel(1, "Archive", 4, None),
+            cleanup_channel(2, "tower-of-hera", 0, Some(10)),
+            cleanup_channel(3, "tower-of-hera", 0, Some(1)), // Older season.
+            cleanup_channel(4, "league-chat", 0, Some(10)),
+            cleanup_channel(5, "desert-palace", 0, Some(10)),
+        ];
+        let roles = vec![
+            cleanup_role(20, "Tower of Hera"),
+            cleanup_role(21, "Desert Palace"),
+            cleanup_role(22, "Admin"),
+        ];
+        let plan = season_cleanup_plan(&["Tower of Hera".to_string()], &channels, &roles).unwrap();
+        assert_eq!(plan.roles, vec![(Id::new(20), "Tower of Hera".to_string())]);
+        assert_eq!(
+            serde_json::to_value(&plan.channel_moves).unwrap(),
+            serde_json::json!([{
+                "id": "2", "parent_id": "1", "lock_permissions": true,
+            }])
+        );
+    }
+
+    #[test]
+    fn season_cleanup_retry_skips_archived_channels_and_deleted_roles() {
+        let names = vec!["Tower of Hera".to_string(), "Desert Palace".to_string()];
+        let channels = vec![
+            cleanup_channel(1, "Archive", 4, None),
+            cleanup_channel(2, "tower-of-hera", 0, Some(1)),
+            cleanup_channel(3, "desert-palace", 0, Some(1)),
+        ];
+        // The channels were archived and one role deleted before a prior attempt failed.
+        let roles = vec![cleanup_role(20, "Tower of Hera")];
+        let plan = season_cleanup_plan(&names, &channels, &roles).unwrap();
+        assert!(plan.channel_moves.is_empty());
+        assert_eq!(plan.roles, vec![(Id::new(20), "Tower of Hera".to_string())]);
+        let completed = season_cleanup_plan(&names, &channels, &[]).unwrap();
+        assert!(completed.channel_moves.is_empty());
+        assert!(completed.roles.is_empty());
+    }
+
+    #[test]
+    fn season_cleanup_requires_one_archive_category() {
+        let names = vec!["Tower of Hera".to_string()];
+        let text_channel = cleanup_channel(1, "Archive", 0, None);
+        assert!(season_cleanup_plan(&names, &[text_channel], &[])
+            .unwrap_err()
+            .contains("Could not find"));
+        let categories = vec![
+            cleanup_channel(1, "Archive", 4, None),
+            cleanup_channel(2, "Archive", 4, None),
+        ];
+        assert!(season_cleanup_plan(&names, &categories, &[])
+            .unwrap_err()
+            .contains("Multiple categories"));
+        assert!(season_cleanup_plan(&[], &[], &[]).is_ok());
+    }
+
+    #[test]
+    fn season_cleanup_rejects_ambiguous_channel_and_role_names() {
+        let names = vec!["Tower of Hera".to_string()];
+        let mut channels = vec![
+            cleanup_channel(1, "Archive", 4, None),
+            cleanup_channel(2, "tower-of-hera", 0, Some(10)),
+            cleanup_channel(3, "tower-of-hera", 0, Some(10)),
+        ];
+        assert!(season_cleanup_plan(&names, &channels, &[])
+            .unwrap_err()
+            .contains("Multiple unarchived channels"));
+        channels.pop();
+        let roles = vec![
+            cleanup_role(20, "Tower of Hera"),
+            cleanup_role(21, "Tower of Hera"),
+        ];
+        assert!(season_cleanup_plan(&names, &channels, &roles)
+            .unwrap_err()
+            .contains("Multiple roles"));
+    }
 
     #[test]
     fn test_datetime_thingy() {
