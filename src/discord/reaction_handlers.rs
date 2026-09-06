@@ -1,11 +1,9 @@
 use crate::discord::discord_state::DiscordOperations;
-use diesel::ConnectionError;
+use anyhow::{anyhow, Context};
 use itertools::Itertools;
 use log::{debug, warn};
 use std::ops::DerefMut;
 use std::sync::Arc;
-use thiserror::Error;
-use twilight_http::response::DeserializeBodyError;
 use twilight_mention::Mention;
 use twilight_model::channel::message::embed::EmbedField;
 use twilight_model::channel::message::{AllowedMentions, Embed, EmojiReactionType, MentionType};
@@ -13,9 +11,8 @@ use twilight_model::channel::Message;
 use twilight_model::gateway::payload::incoming::{ReactionAdd, ReactionRemove};
 use twilight_model::id::marker::UserMarker;
 use twilight_model::id::Id;
-use twilight_validate::message::MessageValidationError;
 
-use crate::discord::discord_state::{DiscordState, DiscordStateError};
+use crate::discord::discord_state::DiscordState;
 use crate::discord::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
@@ -41,31 +38,14 @@ pub async fn handle_reaction_add(reaction: Box<ReactionAdd>, state: &Arc<Discord
     }
 }
 
-#[derive(Debug, Error)]
-enum ReactionAddError {
-    #[error("Error running database query: {0}")]
-    DatabaseError(#[from] diesel::result::Error),
-    #[error("Error getting a database connection: {0}")]
-    RunError(#[from] bb8::RunError<ConnectionError>),
-    #[error("Reaction had no member?")]
-    InexplicablyMissingMember,
-    #[error("Something went wrong checking for roles or whatever: {0}")]
-    DiscordStateError(#[from] DiscordStateError),
-    #[error("HTTP Error: {0}")]
-    HttpError(#[from] twilight_http::Error),
-    #[error("Error deserializing a response body: {0}")]
-    DeserializeBodyError(#[from] DeserializeBodyError),
-    #[error("Error validating a message: {0}")]
-    MessageValidationError(#[from] MessageValidationError),
-    #[error("Error validating a request: {0}")]
-    RequestValidationError(#[from] twilight_validate::request::ValidationError),
-}
-
 async fn _handle_reaction_remove(
     reaction: Box<ReactionRemove>,
     state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
-    let mut cxn = state.diesel_cxn().await?;
+) -> anyhow::Result<()> {
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection while removing a reaction")?;
     if let Some(mut info) =
         BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, cxn.deref_mut())?
     {
@@ -81,11 +61,11 @@ async fn _handle_reaction_remove(
 async fn _handle_reaction_add(
     reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
+) -> anyhow::Result<()> {
     let member = reaction
         .member
         .as_ref()
-        .ok_or(ReactionAddError::InexplicablyMissingMember)?;
+        .ok_or_else(|| anyhow!("reaction had no member"))?;
 
     if let Some(cm) = state.cache.current_user() {
         if member.user.id == cm.id {
@@ -95,7 +75,10 @@ async fn _handle_reaction_add(
     }
     // TODO: state should maintain state about interesting message IDs
     //       we're gonna be doing a bunch of stupid table scans for now though
-    let mut _conn = state.diesel_cxn().await?;
+    let mut _conn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection while adding a reaction")?;
     let conn = _conn.deref_mut();
 
     if let Some(i) = BracketRaceInfo::get_by_commportunities_message_id(reaction.message_id, conn)?
@@ -143,7 +126,7 @@ async fn handle_commportunities_reaction(
     info: BracketRaceInfo,
     reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
+) -> anyhow::Result<()> {
     if is_admin_confirmation_reaction(&reaction, state).await {
         handle_commentary_confirmation(info, reaction, state).await
     } else {
@@ -157,8 +140,11 @@ async fn handle_commentary_confirmation(
     mut info: BracketRaceInfo,
     _reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
-    let mut cxn = state.diesel_cxn().await?;
+) -> anyhow::Result<()> {
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection to update commentators")?;
     let conn = cxn.deref_mut();
     let names: Vec<String> = comm_ids_and_names(&info, state, conn)
         .await?
@@ -205,7 +191,7 @@ async fn handle_commentary_confirmation(
 async fn create_tentative_commentary_discussion_post(
     fields: Vec<EmbedField>,
     state: &Arc<DiscordState>,
-) -> Result<Message, ReactionAddError> {
+) -> anyhow::Result<Message> {
     let embeds = vec![Embed {
         author: None,
         color: None,
@@ -234,7 +220,7 @@ async fn create_tentative_commentary_discussion_post(
 async fn create_restream_request_post(
     fields: Vec<EmbedField>,
     state: &Arc<DiscordState>,
-) -> Result<Message, ReactionAddError> {
+) -> anyhow::Result<Message> {
     let embeds = vec![embed_with_title(fields, "Restream Channel Request")];
     state
         .discord_client
@@ -250,8 +236,11 @@ async fn handle_commentary_signup(
     mut info: BracketRaceInfo,
     reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
-    let mut cxn = state.diesel_cxn().await?;
+) -> anyhow::Result<()> {
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection to add a commentator")?;
 
     if info.new_commentator_signup(reaction.user_id, cxn.deref_mut())? {
         let commentators = info.commentator_signups(cxn.deref_mut())?;
@@ -270,8 +259,11 @@ async fn create_commentator_signup_post(
     users: Vec<Id<UserMarker>>,
     info: &BracketRaceInfo,
     state: &Arc<DiscordState>,
-) -> Result<Message, ReactionAddError> {
-    let mut cxn = state.diesel_cxn().await?;
+) -> anyhow::Result<Message> {
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection to build the commentator signup post")?;
     let conn = cxn.deref_mut();
     let when = info
         .scheduled_time_formatted()
@@ -328,7 +320,7 @@ async fn handle_restream_request_reaction(
     mut info: BracketRaceInfo,
     reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
-) -> Result<(), ReactionAddError> {
+) -> anyhow::Result<()> {
     // TODO: ignore if the race is done or whatever
     let chan = match emoji_to_restream_channel(&reaction.emoji) {
         Some(c) => c,
@@ -339,7 +331,10 @@ async fn handle_restream_request_reaction(
     let url = format!("https://twitch.tv/{chan}");
     info.restream_channel = Some(url.clone());
 
-    let mut cxn = state.diesel_cxn().await?;
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection to set the restream channel")?;
     let conn = cxn.deref_mut();
 
     let (comm_ids, comm_names): (Vec<Id<UserMarker>>, Vec<String>) =

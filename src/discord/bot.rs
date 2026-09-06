@@ -1,5 +1,6 @@
 use crate::discord::interaction_context::InteractionContext;
 use crate::discord::interaction_diagnostics::InteractionDiagnostics;
+use anyhow::Context;
 use core::default::Default;
 use std::sync::Arc;
 use std::time::Instant;
@@ -51,8 +52,8 @@ use crate::{Shutdown, Webhooks};
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::models::asyncs::race::AsyncRace;
 use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
+use nmg_league_bot::models::asyncs::FilenameParseError;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::ResultErrToString;
 
 pub(crate) fn launch(
     client: Arc<Client>,
@@ -155,7 +156,7 @@ fn run_started_interaction_response(
     race: &AsyncRace,
     race_run: &AsyncRaceRun,
     preamble: Option<&str>,
-) -> Result<InteractionResponse, String> {
+) -> Result<InteractionResponse, FilenameParseError> {
     let filenames = race_run.filenames()?;
     let admin_text = if let Some(msg_text) = race.on_start_message.as_ref() {
         format!(
@@ -206,27 +207,20 @@ async fn handle_async_run_start(
     let mut conn = state
         .diesel_cxn()
         .await
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
     let mut rr = AsyncRaceRun::get_by_message_id(mid, &mut conn)
         .await
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
     let race = rr
         .get_race(&mut conn)
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e.to_string()))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
     rr.start();
     match rr.save(&mut conn).await {
         Ok(_) => Ok(Some(
-            run_started_interaction_response(&race, &rr, None).map_err(|e| {
-                ErrorResponse::new(
-                    USER_FACING_ERROR,
-                    format!("Error sending the /run started/ interaction response {}", e),
-                )
-            })?,
+            run_started_interaction_response(&race, &rr, None)
+                .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?,
         )),
-        Err(e) => Err(ErrorResponse::new(
-            USER_FACING_ERROR,
-            format!("Error updating race run: {}", e),
-        )),
+        Err(e) => Err(ErrorResponse::from_error(USER_FACING_ERROR, e)),
     }
 }
 
@@ -234,31 +228,26 @@ async fn update_race_run<F>(
     message_id: Id<MessageMarker>,
     f: F,
     conn: &mut SqliteConnection,
-) -> Result<(), String>
+) -> anyhow::Result<()>
 where
     F: FnOnce(&mut AsyncRaceRun) -> (),
 {
     let rro = match AsyncRaceRun::search_by_message_id(message_id.clone(), conn).await {
         Ok(r) => r,
-        Err(e) => {
-            return Err(e);
-        }
+        Err(e) => return Err(e).context("finding the async race run to update"),
     };
     match rro {
         Some(mut rr) => {
             f(&mut rr);
             {
                 if let Err(e) = rr.save(conn).await {
-                    Err(format!("Error saving race {}: {}", rr.id, e))
+                    Err(e).with_context(|| format!("saving async race run {}", rr.id))
                 } else {
                     Ok(())
                 }
             }
         }
-        None => Err(format!(
-            "Update for unknown race with message id {}",
-            message_id
-        )),
+        None => anyhow::bail!("no async race run is associated with Discord message {message_id}"),
     }
 }
 
@@ -310,28 +299,24 @@ async fn handle_run_forfeit_modal(
     let mut conn = state
         .diesel_cxn()
         .await
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
     let ir = if FORFEIT_REGEX.is_match(&ut) {
         update_race_run(mid, |rr| rr.forfeit(), &mut conn)
             .await
-            .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+            .map_err(|e| ErrorResponse::from_report(USER_FACING_ERROR, e))?;
 
         update_resp_to_plain_content(
             "You have forfeited this match. Please let the admins know if there are any issues.",
         )
     } else {
-        AsyncRaceRun::get_by_message_id(mid, &mut conn)
+        let race_run = AsyncRaceRun::get_by_message_id(mid, &mut conn)
             .await
-            .and_then(|race_run| {
-                race_run
-                    .get_race(&mut conn)
-                    .map(|race| (race, race_run))
-                    .map_err_to_string()
-            })
-            .and_then(|(race, race_run)| {
-                run_started_interaction_response(&race, &race_run, Some("Forfeit canceled"))
-            })
-            .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?
+            .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
+        let race = race_run
+            .get_race(&mut conn)
+            .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
+        run_started_interaction_response(&race, &race_run, Some("Forfeit canceled"))
+            .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?
     };
     Ok(Some(ir))
 }
@@ -364,7 +349,7 @@ async fn handle_async_run_finish(
     let mut conn = state
         .diesel_cxn()
         .await
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
     if let Err(e) = update_race_run(
         mid,
         |rr| {
@@ -375,10 +360,7 @@ async fn handle_async_run_finish(
     .await
     {
         // TODO: this should maybe be updating a response?
-        return Err(ErrorResponse::new(
-            USER_FACING_ERROR,
-            format!("Error persisting finished run: {}", e),
-        ));
+        return Err(ErrorResponse::from_report(USER_FACING_ERROR, e));
     }
     let ir = create_modal(
         CUSTOM_ID_USER_TIME_MODAL,
@@ -445,11 +427,11 @@ async fn handle_user_time_modal(
     let mut conn = state
         .diesel_cxn()
         .await
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
     update_race_run(mid, |rr| rr.report_user_time(ut), &mut conn)
         .await
         .map_err(|e| {
-            ErrorResponse::new(
+            ErrorResponse::from_report(
                 "Something went wrong reporting your time. Please ping FoxLisk.",
                 e,
             )
@@ -511,14 +493,14 @@ async fn handle_vod_modal(
     let mut conn = state
         .diesel_cxn()
         .await
-        .map_err(|e| ErrorResponse::new(USER_FACING_ERROR, e))?;
+        .map_err(|e| ErrorResponse::from_error(USER_FACING_ERROR, e))?;
 
     update_race_run(mid, |rr| rr.set_vod(user_input), &mut conn)
         .await
         .map_err(|e| {
-            ErrorResponse::new(
+            ErrorResponse::from_report(
                 "Something went wrong reporting your VoD. Please ping FoxLisk.",
-                format!("Error saving vod reporting: {}", e),
+                e.context("saving the reported VoD"),
             )
         })?;
     let ir = plain_interaction_response(
@@ -604,7 +586,7 @@ async fn handle_interaction(
         Ok(o) => (o, None),
         Err(e) => (
             Some(plain_interaction_response(e.user_facing_error)),
-            Some(e.internal_error),
+            Some(format!("{:#}", e.report)),
         ),
     };
     let handler_ms = handler_started.elapsed().as_millis();
@@ -677,19 +659,19 @@ async fn handle_interaction(
 async fn set_application_commands(
     gc: &Box<GuildCreate>,
     state: Arc<DiscordState>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let commands = application_command_definitions();
     let resp = state
         .interaction_client()
         .set_guild_commands(gc.id().clone(), &commands)
         .await
-        .map_err(|e| e.to_string())?;
+        .context("setting the guild application commands")?;
 
     if !resp.status().is_success() {
-        return Err(format!(
-            "Error response setting guild commands: {}",
+        anyhow::bail!(
+            "Discord returned HTTP {} while setting guild application commands",
             resp.status()
-        ));
+        );
     }
     Ok(())
 }

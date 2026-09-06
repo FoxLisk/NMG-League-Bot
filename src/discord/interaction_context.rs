@@ -1,4 +1,4 @@
-use crate::discord::discord_state::{DiscordOperations, DiscordState};
+use crate::discord::discord_state::{DiscordOperations, DiscordState, DiscordStateError};
 use crate::discord::interaction_diagnostics::InteractionDiagnostics;
 use std::sync::Arc;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
@@ -18,9 +18,12 @@ pub(crate) struct InteractionContext<S = DiscordState> {
 impl<S: DiscordOperations> InteractionContext<S> {
     /// Send an initial response for this interaction. The caller owns acknowledgment timing
     /// and error reporting, and must not send another initial response after deferring.
-    pub(crate) async fn respond(&self, response: &InteractionResponse) -> Result<(), String> {
+    pub(crate) async fn respond(
+        &self,
+        response: &InteractionResponse,
+    ) -> Result<(), DiscordStateError> {
         self.state
-            .create_response_err_to_str(self.interaction.id, &self.interaction.token, response)
+            .create_response(self.interaction.id, &self.interaction.token, response)
             .await
     }
 }

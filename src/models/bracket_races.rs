@@ -8,7 +8,6 @@ use crate::update_fn;
 use crate::utils::format_hms;
 use crate::BracketRaceState;
 use crate::BracketRaceStateError;
-use crate::NMGLeagueBotError;
 use chrono::{DateTime, Duration, TimeZone};
 use diesel::prelude::*;
 use diesel::SqliteConnection;
@@ -16,6 +15,15 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 use swiss_pairings::MatchResult;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum BracketRaceQueryError {
+    #[error("could not serialize the bracket race state: {0}")]
+    SerializeState(#[from] serde_json::Error),
+    #[error("database query failed: {0}")]
+    Database(#[from] diesel::result::Error),
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum PlayerResult {
@@ -102,26 +110,26 @@ impl BracketRace {
         bracket_races::table.find(id).first(conn)
     }
 
-    pub fn unscheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, NMGLeagueBotError> {
+    pub fn unscheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, BracketRaceQueryError> {
         let state = serde_json::to_string(&BracketRaceState::New)?;
         bracket_races::table
             .filter(bracket_races::state.eq(state))
             .load(conn)
-            .map_err(From::from)
+            .map_err(Into::into)
     }
 
-    pub fn scheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, NMGLeagueBotError> {
+    pub fn scheduled(conn: &mut SqliteConnection) -> Result<Vec<Self>, BracketRaceQueryError> {
         let state = serde_json::to_string(&BracketRaceState::Scheduled)?;
         bracket_races::table
             .filter(bracket_races::state.eq(state))
             .load(conn)
-            .map_err(From::from)
+            .map_err(Into::into)
     }
 
     pub fn get_unfinished_races_for_player(
         player: &Player,
         conn: &mut SqliteConnection,
-    ) -> Result<Vec<BracketRace>, NMGLeagueBotError> {
+    ) -> Result<Vec<BracketRace>, BracketRaceQueryError> {
         bracket_races::table
             .filter(bracket_races::state.ne(serde_json::to_string(&BracketRaceState::Finished)?))
             .filter(
@@ -130,7 +138,7 @@ impl BracketRace {
                     .or(bracket_races::player_2_id.eq(player.id)),
             )
             .load(conn)
-            .map_err(From::from)
+            .map_err(Into::into)
     }
 }
 

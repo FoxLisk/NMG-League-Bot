@@ -7,7 +7,6 @@ use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::db::DieselConnectionManager;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::twitch_client::TwitchClientBundle;
-use nmg_league_bot::utils::ResultErrToString;
 use nmg_league_bot::{ChannelConfig, NMGLeagueBotError};
 use racetime_api::client::RacetimeClient;
 use std::fmt::Display;
@@ -15,6 +14,7 @@ use std::sync::Arc;
 use thiserror::Error;
 use twilight_cache_inmemory::InMemoryCache;
 use twilight_http::client::InteractionClient;
+use twilight_http::response::DeserializeBodyError;
 use twilight_http::Client;
 use twilight_model::gateway::payload::incoming::InteractionCreate;
 use twilight_model::guild::Role;
@@ -49,6 +49,19 @@ pub enum DiscordStateError {
         role_name: String,
         guild_id: Id<GuildMarker>,
     },
+    #[error("Discord HTTP request failed: {0}")]
+    Http(#[from] twilight_http::Error),
+    #[error("could not deserialize a Discord response: {0}")]
+    DeserializeResponse(#[from] DeserializeBodyError),
+    #[error("Discord returned HTTP {status} while {operation}")]
+    UnexpectedResponse {
+        operation: &'static str,
+        status: u16,
+    },
+    #[error("application command was invoked outside a guild")]
+    MissingGuildContext,
+    #[error("application command has no author")]
+    MissingAuthor,
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -58,7 +71,10 @@ pub trait DiscordOperations {
 
     fn interaction_client<'a>(&'a self) -> InteractionClient<'a>;
 
-    async fn get_private_channel(&self, user: Id<UserMarker>) -> Result<Id<ChannelMarker>, String>;
+    async fn get_private_channel(
+        &self,
+        user: Id<UserMarker>,
+    ) -> Result<Id<ChannelMarker>, DiscordStateError>;
 
     async fn has_admin_role(
         &self,
@@ -92,19 +108,12 @@ pub trait DiscordOperations {
         interaction_id: Id<InteractionMarker>,
         token: &str,
         resp: &InteractionResponse,
-    ) -> Result<(), twilight_http::Error>;
+    ) -> Result<(), DiscordStateError>;
 
     async fn application_command_run_by_admin(
         &self,
         ac: &Box<InteractionCreate>,
-    ) -> Result<bool, String>;
-
-    async fn create_response_err_to_str(
-        &self,
-        interaction_id: Id<InteractionMarker>,
-        token: &str,
-        resp: &InteractionResponse,
-    ) -> Result<(), String>;
+    ) -> Result<bool, DiscordStateError>;
 
     // this method should be removed when i manage diesel connections per-event better
     async fn diesel_cxn<'a>(
@@ -213,7 +222,10 @@ impl DiscordOperations for DiscordState {
         self.discord_client.interaction(self.application_id.clone())
     }
 
-    async fn get_private_channel(&self, user: Id<UserMarker>) -> Result<Id<ChannelMarker>, String> {
+    async fn get_private_channel(
+        &self,
+        user: Id<UserMarker>,
+    ) -> Result<Id<ChannelMarker>, DiscordStateError> {
         if let Some(id) = self.private_channels.get(&user) {
             return Ok(id.clone());
         }
@@ -221,17 +233,16 @@ impl DiscordOperations for DiscordState {
         let created = self
             .discord_client
             .create_private_channel(user.clone())
-            .await
-            .map_err(|e| e.to_string())?;
+            .await?;
         if created.status().is_success() {
-            let chan = created.model().await.map_err(|e| e.to_string())?;
+            let chan = created.model().await?;
             self.private_channels.insert(user, chan.id.clone());
             Ok(chan.id)
         } else {
-            Err(format!(
-                "Error result creating private channel: {}",
-                created.status()
-            ))
+            Err(DiscordStateError::UnexpectedResponse {
+                operation: "creating a private channel",
+                status: created.status().get(),
+            })
         }
     }
 
@@ -311,37 +322,22 @@ impl DiscordOperations for DiscordState {
         interaction_id: Id<InteractionMarker>,
         token: &str,
         resp: &InteractionResponse,
-    ) -> Result<(), twilight_http::Error> {
+    ) -> Result<(), DiscordStateError> {
         self.interaction_client()
             .create_response(interaction_id, token, resp)
             .await
             .map(|_| ())
+            .map_err(Into::into)
     }
 
     async fn application_command_run_by_admin(
         &self,
         ac: &Box<InteractionCreate>,
-    ) -> Result<bool, String> {
-        let gid = ac
-            .guild_id
-            .ok_or("Create race called outside of guild context".to_string())?;
-        let uid = ac
-            .author_id()
-            .ok_or("Create race called by no one ????".to_string())?;
+    ) -> Result<bool, DiscordStateError> {
+        let gid = ac.guild_id.ok_or(DiscordStateError::MissingGuildContext)?;
+        let uid = ac.author_id().ok_or(DiscordStateError::MissingAuthor)?;
 
-        self.has_admin_role(uid, gid).await.map_err_to_string()
-    }
-
-    /// creates a response and maps any errors to String
-    async fn create_response_err_to_str(
-        &self,
-        interaction_id: Id<InteractionMarker>,
-        token: &str,
-        resp: &InteractionResponse,
-    ) -> Result<(), String> {
-        self.create_response(interaction_id, token, resp)
-            .await
-            .map_err(|e| e.to_string())
+        self.has_admin_role(uid, gid).await
     }
 
     async fn diesel_cxn<'a>(

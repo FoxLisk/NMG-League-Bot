@@ -1,3 +1,4 @@
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::discord::{notify_racer, Webhooks};
 use crate::schema::races;
@@ -13,7 +14,6 @@ use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use twilight_mention::Mention;
 use twilight_model::channel::message::MessageFlags;
-use crate::discord::discord_state::DiscordOperations;
 
 fn format_finisher(run: &AsyncRaceRun) -> String {
     match run.state {
@@ -54,19 +54,6 @@ fn format_finisher(run: &AsyncRaceRun) -> String {
     }
 }
 
-trait Fold<T> {
-    fn fold(self) -> T;
-}
-
-impl<T> Fold<T> for Result<T, T> {
-    fn fold(self) -> T {
-        match self {
-            Ok(t) => t,
-            Err(t) => t,
-        }
-    }
-}
-
 async fn handle_race(mut race: AsyncRace, state: &Arc<DiscordState>, webhooks: &Webhooks) {
     let mut conn = match state.diesel_cxn().await {
         Ok(c) => c,
@@ -91,17 +78,23 @@ async fn handle_race(mut race: AsyncRace, state: &Arc<DiscordState>, webhooks: &
     } else {
         let mut msgs = Vec::with_capacity(2);
         if r1.state.is_created() {
-            let name = r1.racer_id().map(|uid| uid.mention().to_string()).fold();
+            let name = r1
+                .racer_id()
+                .map(|uid| uid.mention().to_string())
+                .unwrap_or_else(|error| format!("unknown racer ({error})"));
             if let Err(e) = notify_racer(&mut r1, &race, state).await {
-                warn!("Error notifying {name}: {e}");
+                warn!("Error notifying {name}: {e:#}");
             } else {
                 msgs.push(format!("Successfully contacted {}", name));
             }
         }
         if r2.state.is_created() {
-            let name = r2.racer_id().map(|uid| uid.mention().to_string()).fold();
+            let name = r2
+                .racer_id()
+                .map(|uid| uid.mention().to_string())
+                .unwrap_or_else(|error| format!("unknown racer ({error})"));
             if let Err(e) = notify_racer(&mut r2, &race, state).await {
-                warn!("Error notifying {name}: {e}");
+                warn!("Error notifying {name}: {e:#}");
             } else {
                 msgs.push(format!("Successfully contacted {}", name));
             }
@@ -142,9 +135,10 @@ async fn handle_finished_race(
         }
     };
     // N.B. this level of error handling is realistically unnecessary
-    let ew = webhooks.prepare_execute_async().content(&c)
-    .flags(MessageFlags::SUPPRESS_EMBEDS);
-
+    let ew = webhooks
+        .prepare_execute_async()
+        .content(&c)
+        .flags(MessageFlags::SUPPRESS_EMBEDS);
 
     if let Err(e) = webhooks.execute_webhook(ew).await {
         warn!("Error executing webhook: {e}");

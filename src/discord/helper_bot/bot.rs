@@ -137,7 +137,6 @@ impl HelperBot {
             }
         }
 
-    
         loop {
             tokio::select! {
                 evt = shard.next_event(EventTypeFlags::all()) => {
@@ -384,7 +383,7 @@ async fn handle_criteria_commands(
         (_, _) => {
             warn!("handle_criteria_command got something REALLY unexpected: {interaction:?}");
             // TODO: gross
-            Err(NMGLeagueBotError::Other("Unexpected command".to_string()))
+            Err(NMGLeagueBotError::UnexpectedCommand)
         }
     }
 }
@@ -593,7 +592,7 @@ async fn handle_test_error(
     mut ac: Box<CommandData>,
 ) -> Result<InteractionResponse, NMGLeagueBotError> {
     let err = get_opt!("err", &mut ac.options, String)?;
-    Err(NMGLeagueBotError::Other(err))
+    Err(NMGLeagueBotError::TestError(err))
 }
 
 const TEST_CMD: &'static str = "test";

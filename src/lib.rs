@@ -41,6 +41,35 @@ pub struct ChannelConfig {
     pub match_results: Id<ChannelMarker>,
 }
 
+/// Error text serialized by the HTTP APIs.
+///
+/// This newtype keeps the existing JSON string representation while ensuring that application
+/// code cannot accidentally use an untyped `String` as its error channel.
+#[derive(Debug, Error, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+#[error("{0}")]
+pub struct ApiErrorMessage(String);
+
+impl ApiErrorMessage {
+    pub fn new(message: impl Into<String>) -> Self {
+        Self(message.into())
+    }
+}
+
+#[cfg(test)]
+mod api_error_message_tests {
+    use super::ApiErrorMessage;
+
+    #[test]
+    fn preserves_the_existing_json_string_shape() {
+        let result: Result<(), ApiErrorMessage> = Err(ApiErrorMessage::new("example"));
+        assert_eq!(
+            r#"{"Err":"example"}"#,
+            serde_json::to_string(&result).unwrap()
+        );
+    }
+}
+
 impl ChannelConfig {
     /// explodes if any env vars are missing
     pub fn new_from_env() -> Self {
@@ -66,7 +95,7 @@ impl ChannelConfig {
 #[derive(Debug, Error)]
 pub enum RaceTimeBotError {
     #[error("Error interacting with RaceTime: {0}")]
-    RaceTimeError(#[from] racetime::Error),
+    RaceTimeError(#[source] Box<racetime::Error>),
     #[error("Trying to create a race for the wrong category")]
     InvalidCategory,
     #[error("No auth token (this probably should never happen)")]
@@ -79,6 +108,13 @@ pub enum RaceTimeBotError {
     RaceControllerDisconnect,
     #[error("Handler disconnected (the inverse of WorkerDisconnect)")]
     HandlerDisconnect,
+}
+
+#[cfg(feature = "racetime_bot")]
+impl From<racetime::Error> for RaceTimeBotError {
+    fn from(error: racetime::Error) -> Self {
+        Self::RaceTimeError(Box::new(error))
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -132,14 +168,11 @@ pub enum NMGLeagueBotError {
     #[error("[De]serialization error: {0}")]
     SerdeError(#[from] serde_json::Error),
 
-    #[error("Illegal state transition: {0:?}")]
-    StateError(String),
-
     #[error("RaceTime error: {0}")]
     RaceTimeError(#[from] RacetimeError),
 
     #[error("Twitch API error: {0}")]
-    TwitchError(#[from] ClientRequestError<reqwest::Error>),
+    TwitchError(#[source] Box<ClientRequestError<reqwest::Error>>),
 
     #[error("No timestamp on new bracket race info")]
     MissingTimestamp,
@@ -161,7 +194,7 @@ pub enum NMGLeagueBotError {
 
     #[cfg(feature = "racetime_bot")]
     #[error("{0}")]
-    RaceTimeBotError(#[from] RaceTimeBotError),
+    RaceTimeBotError(#[source] Box<RaceTimeBotError>),
 
     #[error("Error managing race event: {0}")]
     RaceEventError(#[from] RaceEventError),
@@ -172,11 +205,25 @@ pub enum NMGLeagueBotError {
     #[error("Error getting ApplicationCommand options: {0}")]
     ApplicationCommandOptionError(#[from] ApplicationCommandOptionError),
 
-    #[error("Unable to parse finish time")]
-    ParseFinishTimeError,
+    #[error("unexpected command")]
+    UnexpectedCommand,
 
-    #[error("Other error: {0}")]
-    Other(String),
+    #[cfg(feature = "testing")]
+    #[error("test error: {0}")]
+    TestError(String),
+}
+
+impl From<ClientRequestError<reqwest::Error>> for NMGLeagueBotError {
+    fn from(error: ClientRequestError<reqwest::Error>) -> Self {
+        Self::TwitchError(Box::new(error))
+    }
+}
+
+#[cfg(feature = "racetime_bot")]
+impl From<RaceTimeBotError> for NMGLeagueBotError {
+    fn from(error: RaceTimeBotError) -> Self {
+        Self::RaceTimeBotError(Box::new(error))
+    }
 }
 
 #[cfg(feature = "racetime_bot")]

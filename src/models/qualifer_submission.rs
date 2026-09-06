@@ -28,7 +28,7 @@ impl QualifierSubmission {
     /// where deleting qualifiers is reasonable)
     /// you can use [Season::safe_to_delete_qualifiers] if you have a Season in hand already
     pub fn safe_to_delete(&self, conn: &mut SqliteConnection) -> Result<bool, NMGLeagueBotError> {
-        Season::get_by_id(self.season_id, conn)?.safe_to_delete_qualifiers()
+        Ok(Season::get_by_id(self.season_id, conn)?.safe_to_delete_qualifiers()?)
     }
     update_fn! {}
     delete_fn!(qualifier_submissions::table);

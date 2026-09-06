@@ -2,6 +2,7 @@ extern crate rand;
 extern crate tokio;
 
 use crate::discord::discord_state::DiscordOperations;
+use anyhow::Context;
 use bb8::RunError;
 use chrono::{DateTime, TimeZone};
 use diesel::{ConnectionError, SqliteConnection};
@@ -29,7 +30,7 @@ use nmg_league_bot::models::asyncs::race_run::AsyncRaceRun;
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::player::{MentionOptional, Player};
-use nmg_league_bot::utils::{race_to_nice_embeds, ResultErrToString};
+use nmg_league_bot::utils::race_to_nice_embeds;
 
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::worker_funcs::{
@@ -117,16 +118,25 @@ pub(crate) async fn notify_racer(
     race_run: &mut AsyncRaceRun,
     race: &AsyncRace,
     state: &Arc<DiscordState>,
-) -> Result<(), String> {
-    let uid = race_run.racer_id()?;
+) -> anyhow::Result<()> {
+    let uid = race_run.racer_id().context("getting the async racer ID")?;
     if Some(uid) == state.cache.current_user().map(|cu| cu.id) {
         info!("Not sending messages to myself");
         race_run.contact_succeeded();
-        let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-        race_run.save(&mut conn).await?;
+        let mut conn = state
+            .diesel_cxn()
+            .await
+            .context("getting a database connection to save the async race run")?;
+        race_run
+            .save(&mut conn)
+            .await
+            .context("saving the async race run after skipping its self-DM")?;
         return Ok(());
     }
-    let dm = state.get_private_channel(uid).await?;
+    let dm = state
+        .get_private_channel(uid)
+        .await
+        .context("getting the racer's Discord direct-message channel")?;
     let content = format!(
         "Hello, your asynchronous race is now ready.
 When you're ready to begin your race, click \"Start run\" and you will be given \
@@ -149,16 +159,29 @@ If anything goes wrong, tell an admin there was an issue with race `{}`",
         })])
         .content(&content)
         .await
-        .map_err(|e| e.to_string())?;
+        .context("sending the async race direct message")?;
 
     if resp.status().is_success() {
-        let msg = resp.model().await.map_err(|e| e.to_string())?;
+        let msg = resp
+            .model()
+            .await
+            .context("deserializing the async race direct message")?;
         race_run.set_message_id(msg.id.get());
         race_run.contact_succeeded();
-        let mut conn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-        race_run.save(&mut conn).await
+        let mut conn = state
+            .diesel_cxn()
+            .await
+            .context("getting a database connection to save the contacted racer")?;
+        race_run
+            .save(&mut conn)
+            .await
+            .context("saving the async race run after contacting the racer")?;
+        Ok(())
     } else {
-        Err(format!("Error sending message: {}", resp.status()))
+        anyhow::bail!(
+            "Discord returned HTTP {} while sending an async race direct message",
+            resp.status()
+        )
     }
 }
 
@@ -242,29 +265,6 @@ macro_rules! get_opt {
     };
 }
 
-/**
-get_opt_s!("name", &mut vec_of_options, OptionType)
-
-this does something like: find the option with name "name" in the vector,
-double check that it has CommandOptionType::OptionType, and then rip the outsides off of the
-CommandOptionValue::OptionType(actual_value) and give you back just the actual_value
-
-returns Result<T, String> where actual_value: T
-
-(the `_s` is for `_string` b/c the error type is string)
- */
-#[macro_export]
-macro_rules! get_opt_s {
-    ($opt_name:expr, $options:expr, $t:ident) => {{
-        match $crate::get_opt!($opt_name, $options, $t) {
-            Ok(o) => Ok(o),
-            // for some reason .map_err(|_e|, format!(...)) fails to compile here, complaining
-            // about needing type annotations ??
-            Err(_e) => Err(format!("Invalid option value for {}", $opt_name)),
-        }
-    }};
-}
-
 #[macro_export]
 macro_rules! get_focused_opt {
     ($opt_name:expr, $options:expr, $t:ident) => {{
@@ -283,31 +283,53 @@ macro_rules! get_focused_opt {
     }};
 }
 
-/// an ErrorResponse indicates that, rather than simply responding to the interaction with some
-/// kind of response, you want to both respond to that (with a plain error message)
-/// *AND* inform the admins that there was an error
+/// A failure at the Discord presentation boundary. The user-facing message is deliberately
+/// separate from the internal report, whose source chain is retained for diagnostics.
 #[derive(Debug)]
 pub struct ErrorResponse {
     user_facing_error: String,
-    internal_error: String,
+    report: anyhow::Error,
 }
 
-// TODO: some kind of impl From<&str> for ErrorResponse that returns an error response with "Internal error, sorry."
-//       as the user facing error and the &str as the internal one?
-//       or maybe From<E: Error> that behaves similarly
-
 impl ErrorResponse {
-    fn new<S1: Into<String>, S2: Display>(user_facing_error: S1, internal_error: S2) -> Self {
+    fn new(user_facing_error: impl Into<String>, internal_error: impl Display) -> Self {
         Self {
             user_facing_error: user_facing_error.into(),
-            internal_error: internal_error.to_string(),
+            report: anyhow::Error::msg(internal_error.to_string()),
+        }
+    }
+
+    fn from_error<E>(user_facing_error: impl Into<String>, internal_error: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self {
+            user_facing_error: user_facing_error.into(),
+            report: anyhow::Error::new(internal_error),
+        }
+    }
+
+    fn from_report(user_facing_error: impl Into<String>, internal_error: anyhow::Error) -> Self {
+        Self {
+            user_facing_error: user_facing_error.into(),
+            report: internal_error,
         }
     }
 
     fn new_internal(internal_error: impl Display) -> Self {
         Self {
             user_facing_error: "Internal error, sorry.".to_string(),
-            internal_error: internal_error.to_string(),
+            report: anyhow::Error::msg(internal_error.to_string()),
+        }
+    }
+
+    fn from_internal_error<E>(internal_error: E) -> Self
+    where
+        E: std::error::Error + Send + Sync + 'static,
+    {
+        Self {
+            user_facing_error: "Internal error, sorry.".to_string(),
+            report: anyhow::Error::new(internal_error),
         }
     }
 }
@@ -315,7 +337,24 @@ impl ErrorResponse {
 impl Display for ErrorResponse {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", &self.user_facing_error)?;
-        write!(f, " (Internal error: {})", &self.internal_error)
+        write!(f, " (Internal error: {:#})", &self.report)
+    }
+}
+
+#[cfg(test)]
+mod error_response_tests {
+    use super::ErrorResponse;
+
+    #[test]
+    fn retains_internal_error_context_separately_from_the_user_message() {
+        let report = anyhow::Error::msg("root cause").context("outer context");
+        let response = ErrorResponse::from_report("safe user message", report);
+
+        assert_eq!(response.user_facing_error, "safe user message");
+        assert_eq!(
+            format!("{:#}", response.report),
+            "outer context: root cause"
+        );
     }
 }
 
@@ -429,11 +468,15 @@ async fn schedule_race<Tz: TimeZone>(
 async fn create_commportunities_post(
     info: &BracketRaceInfo,
     state: &Arc<DiscordState>,
-) -> Result<Message, String> {
+) -> anyhow::Result<Message> {
     // TODO: i'm losing my mind at the number of extra SQL queries here
     // it doesn't REALLY matter but alksdjflkajsklfj 😱
-    let mut cxn = state.diesel_cxn().await.map_err(|e| e.to_string())?;
-    let fields = race_to_nice_embeds(info, cxn.deref_mut()).map_err(|e| e.to_string())?;
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection for the commentary post")?;
+    let fields = race_to_nice_embeds(info, cxn.deref_mut())
+        .context("building the commentary-post race summary")?;
     let embeds = vec![Embed {
         author: None,
         color: Some(0x00b0f0),
@@ -454,9 +497,12 @@ async fn create_commportunities_post(
         .create_message(state.channel_config.commportunities.clone())
         .embeds(&embeds)
         .await
-        .map_err_to_string()?;
+        .context("creating the commentary opportunity post")?;
 
-    let m = msg.model().await.map_err_to_string()?;
+    let m = msg
+        .model()
+        .await
+        .context("deserializing the commentary opportunity post")?;
     let emojum = RequestReactionType::Unicode { name: "🎙" };
     if let Err(e) = state
         .discord_client

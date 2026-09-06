@@ -1,7 +1,6 @@
 use crate::config::CONFIG;
 use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_races::PlayerResult;
-use crate::NMGLeagueBotError;
 use chrono::{Duration, NaiveDateTime};
 use diesel::SqliteConnection;
 use enum_iterator::Sequence;
@@ -9,8 +8,8 @@ use log::warn;
 use regex::Regex;
 use serde::Serialize;
 use std::ffi::OsStr;
-use std::fmt::Display;
 use std::str::FromStr;
+use thiserror::Error;
 use twilight_model::channel::message::embed::EmbedField;
 
 pub fn format_hms(secs: u64) -> String {
@@ -54,12 +53,16 @@ pub fn format_duration_hms(d: Duration) -> String {
     format_hms(d.num_seconds() as u64)
 }
 
-pub fn parse_race_result(result: &str) -> Result<PlayerResult, NMGLeagueBotError> {
+#[derive(Debug, Error)]
+#[error("Unable to parse finish time")]
+pub struct ParseRaceResultError;
+
+pub fn parse_race_result(result: &str) -> Result<PlayerResult, ParseRaceResultError> {
     if result == "forfeit" {
         Ok(PlayerResult::Forfeit)
     } else {
         Ok(PlayerResult::Finish(
-            parse_hms(result).ok_or(NMGLeagueBotError::ParseFinishTimeError)?,
+            parse_hms(result).ok_or(ParseRaceResultError)?,
         ))
     }
 }
@@ -134,16 +137,6 @@ impl<T> ResultCollapse<T> for Result<T, T> {
             Ok(t) => t,
             Err(e) => e,
         }
-    }
-}
-
-pub trait ResultErrToString<T> {
-    fn map_err_to_string(self) -> Result<T, String>;
-}
-
-impl<T, E: Display> ResultErrToString<T> for Result<T, E> {
-    fn map_err_to_string(self) -> Result<T, String> {
-        self.map_err(|e| e.to_string())
     }
 }
 
