@@ -100,7 +100,7 @@ impl Season {
                 brackets::table
                     .inner_join(bracket_races::table.inner_join(bracket_race_infos::table)),
             )
-            .filter(bracket_race_infos::columns::bracket_race_id.eq(bri.id))
+            .filter(bracket_race_infos::columns::id.eq(bri.id))
             .select(seasons::all_columns)
             .first(conn)?;
 
@@ -307,6 +307,37 @@ impl NewSeason {
         })
     }
     save_fn!(seasons::table, Season);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NewSeason, Season};
+    use crate::models::bracket_races::NewBracketRace;
+    use crate::models::bracket_rounds::NewBracketRound;
+    use crate::models::brackets::{BracketType, NewBracket};
+    use crate::models::player::NewPlayer;
+    use crate::test_utils::setup_db;
+
+    #[test]
+    fn gets_season_by_bracket_race_info_id() -> anyhow::Result<()> {
+        let mut conn = setup_db()?;
+        let season = NewSeason::new("Test", "alttp", "Any% NMG", &mut conn)?.save(&mut conn)?;
+        let bracket = NewBracket::new(&season, "Test", BracketType::Swiss).save(&mut conn)?;
+        let round = NewBracketRound::new(&bracket, 1).save(&mut conn)?;
+        let player_1 = NewPlayer::new("Player 1", "1", None, None, None).save(&mut conn)?;
+        let player_2 = NewPlayer::new("Player 2", "2", None, None, None).save(&mut conn)?;
+
+        // Consume the first race ID so the target race and its first info row have different IDs.
+        NewBracketRace::new(&bracket, &round, &player_1, &player_2).save(&mut conn)?;
+        let target_race =
+            NewBracketRace::new(&bracket, &round, &player_1, &player_2).save(&mut conn)?;
+        let info = target_race.info(&mut conn)?;
+        assert_ne!(info.id, info.bracket_race_id);
+
+        let found = Season::get_from_bracket_race_info(&info, &mut conn)?;
+        assert_eq!(found.id, season.id);
+        Ok(())
+    }
 }
 
 #[cfg(test)]

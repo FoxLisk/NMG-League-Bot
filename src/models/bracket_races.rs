@@ -250,7 +250,7 @@ impl BracketRace {
         let state = self.state()?;
         if !force && state == BracketRaceState::Finished {
             return Err(BracketRaceStateError::InvalidState(
-                vec![BracketRaceState::Finished],
+                vec![BracketRaceState::New, BracketRaceState::Scheduled],
                 state,
             ));
         }
@@ -263,6 +263,44 @@ impl BracketRace {
         if self.player_1_result.is_some() && self.player_2_result.is_some() {
             self.finish()?;
         }
+        Ok(())
+    }
+
+    /// Reloads the persisted race, applies the supplied results, and updates it only if another
+    /// writer has not already finished it. The conditional update keeps stale scanner snapshots
+    /// from overwriting a result that was reported while the scanner was awaiting RaceTime.
+    pub fn add_results_and_update(
+        &mut self,
+        p1: Option<&PlayerResult>,
+        p2: Option<&PlayerResult>,
+        force: bool,
+        conn: &mut SqliteConnection,
+    ) -> Result<(), BracketRaceStateError> {
+        let mut current = Self::get_by_id(self.id, conn)?;
+        current.add_results(p1, p2, force)?;
+
+        if force {
+            current.update(conn)?;
+        } else {
+            let finished = serde_json::to_string(&BracketRaceState::Finished)?;
+            let updated = diesel::update(
+                bracket_races::table
+                    .filter(bracket_races::id.eq(current.id))
+                    .filter(bracket_races::state.ne(finished)),
+            )
+            .set(&current)
+            .execute(conn)?;
+
+            if updated == 0 {
+                let actual = Self::get_by_id(current.id, conn)?.state()?;
+                return Err(BracketRaceStateError::InvalidState(
+                    vec![BracketRaceState::New, BracketRaceState::Scheduled],
+                    actual,
+                ));
+            }
+        }
+
+        *self = current;
         Ok(())
     }
 
@@ -370,4 +408,65 @@ impl NewBracketRace {
     }
 
     save_fn!(bracket_races::table, BracketRace);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BracketRace, NewBracketRace, PlayerResult};
+    use crate::models::bracket_rounds::NewBracketRound;
+    use crate::models::brackets::{BracketType, NewBracket};
+    use crate::models::player::NewPlayer;
+    use crate::models::season::NewSeason;
+    use crate::test_utils::setup_db;
+    use crate::{BracketRaceState, BracketRaceStateError};
+
+    fn new_race() -> anyhow::Result<(diesel::SqliteConnection, BracketRace)> {
+        let mut conn = setup_db()?;
+        let season = NewSeason::new("Test", "alttp", "Any% NMG", &mut conn)?.save(&mut conn)?;
+        let bracket = NewBracket::new(&season, "Test", BracketType::Swiss).save(&mut conn)?;
+        let round = NewBracketRound::new(&bracket, 1).save(&mut conn)?;
+        let player_1 = NewPlayer::new("Player 1", "1", None, None, None).save(&mut conn)?;
+        let player_2 = NewPlayer::new("Player 2", "2", None, None, None).save(&mut conn)?;
+        let race = NewBracketRace::new(&bracket, &round, &player_1, &player_2).save(&mut conn)?;
+        Ok((conn, race))
+    }
+
+    #[test]
+    fn stale_non_forced_results_do_not_replace_a_finished_race() -> anyhow::Result<()> {
+        let (mut conn, race) = new_race()?;
+        let mut stale_race = race.clone();
+        let mut reported_race = race;
+
+        reported_race.add_results_and_update(
+            Some(&PlayerResult::Finish(100)),
+            Some(&PlayerResult::Finish(200)),
+            false,
+            &mut conn,
+        )?;
+
+        let error = stale_race
+            .add_results_and_update(
+                Some(&PlayerResult::Finish(300)),
+                Some(&PlayerResult::Finish(400)),
+                false,
+                &mut conn,
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            BracketRaceStateError::InvalidState(_, BracketRaceState::Finished)
+        ));
+
+        let persisted = BracketRace::get_by_id(stale_race.id, &mut conn)?;
+        assert_eq!(persisted.state()?, BracketRaceState::Finished);
+        assert!(matches!(
+            persisted.player_1_result().transpose()?,
+            Some(PlayerResult::Finish(100))
+        ));
+        assert!(matches!(
+            persisted.player_2_result().transpose()?,
+            Some(PlayerResult::Finish(200))
+        ));
+        Ok(())
+    }
 }

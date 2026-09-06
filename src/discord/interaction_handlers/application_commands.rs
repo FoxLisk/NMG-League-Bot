@@ -1070,6 +1070,14 @@ fn get_user_from_interaction(interaction: &InteractionCreate) -> Option<User> {
     interaction.member.as_ref()?.user.clone()
 }
 
+fn validated_http_url(value: &str) -> Option<String> {
+    let url = Url::parse(value).ok()?;
+    match url.scheme() {
+        "http" | "https" => Some(url.to_string()),
+        _ => None,
+    }
+}
+
 async fn handle_submit_qualifier(
     mut ac: Box<CommandData>,
     ctx: &InteractionContext,
@@ -1100,6 +1108,14 @@ async fn handle_submit_qualifier(
         Ok(v) => v,
         Err(e) => {
             return Ok(Some(plain_interaction_response(e.to_string())));
+        }
+    };
+    let vod = match validated_http_url(&vod) {
+        Some(v) => v,
+        None => {
+            return Ok(Some(plain_interaction_response(
+                "Invalid VOD URL. Please provide a full URL starting with `http://` or `https://`.",
+            )));
         }
     };
 
@@ -2496,7 +2512,7 @@ mod tests {
     use crate::discord::interaction_diagnostics::InteractionDiagnostics;
     use crate::discord::interaction_handlers::application_commands::{
         bracket_channel_name, bracket_role_colour, datetime_from_options, normalize_racetime_name,
-        season_cleanup_plan, tolerate_twitch_links,
+        season_cleanup_plan, tolerate_twitch_links, validated_http_url,
     };
     use crate::discord::ErrorResponse;
     use chrono::{Datelike, Timelike};
@@ -2807,5 +2823,21 @@ mod tests {
         ] {
             assert_eq!(tolerate_twitch_links(input), expected.to_string())
         }
+    }
+
+    #[test]
+    fn qualifier_vod_requires_an_http_url() {
+        assert_eq!(
+            validated_http_url("https://example.com/watch?v=123"),
+            Some("https://example.com/watch?v=123".to_string())
+        );
+        assert_eq!(
+            validated_http_url("http://example.com/video"),
+            Some("http://example.com/video".to_string())
+        );
+        assert_eq!(validated_http_url("javascript:alert(1)"), None);
+        assert_eq!(validated_http_url("data:text/html,unsafe"), None);
+        assert_eq!(validated_http_url("/relative/video"), None);
+        assert_eq!(validated_http_url("not a URL"), None);
     }
 }
