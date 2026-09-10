@@ -433,7 +433,7 @@ impl RaceController {
                 // retry once i guess?
                 if let Err(e) = ctx.set_open().await {
                     warn!("Error setting racetime room {rd:?} open. Giving up cause idk what to do now. {e}");
-                    return Err(RaceTimeBotError::RaceTimeError(e))?;
+                    return Err(RaceTimeBotError::from(e).into());
                 }
             }
             info!("Set racetime room {} to open", rd.slug);

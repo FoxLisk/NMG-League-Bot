@@ -2,7 +2,9 @@ use std::{collections::HashMap, time::Duration};
 
 use clap::Parser;
 use itertools::Itertools;
-use nmg_league_bot::{config::CONFIG, models::player::Player, twitch_client::TwitchClientBundle};
+use nmg_league_bot::{
+    config::CONFIG, models::player::Player, twitch_client::TwitchClientBundle, ApiErrorMessage,
+};
 use racetime_api::{client::RacetimeClient, endpoint::Query, endpoints::UserData, types::User};
 use twitch_api::helix::users::GetUsersRequest;
 
@@ -42,8 +44,8 @@ async fn main() -> anyhow::Result<()> {
         .get(format!("{base_url}/api/v1/season/{season_id}/qualifiers"))
         .send()
         .await?;
-    let parsed: Result<Vec<Qualifier>, String> = qual_resp.json().await?;
-    let qualifiers = parsed.map_err(|e| anyhow::anyhow!(e))?;
+    let parsed: Result<Vec<Qualifier>, ApiErrorMessage> = qual_resp.json().await?;
+    let qualifiers = parsed?;
     let player_ids = qualifiers
         .into_iter()
         .map(|q| q.player_id)
@@ -58,8 +60,8 @@ async fn main() -> anyhow::Result<()> {
         .get(format!("{base_url}/api/v1/players?{query_string}"))
         .send()
         .await?;
-    let parsed: Result<Vec<Player>, String> = players_resp.json().await?;
-    let players = parsed.map_err(|e| anyhow::anyhow!(e))?;
+    let parsed: Result<Vec<Player>, ApiErrorMessage> = players_resp.json().await?;
+    let players = parsed?;
     let mut twitches_to_check: HashMap<String, Player> = Default::default();
 
     let mut errors: HashMap<String, Vec<String>> = Default::default();

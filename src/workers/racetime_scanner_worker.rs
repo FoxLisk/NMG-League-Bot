@@ -1,7 +1,8 @@
+use crate::discord::discord_state::DiscordOperations;
 use crate::discord::discord_state::DiscordState;
 use crate::schema::players;
 use crate::Shutdown;
-use bb8::RunError;
+use anyhow::Context;
 use diesel::prelude::*;
 use itertools::Itertools;
 use log::{debug, info, warn};
@@ -10,53 +11,25 @@ use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
 use nmg_league_bot::models::bracket_races::BracketRace;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::season::Season;
-use nmg_league_bot::racetime_types::{PlayerResultError, Races, RacetimeRace};
+use nmg_league_bot::racetime_types::{Races, RacetimeRace};
 use nmg_league_bot::utils::racetime_base_url;
 use nmg_league_bot::worker_funcs::{
     interesting_race, races_by_player_rtgg, trigger_race_finish, RaceFinishOptions,
 };
-use nmg_league_bot::BracketRaceStateError;
 use racetime_api::client::RacetimeClient;
 use racetime_api::endpoint::Query;
 use racetime_api::endpoints::{PastCategoryRaces, PastCategoryRacesBuilder};
-use racetime_api::err::RacetimeError;
 use std::collections::HashMap;
 use std::ops::DerefMut;
 use std::sync::Arc;
 use std::time::Duration;
-use thiserror::Error;
 use tokio::sync::broadcast::Receiver;
-use crate::discord::discord_state::DiscordOperations;
 
-#[derive(Error, Debug)]
-enum ScanError {
-    #[error("Error getting DB connection: {0}")]
-    ConnectionError(#[from] RunError<ConnectionError>),
-
-    #[error("Error running DB query: {0}")]
-    DatabaseError(#[from] diesel::result::Error),
-
-    #[error("Totally unrealistic serialization error: {0}")]
-    SerializationError(#[from] serde_json::Error),
-
-    #[error("Totally unrealistic query builder error: {0}")]
-    BuilderError(#[from] racetime_api::endpoints::PastCategoryRacesBuilderError),
-
-    #[error("Racetime API error: {0}")]
-    RacetimeError(#[from] RacetimeError),
-
-    #[error("Error determing player's race result: {0}")]
-    PlayerResultError(#[from] PlayerResultError),
-
-    #[error("Error updating bracket race state: {0}")]
-    BracketRaceStateError(#[from] BracketRaceStateError),
-}
-
-async fn scan(
-    state: &Arc<DiscordState>,
-    racetime_client: &RacetimeClient,
-) -> Result<(), ScanError> {
-    let mut cxn = state.diesel_cxn().await?;
+async fn scan(state: &Arc<DiscordState>, racetime_client: &RacetimeClient) -> anyhow::Result<()> {
+    let mut cxn = state
+        .diesel_cxn()
+        .await
+        .context("getting a database connection for the racetime scan")?;
     let season = match Season::get_active_season(cxn.deref_mut())? {
         Some(s) => s,
         None => {
@@ -92,7 +65,7 @@ async fn scan(
     for race in finished_races.races {
         debug!("Checking race {race:?}");
         if let Err(e) = maybe_do_race_stuff(race, &interesting_rtgg_ids, &season, state).await {
-            warn!("Error handling a race: {}", e);
+            warn!("Error handling a race: {e:#}");
         }
     }
     Ok(())
@@ -103,7 +76,7 @@ async fn maybe_do_race_stuff(
     bracket_races: &HashMap<String, (&BracketRaceInfo, &BracketRace, &Player, &Player)>,
     season: &Season,
     state: &Arc<DiscordState>,
-) -> Result<(), ScanError> {
+) -> anyhow::Result<()> {
     if let Some((bri, br, (p1, e1), (p2, e2))) = interesting_race(&mut race, bracket_races, season)
     {
         // this is awful, i hate doing it this way, i'm just tired of thinking about this
@@ -112,7 +85,10 @@ async fn maybe_do_race_stuff(
         mutable_bri.racetime_gg_url = Some(format!("{}{}", racetime_base_url(), race.url));
         let p1r = e1.result()?;
         let p2r = e2.result()?;
-        let mut conn = state.diesel_cxn().await?;
+        let mut conn = state
+            .diesel_cxn()
+            .await
+            .context("getting a database connection to finish the scanned race")?;
         if let Err(e) = mutable_bri.update(conn.deref_mut()) {
             warn!("Error updating BRI with racetimeurl: {e} - BRI {mutable_bri:?}");
         }
@@ -153,7 +129,7 @@ pub async fn cron(mut sd: Receiver<Shutdown>, state: Arc<DiscordState>) {
             _ = intv.tick() => {
                 debug!("Racetime scan starting...");
                 if let Err(e) = scan(&state, &client).await {
-                    warn!("Error running racetime scan: {}", e);
+                    warn!("Error running racetime scan: {e:#}");
                 }
             }
             _sd = sd.recv() => {

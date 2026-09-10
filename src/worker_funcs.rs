@@ -199,12 +199,12 @@ pub async fn trigger_race_finish(
     client: Option<&Client>,
     channel_config: &ChannelConfig,
 ) -> Result<(), RaceFinishError> {
-    options.bracket_race.add_results(
+    options.bracket_race.add_results_and_update(
         Some(&options.player_1_result),
         Some(&options.player_2_result),
         options.force_update,
+        conn,
     )?;
-    options.bracket_race.update(conn)?;
 
     if let Some(c) = client {
         if let Err(e) = post_match_results(c, &options, conn).await {

@@ -13,6 +13,18 @@ function seconds_to_hmmss(secs) {
     return out;
 }
 
+function safe_http_url(value) {
+    try {
+        const url = new URL(value);
+        if (url.protocol === 'http:' || url.protocol === 'https:') {
+            return url.href;
+        }
+    } catch (_err) {
+        // Existing malformed links should be displayed as plain text.
+    }
+    return null;
+}
+
 /*
  we're going to trust that the server returns these sorted fastest to slowest
  returns a promise that might be an error
@@ -56,7 +68,12 @@ function build_row(template, qual_row, seen) {
     player_anchor.textContent = name;
 
     let time_anchor = time.querySelector('a');
-    time_anchor.href = qual_row.vod;
+    const vod_url = safe_http_url(qual_row.vod);
+    if (vod_url) {
+        time_anchor.href = vod_url;
+    } else {
+        time_anchor.removeAttribute('href');
+    }
     time_anchor.textContent = qual_row.time;
 
     if (delete_) {

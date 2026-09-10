@@ -137,7 +137,6 @@ impl HelperBot {
             }
         }
 
-    
         loop {
             tokio::select! {
                 evt = shard.next_event(EventTypeFlags::all()) => {
@@ -285,7 +284,9 @@ impl HelperBot {
         let token = interaction.token.clone();
         let id = interaction.id;
         let resp = match ac.name.as_str() {
+            #[cfg(feature = "testing")]
             TEST_CMD => handle_test(ac).await,
+            #[cfg(feature = "testing")]
             TEST_ERROR_CMD => handle_test_error(ac).await,
             CRITERIA_CMD => handle_criteria_commands(interaction, ac, conn).await,
             _ => {
@@ -384,7 +385,7 @@ async fn handle_criteria_commands(
         (_, _) => {
             warn!("handle_criteria_command got something REALLY unexpected: {interaction:?}");
             // TODO: gross
-            Err(NMGLeagueBotError::Other("Unexpected command".to_string()))
+            Err(NMGLeagueBotError::UnexpectedCommand)
         }
     }
 }
@@ -585,18 +586,22 @@ fn handle_show_criteria(
     })
 }
 
+#[cfg(feature = "testing")]
 async fn handle_test(_ac: Box<CommandData>) -> Result<InteractionResponse, NMGLeagueBotError> {
     Ok(plain_ephemeral_response("Hi mom!"))
 }
 
+#[cfg(feature = "testing")]
 async fn handle_test_error(
     mut ac: Box<CommandData>,
 ) -> Result<InteractionResponse, NMGLeagueBotError> {
     let err = get_opt!("err", &mut ac.options, String)?;
-    Err(NMGLeagueBotError::Other(err))
+    Err(NMGLeagueBotError::TestError(err))
 }
 
+#[cfg(feature = "testing")]
 const TEST_CMD: &'static str = "test";
+#[cfg(feature = "testing")]
 const TEST_ERROR_CMD: &'static str = "test_error";
 const CRITERIA_CMD: &'static str = "criteria";
 const CRITERIA_ADD_SUBCMD: &'static str = "add";
@@ -608,6 +613,7 @@ const RESTREAM_FORBIDDEN: i64 = 2;
 const RESTREAM_AGNOSTIC: i64 = 3;
 
 fn application_command_definitions() -> Vec<Command> {
+    #[cfg(feature = "testing")]
     let test = CommandBuilder::new(
         TEST_CMD.to_string(),
         "Test command".to_string(),
@@ -615,6 +621,7 @@ fn application_command_definitions() -> Vec<Command> {
     )
     .default_member_permissions(Permissions::ADMINISTRATOR)
     .build();
+    #[cfg(feature = "testing")]
     let test_err = CommandBuilder::new(
         TEST_ERROR_CMD.to_string(),
         "Produce an error".to_string(),
@@ -702,10 +709,9 @@ fn application_command_definitions() -> Vec<Command> {
             })
             .build();
 
-    let mut cmds = vec![criteria_commands];
-
-    if cfg!(feature = "testing") {
-        cmds.extend(vec![test, test_err]);
-    }
+    #[cfg(feature = "testing")]
+    let cmds = vec![criteria_commands, test, test_err];
+    #[cfg(not(feature = "testing"))]
+    let cmds = vec![criteria_commands];
     cmds
 }

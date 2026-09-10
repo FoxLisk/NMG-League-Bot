@@ -8,16 +8,38 @@ use crate::models::bracket_race_infos::BracketRaceInfo;
 use crate::models::bracket_races::BracketRace;
 use crate::schema::seasons;
 use crate::utils::epoch_timestamp;
-use crate::{save_fn, schema, update_fn, BracketRaceState, NMGLeagueBotError};
+use crate::{save_fn, schema, update_fn, BracketRaceState};
 use enum_iterator::Sequence;
+use thiserror::Error;
 
-#[derive(serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
+#[derive(Copy, Clone, serde::Serialize, serde::Deserialize, Eq, PartialEq, Debug, Sequence)]
 pub enum SeasonState {
     Created,
     QualifiersOpen,
     QualifiersClosed,
     Started,
     Finished,
+}
+
+#[derive(Debug, Error)]
+pub enum SeasonStateTransitionError {
+    #[error("{context}: {source}")]
+    StateSerialization {
+        context: String,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("expected season state {expected:?}, found {actual:?}")]
+    InvalidTransition {
+        expected: SeasonState,
+        actual: SeasonState,
+    },
+    #[error("seasons cannot return to the Created state")]
+    CannotReturnToCreated,
+    #[error("database operation failed: {0}")]
+    Database(#[from] diesel::result::Error),
+    #[error("cannot finish the season because bracket `{0}` is not finished")]
+    BracketNotFinished(String),
 }
 
 #[derive(Queryable, Debug, Serialize, Identifiable, AsChangeset)]
@@ -78,7 +100,7 @@ impl Season {
                 brackets::table
                     .inner_join(bracket_races::table.inner_join(bracket_race_infos::table)),
             )
-            .filter(bracket_race_infos::columns::bracket_race_id.eq(bri.id))
+            .filter(bracket_race_infos::columns::id.eq(bri.id))
             .select(seasons::all_columns)
             .first(conn)?;
 
@@ -99,27 +121,30 @@ impl Season {
         &mut self,
         state: SeasonState,
         cxn: &mut SqliteConnection,
-    ) -> Result<(), NMGLeagueBotError> {
-        let current_state = self.get_state()?;
+    ) -> Result<(), SeasonStateTransitionError> {
+        let current_state =
+            self.get_state()
+                .map_err(|source| SeasonStateTransitionError::StateSerialization {
+                    context: "could not decode the current season state".to_string(),
+                    source,
+                })?;
         if current_state == state {
             return Ok(());
         }
         macro_rules! expect_state {
             ($state:ident) => {
                 if current_state != SeasonState::$state {
-                    return Err(NMGLeagueBotError::StateError(format!(
-                        "Expected state {}",
-                        serde_json::to_string(&SeasonState::$state)?
-                    )));
+                    return Err(SeasonStateTransitionError::InvalidTransition {
+                        expected: SeasonState::$state,
+                        actual: current_state,
+                    });
                 }
             };
         }
 
         match state {
             SeasonState::Created => {
-                return Err(NMGLeagueBotError::StateError(
-                    "Seasons can't return to created".to_string(),
-                ));
+                return Err(SeasonStateTransitionError::CannotReturnToCreated);
             }
             SeasonState::QualifiersOpen => {
                 expect_state!(Created);
@@ -135,7 +160,12 @@ impl Season {
                 self.finish(cxn)?;
             }
         }
-        self.state = serde_json::to_string(&state)?;
+        self.state = serde_json::to_string(&state).map_err(|source| {
+            SeasonStateTransitionError::StateSerialization {
+                context: "could not encode the new season state".to_string(),
+                source,
+            }
+        })?;
         Ok(())
     }
 
@@ -152,13 +182,16 @@ impl Season {
 
     /// this checks all of its brackets for validity
     /// returns
-    fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<(), NMGLeagueBotError> {
+    fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<(), SeasonStateTransitionError> {
         for b in self.brackets(cxn)? {
-            if !b.is_finished()? {
-                return Err(NMGLeagueBotError::StateError(format!(
-                    "Cannot finish: bracket {} isn't finished yet.",
-                    b.name
-                )));
+            let is_finished = b.is_finished().map_err(|source| {
+                SeasonStateTransitionError::StateSerialization {
+                    context: format!("could not decode state for bracket `{}`", b.name),
+                    source,
+                }
+            })?;
+            if !is_finished {
+                return Err(SeasonStateTransitionError::BracketNotFinished(b.name));
             }
         }
         self.finished = Some(epoch_timestamp() as i64);
@@ -228,7 +261,7 @@ impl Season {
             .load(conn)
     }
 
-    pub fn safe_to_delete_qualifiers(&self) -> Result<bool, NMGLeagueBotError> {
+    pub fn safe_to_delete_qualifiers(&self) -> Result<bool, serde_json::Error> {
         match self.get_state()? {
             SeasonState::QualifiersOpen | SeasonState::QualifiersClosed => Ok(true),
             SeasonState::Created | SeasonState::Started | SeasonState::Finished => Ok(false),
@@ -277,6 +310,37 @@ impl NewSeason {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::{NewSeason, Season};
+    use crate::models::bracket_races::NewBracketRace;
+    use crate::models::bracket_rounds::NewBracketRound;
+    use crate::models::brackets::{BracketType, NewBracket};
+    use crate::models::player::NewPlayer;
+    use crate::test_utils::setup_db;
+
+    #[test]
+    fn gets_season_by_bracket_race_info_id() -> anyhow::Result<()> {
+        let mut conn = setup_db()?;
+        let season = NewSeason::new("Test", "alttp", "Any% NMG", &mut conn)?.save(&mut conn)?;
+        let bracket = NewBracket::new(&season, "Test", BracketType::Swiss).save(&mut conn)?;
+        let round = NewBracketRound::new(&bracket, 1).save(&mut conn)?;
+        let player_1 = NewPlayer::new("Player 1", "1", None, None, None).save(&mut conn)?;
+        let player_2 = NewPlayer::new("Player 2", "2", None, None, None).save(&mut conn)?;
+
+        // Consume the first race ID so the target race and its first info row have different IDs.
+        NewBracketRace::new(&bracket, &round, &player_1, &player_2).save(&mut conn)?;
+        let target_race =
+            NewBracketRace::new(&bracket, &round, &player_1, &player_2).save(&mut conn)?;
+        let info = target_race.info(&mut conn)?;
+        assert_ne!(info.id, info.bracket_race_id);
+
+        let found = Season::get_from_bracket_race_info(&info, &mut conn)?;
+        assert_eq!(found.id, season.id);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
 impl Season {
     pub fn new(id: i32, goal: &str) -> Self {
         Season {
@@ -295,7 +359,7 @@ impl Season {
 #[cfg(feature = "development")]
 impl Season {
     pub fn ensure_started_season(conn: &mut SqliteConnection) -> anyhow::Result<Self> {
-        if let Some(s) =  Season::get_active_season(conn)? {
+        if let Some(s) = Season::get_active_season(conn)? {
             return Ok(s);
         }
 

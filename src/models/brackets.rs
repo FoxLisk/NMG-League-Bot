@@ -5,7 +5,7 @@ use crate::models::bracket_rounds::{BracketRound, NewBracketRound};
 use crate::models::player::Player;
 use crate::models::season::Season;
 use crate::schema::brackets;
-use crate::{save_fn, update_fn, BracketRaceStateError, NMGLeagueBotError};
+use crate::{save_fn, update_fn, BracketRaceStateError};
 use diesel::prelude::*;
 use diesel::result::Error;
 use diesel::{RunQueryDsl, SqliteConnection};
@@ -58,8 +58,8 @@ pub enum BracketError {
     OddPlayerCount,
     #[error("Database error: {0}")]
     DBError(#[from] diesel::result::Error),
-    #[error("Uncategorized error: {0}")]
-    Other(String),
+    #[error("pairing referenced missing player {0}")]
+    MissingPlayer(i32),
     #[error("Bracket Race state error: {0}")]
     BracketRaceStateError(#[from] BracketRaceStateError),
     #[error("Serialization error (probably from invalid db state): {0}")]
@@ -68,8 +68,18 @@ pub enum BracketError {
     MatchResultError(MatchResultError),
     #[error("Pairings error: {0:?}")]
     PairingError(PairingError),
-    #[error("Round robin error: {0}")]
-    RoundRobinError(String),
+    #[error("expected {expected} round-robin pairings, generated {actual}")]
+    UnexpectedPairingCount { expected: usize, actual: usize },
+    #[error("round-robin pairings are generated all at once")]
+    RoundRobinAlreadyGenerated,
+}
+
+#[derive(Debug, Error)]
+pub enum BracketFinishError {
+    #[error("database operation failed: {0}")]
+    Database(#[from] diesel::result::Error),
+    #[error("could not serialize the finished bracket state: {0}")]
+    SerializeState(#[from] serde_json::Error),
 }
 impl From<PairingError> for BracketError {
     fn from(e: PairingError) -> Self {
@@ -81,12 +91,6 @@ impl From<MatchResultError> for BracketError {
         Self::MatchResultError(e)
     }
 }
-impl From<String> for BracketError {
-    fn from(e: String) -> Self {
-        Self::Other(e)
-    }
-}
-
 fn generate_next_round_pairings_swiss(
     bracket: &Bracket,
     conn: &mut SqliteConnection,
@@ -129,10 +133,10 @@ fn generate_next_round_pairings_swiss(
     for (p1_id, p2_id) in pairings {
         let p1 = players
             .remove(p1_id)
-            .ok_or(BracketError::Other(format!("Cannot find player {}", p1_id)))?;
+            .ok_or(BracketError::MissingPlayer(*p1_id))?;
         let p2 = players
             .remove(p2_id)
-            .ok_or(BracketError::Other(format!("Cannot find player {}", p2_id)))?;
+            .ok_or(BracketError::MissingPlayer(*p2_id))?;
         let new_race = NewBracketRace::new(bracket, &new_round, &p1, &p2);
         new_races.push(new_race);
     }
@@ -150,9 +154,7 @@ fn generate_next_round_pairings(
     }
     match bracket.bracket_type()? {
         BracketType::Swiss => generate_next_round_pairings_swiss(bracket, conn),
-        BracketType::RoundRobin => Err(BracketError::RoundRobinError(
-            "Round Robin pairings already generated".to_string(),
-        )),
+        BracketType::RoundRobin => Err(BracketError::RoundRobinAlreadyGenerated),
     }
 }
 
@@ -177,9 +179,7 @@ fn generate_initial_pairings_swiss(
     }
     insert_bulk(&nbrs, conn)?;
 
-    bracket
-        .set_state(BracketState::Started)
-        .map_err(|e| e.to_string())?;
+    bracket.set_state(BracketState::Started)?;
     bracket.update(conn)?;
     Ok(())
 }
@@ -220,10 +220,10 @@ fn generate_pairings_round_robin(
         .collect::<_>();
     let expected = (players.len() * (players.len() - 1)) / 2;
     if nbrs.len() != expected {
-        return Err(BracketError::Other(format!(
-            "Expected {expected} pairings, got {}",
-            nbrs.len()
-        )));
+        return Err(BracketError::UnexpectedPairingCount {
+            expected,
+            actual: nbrs.len(),
+        });
     }
     debug!("NBRs: {nbrs:?}");
     insert_bulk(&nbrs, conn)?;
@@ -242,9 +242,7 @@ fn generate_initial_pairings_round_robin(
     generate_pairings_round_robin(bracket, &round, conn)?;
 
     // TODO: setting state can be pulled up an abstraction layer
-    bracket
-        .set_state(BracketState::Started)
-        .map_err(|e| e.to_string())?;
+    bracket.set_state(BracketState::Started)?;
 
     bracket.update(conn)?;
     Ok(())
@@ -290,7 +288,7 @@ impl Bracket {
     }
 
     /// sets this bracket's state to finished, if there are no unfinished rounds
-    pub fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<bool, NMGLeagueBotError> {
+    pub fn finish(&mut self, cxn: &mut SqliteConnection) -> Result<bool, BracketFinishError> {
         for r in self.rounds(cxn)? {
             if !r.all_races_finished(cxn)? {
                 return Ok(false);

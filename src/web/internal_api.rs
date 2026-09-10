@@ -2,7 +2,7 @@ use crate::web::ConnectionWrapper;
 use log::warn;
 use nmg_league_bot::config::CONFIG;
 use nmg_league_bot::models::bracket_race_infos::{BracketRaceInfo, BracketRaceInfoId};
-use nmg_league_bot::utils::ResultErrToString;
+use nmg_league_bot::ApiErrorMessage;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rocket::http::Status;
@@ -54,10 +54,13 @@ async fn start_race_for(
     bracket_race_info_id: i32,
     sender: &State<Sender<BracketRaceInfoId>>,
     mut conn: ConnectionWrapper<'_>,
-) -> Json<Result<(), String>> {
+) -> Json<Result<(), ApiErrorMessage>> {
     let res = match BracketRaceInfo::get_by_id(bracket_race_info_id, conn.deref_mut()) {
-        Ok(bri) => sender.send(bri.get_id()).await.map_err_to_string(),
-        Err(e) => Err(format!("Error getting BRI: {e}")),
+        Ok(bri) => sender
+            .send(bri.get_id())
+            .await
+            .map_err(|e| ApiErrorMessage::new(e.to_string())),
+        Err(e) => Err(ApiErrorMessage::new(format!("Error getting BRI: {e}"))),
     };
     Json(res)
 }

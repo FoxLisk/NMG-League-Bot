@@ -18,8 +18,8 @@ use nmg_league_bot::models::brackets::BracketState;
 use nmg_league_bot::models::brackets::BracketType;
 use nmg_league_bot::models::player::Player;
 use nmg_league_bot::models::qualifer_submission::QualifierSubmission;
-use nmg_league_bot::BracketRaceState;
 use nmg_league_bot::NMGLeagueBotError;
+use nmg_league_bot::{ApiErrorMessage, BracketRaceState};
 use rocket::response::Responder;
 use rocket::serde::json::Json;
 use rocket::{delete, get, Build, Request, Rocket};
@@ -59,7 +59,7 @@ impl<'r, 'o: 'r, T: Serialize> Responder<'r, 'o> for ApiResponse<T> {
             Err(e) => {
                 // we return a generic error so we want to log the actual error
                 warn!("Error fulfilling API request: {e:?}");
-                Json(Err(e.to_string()))
+                Json(Err(ApiErrorMessage::new(e.to_string())))
             }
         };
         returnable.respond_to(request)
@@ -382,6 +382,7 @@ mod tests {
     use nmg_league_bot::models::brackets::NewBracket;
     use nmg_league_bot::models::player_bracket_entries::NewPlayerBracketEntry;
     use nmg_league_bot::models::season::NewSeason;
+    use nmg_league_bot::ApiErrorMessage;
     use nmg_league_bot::{
         db::{run_migrations, DieselConnectionManager},
         models::{
@@ -415,20 +416,22 @@ mod tests {
         Ok(client)
     }
 
-    /// parses the result. The API returns objects that themselves are Result<T, String> objects. The outer
+    /// parses the result. The API returns objects that themselves are
+    /// Result<T, ApiErrorMessage> objects. The outer
     /// result here is checking if we can parse the JSON. This should probably be used like:
     ///
     /// ```
     /// let parsed = parse_result::<Vec<Player>>(&body)?;
     /// ```
     ///
-    /// which will cause `parsed` to be the API result already parsed into a Result<Vec<Player>, String>,
+    /// which will cause `parsed` to be the API result already parsed into a
+    /// Result<Vec<Player>, ApiErrorMessage>,
     /// and will immediately fail the test if the API somehow returns invalid JSON.
-    fn parse_result<T>(body: &str) -> Result<Result<T, String>, serde_json::Error>
+    fn parse_result<T>(body: &str) -> Result<Result<T, ApiErrorMessage>, serde_json::Error>
     where
         T: serde::de::DeserializeOwned,
     {
-        serde_json::from_str::<Result<T, String>>(body)
+        serde_json::from_str::<Result<T, ApiErrorMessage>>(body)
     }
 
     #[test]
@@ -466,7 +469,7 @@ mod tests {
     {
         let db = c.rocket().state::<Pool<DieselConnectionManager>>().unwrap();
         let mut conn = db.get().await?;
-        f(&mut conn).map_err(From::from)
+        f(&mut conn)
     }
 
     #[tokio::test]
@@ -567,7 +570,7 @@ mod tests {
         assert_eq!(rocket::http::Status::Ok, bad_state.status(),);
         let parsed = parse_result::<Vec<ApiRace>>(&bad_state.into_string().await.unwrap())?;
         assert!(parsed.is_err());
-        assert_eq!("Bad Request", parsed.err().unwrap());
+        assert_eq!(ApiErrorMessage::new("Bad Request"), parsed.err().unwrap());
 
         // `urlencoding::encode()` urlencodes the `=` sign!
         let new_resp = c

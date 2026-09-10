@@ -1,5 +1,6 @@
 use clap::Parser;
 use nmg_league_bot::utils::format_hms;
+use nmg_league_bot::ApiErrorMessage;
 use serde::Deserialize;
 use std::{collections::HashSet, error::Error};
 
@@ -24,7 +25,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         "https://nmg-league.foxlisk.com/api/v1/season/{}/qualifiers",
         args.season
     );
-    let resp = reqwest::blocking::get(&url)?.json::<Result<Vec<Qualifier>, String>>()??;
+    let resp =
+        reqwest::blocking::get(&url)?.json::<Result<Vec<Qualifier>, ApiErrorMessage>>()??;
 
     let mut wtr = csv::Writer::from_writer(std::io::stdout());
     wtr.write_record(&["player_name", "time", "vod"])?;

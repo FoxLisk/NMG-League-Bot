@@ -1,4 +1,37 @@
+use std::num::ParseIntError;
+
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum AsyncRaceError {
+    #[error("database error: {0}")]
+    Database(#[from] diesel::result::Error),
+
+    #[error("an asynchronous race must have two different racers")]
+    DuplicateRacer,
+
+    #[error("expected exactly two runs for race {race_id}, found {actual}")]
+    UnexpectedRunCount { race_id: i32, actual: usize },
+
+    #[error("no race run found for Discord message {message_id}")]
+    RunNotFound { message_id: u64 },
+
+    #[error("invalid Discord racer id {value:?}: {source}")]
+    InvalidRacerId {
+        value: String,
+        #[source]
+        source: ParseIntError,
+    },
+}
+
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum FilenameParseError {
+    #[error("invalid filenames value {value:?}: expected formats like `A BCD EFGH`")]
+    InvalidFormat { value: String },
+}
+
 pub mod race {
+    use super::AsyncRaceError;
     use crate::models::asyncs::race_run::{AsyncRaceRun, NewAsyncRaceRun, RaceRunState};
     use crate::save_fn;
     use crate::schema::races;
@@ -86,12 +119,11 @@ pub mod race {
         }
 
         /// clones self
-        pub async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
+        pub async fn save(&self, conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
             let update = UpdateRace::from(self.clone());
             diesel::update(&update)
                 .set(&update)
                 .execute(conn)
-                .map_err(|e| e.to_string())
                 .map(|_| ())
         }
 
@@ -99,12 +131,11 @@ pub mod race {
             &self,
             racer_id: Id<UserMarker>,
             cxn: &mut SqliteConnection,
-        ) -> Result<AsyncRaceRun, String> {
+        ) -> Result<AsyncRaceRun, diesel::result::Error> {
             let nrr = NewAsyncRaceRun::new(self.id, racer_id);
             diesel::insert_into(crate::schema::race_runs::table)
                 .values(nrr)
                 .get_result(cxn)
-                .map_err(|e| format!("Error saving race: {}", e))
         }
 
         /// Creates RaceRuns with the appropriate users and associates them with this race
@@ -113,9 +144,9 @@ pub mod race {
             racer_1: Id<UserMarker>,
             racer_2: Id<UserMarker>,
             cxn: &mut SqliteConnection,
-        ) -> Result<(AsyncRaceRun, AsyncRaceRun), String> {
+        ) -> Result<(AsyncRaceRun, AsyncRaceRun), AsyncRaceError> {
             if racer_1 == racer_2 {
-                return Err("Racers must be different users!".to_string());
+                return Err(AsyncRaceError::DuplicateRacer);
             }
             let r1 = self.add_run(racer_1, cxn).await?;
             let r2 = self.add_run(racer_2, cxn).await?;
@@ -147,7 +178,7 @@ pub mod race {
         pub async fn get_runs(
             &self,
             conn: &mut SqliteConnection,
-        ) -> Result<(AsyncRaceRun, AsyncRaceRun), String> {
+        ) -> Result<(AsyncRaceRun, AsyncRaceRun), AsyncRaceError> {
             AsyncRaceRun::get_runs(&self, conn).await
         }
     }
@@ -167,6 +198,7 @@ pub mod race {
 }
 
 pub mod race_run {
+    use super::{AsyncRaceError, FilenameParseError};
     use crate::models::asyncs::race::AsyncRace;
     use crate::schema::race_runs;
     use crate::utils::epoch_timestamp;
@@ -187,7 +219,7 @@ pub mod race_run {
     use twilight_model::id::Id;
     lazy_static! {
         static ref FILENAMES_REGEX: regex::Regex =
-            regex::Regex::new("([A-Z]) ([A-Z]{3}) ([A-Z]{4})").unwrap();
+            regex::Regex::new("^([A-Z]) ([A-Z]{3}) ([A-Z]{4})$").unwrap();
     }
 
     pub struct Filenames {
@@ -252,54 +284,36 @@ pub mod race_run {
                 }
             }
         }
+    }
 
-        fn from_str(value: &str) -> Result<Self, String> {
-            let caps = FILENAMES_REGEX
-                .captures(value)
-                .ok_or(format!("Invalid filenames field: {} - bad format", value))?;
+    impl FromStr for Filenames {
+        type Err = FilenameParseError;
+
+        fn from_str(value: &str) -> Result<Self, FilenameParseError> {
+            let invalid = || FilenameParseError::InvalidFormat {
+                value: value.to_owned(),
+            };
+            let caps = FILENAMES_REGEX.captures(value).ok_or_else(invalid)?;
             let one = caps
                 .get(1)
-                .ok_or(format!("Invalid filenames field 1: {}", value))?;
-            let three_cap = caps
+                .and_then(|capture| capture.as_str().chars().next())
+                .ok_or_else(invalid)?;
+            let three = caps
                 .get(2)
-                .ok_or(format!("Invalid filenames field 3: {}", value))?;
-            let four_cap = caps
+                .map(|capture| capture.as_str().chars().collect::<Vec<_>>())
+                .and_then(|chars| chars.try_into().ok())
+                .ok_or_else(invalid)?;
+            let four = caps
                 .get(3)
-                .ok_or(format!("Invalid filenames field 4: {}", value))?;
+                .map(|capture| capture.as_str().chars().collect::<Vec<_>>())
+                .and_then(|chars| chars.try_into().ok())
+                .ok_or_else(invalid)?;
 
-            if three_cap.as_str().len() != 3 {
-                return Err(format!("Invalid filenames field 3: {}", three_cap.as_str()));
-            }
-            let mut three_chars = three_cap.as_str().chars();
-
-            let three: [char; 3] = [
-                three_chars.next().unwrap(),
-                three_chars.next().unwrap(),
-                three_chars.next().unwrap(),
-            ];
-
-            if four_cap.as_str().len() != 4 {
-                return Err(format!("Invalid filenames field 4: {}", four_cap.as_str()));
-            }
-            let mut four_chars = four_cap.as_str().chars();
-            let four: [char; 4] = [
-                four_chars.next().unwrap(),
-                four_chars.next().unwrap(),
-                four_chars.next().unwrap(),
-                four_chars.next().unwrap(),
-            ];
-
-            if one.as_str().len() != 1 {
-                return Err(format!("Invalid filenames field 1: {}", one.as_str()));
-            }
-
-            Ok(Self {
-                one: one.as_str().chars().next().unwrap(),
-                three,
-                four,
-            })
+            Ok(Self { one, three, four })
         }
+    }
 
+    impl Filenames {
         fn to_str(&self) -> String {
             let mut s = String::with_capacity(10);
             s.push(self.one);
@@ -421,49 +435,53 @@ pub mod race_run {
         pub async fn get_runs(
             race: &AsyncRace,
             conn: &mut SqliteConnection,
-        ) -> Result<(AsyncRaceRun, AsyncRaceRun), String> {
+        ) -> Result<(AsyncRaceRun, AsyncRaceRun), AsyncRaceError> {
             use crate::schema::race_runs::dsl::*;
-            let mut runs: Vec<AsyncRaceRun> = race_runs
-                .filter(race_id.eq(race.id))
-                .load(conn)
-                .map_err(|e| e.to_string())?;
+            let mut runs: Vec<AsyncRaceRun> = race_runs.filter(race_id.eq(race.id)).load(conn)?;
             if runs.len() == 2 {
                 Ok((runs.pop().unwrap(), runs.pop().unwrap()))
             } else {
-                Err("Did not find exactly 2 runs".to_string())
+                Err(AsyncRaceError::UnexpectedRunCount {
+                    race_id: race.id,
+                    actual: runs.len(),
+                })
             }
         }
 
         pub async fn get_by_message_id(
             message_id: Id<MessageMarker>,
             conn: &mut SqliteConnection,
-        ) -> Result<Self, String> {
+        ) -> Result<Self, AsyncRaceError> {
             Self::search_by_message_id(message_id.clone(), conn)
                 .await
-                .and_then(|rr| rr.ok_or(format!("No RaceRun with Message ID {}", message_id.get())))
+                .and_then(|rr| {
+                    rr.ok_or(AsyncRaceError::RunNotFound {
+                        message_id: message_id.get(),
+                    })
+                })
         }
 
         pub async fn search_by_message_id(
             message_id_: Id<MessageMarker>,
             conn: &mut SqliteConnection,
-        ) -> Result<Option<Self>, String> {
+        ) -> Result<Option<Self>, AsyncRaceError> {
             use crate::schema::race_runs::dsl::*;
             let mut runs: Vec<Self> = race_runs
                 .filter(message_id.eq(message_id_.to_string()))
-                .load(conn)
-                .map_err(|e| e.to_string())?;
+                .load(conn)?;
             Ok(runs.pop())
         }
     }
 
     // instance
     impl AsyncRaceRun {
-        pub fn racer_id(&self) -> Result<Id<UserMarker>, String> {
-            self.racer_id
-                .parse::<u64>()
-                .map_err(|e| e.to_string())
-                .map(Id::<UserMarker>::new)
-                .map_err(|e| e.to_string())
+        pub fn racer_id(&self) -> Result<Id<UserMarker>, AsyncRaceError> {
+            self.racer_id.parse::<Id<UserMarker>>().map_err(|source| {
+                AsyncRaceError::InvalidRacerId {
+                    value: self.racer_id.clone(),
+                    source,
+                }
+            })
         }
 
         pub fn is_finished(&self) -> bool {
@@ -474,8 +492,8 @@ pub mod race_run {
             }
         }
 
-        pub fn filenames(&self) -> Result<Filenames, String> {
-            Filenames::from_str(&self.filenames)
+        pub fn filenames(&self) -> Result<Filenames, FilenameParseError> {
+            self.filenames.parse()
         }
 
         pub fn contact_succeeded(&mut self) {
@@ -541,13 +559,9 @@ pub mod race_run {
             self.vod = Some(vod);
         }
 
-        pub async fn save(&self, conn: &mut SqliteConnection) -> Result<(), String> {
+        pub async fn save(&self, conn: &mut SqliteConnection) -> Result<(), diesel::result::Error> {
             let update = UpdateAsyncRaceRun::from(self.clone());
-            diesel::update(self)
-                .set(update)
-                .execute(conn)
-                .map(|_| ())
-                .map_err(|e| e.to_string())
+            diesel::update(self).set(update).execute(conn).map(|_| ())
         }
 
         pub fn set_message_id(&mut self, message_id: u64) {
@@ -590,6 +604,22 @@ pub mod race_run {
                 created: epoch_timestamp(),
                 state: RaceRunState::CREATED,
             }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::Filenames;
+
+        #[test]
+        fn filenames_parse_valid_value() {
+            let filenames: Filenames = "A BCD EFGH".parse().unwrap();
+            assert_eq!("A BCD EFGH", filenames.to_string());
+        }
+
+        #[test]
+        fn filenames_reject_surrounding_garbage() {
+            assert!("prefix A BCD EFGH suffix".parse::<Filenames>().is_err());
         }
     }
 }
