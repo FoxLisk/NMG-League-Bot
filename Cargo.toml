@@ -75,7 +75,7 @@ twilight-gateway = { version = "0.17", features = ["rustls-webpki-roots"] }
 twilight-util = { version = "0.17", features = ["builder", "link"] }
 twilight-standby = "0.17"
 
-rustls = "0.21.0"
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
 rustls-native-certs = "0.6.2"
 
 dashmap = "5.3.4"
