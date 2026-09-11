@@ -1,6 +1,7 @@
 # Season 11
 
 * Feature: history backfill for Season 1 and the overflow brackets of seasons 2 and 4.
+* Feature: Helper Bot criteria can filter races by commentator.
 
 # Season 10
 

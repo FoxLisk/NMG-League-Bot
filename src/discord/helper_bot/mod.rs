@@ -33,17 +33,13 @@ use tokio::sync::broadcast::Receiver;
 use twilight_model::{
     guild::scheduled_event::{GuildScheduledEvent, Status},
     id::{
-        marker::{GuildMarker, ScheduledEventMarker},
+        marker::{GuildMarker, ScheduledEventMarker, UserMarker},
         Id,
     },
     util::Timestamp,
 };
 
-use crate::discord::discord_state::DiscordOperations;
-use crate::{
-    discord::{comm_ids_and_names, discord_state::DiscordState},
-    shutdown::Shutdown,
-};
+use crate::shutdown::Shutdown;
 
 use super::Webhooks;
 
@@ -85,17 +81,17 @@ enum RaceEventContentAndStatus {
 struct RaceInfoBundle {
     race: BracketRace,
     bri: BracketRaceInfo,
+    commentator_ids: Vec<Id<UserMarker>>,
     status: RaceEventContentAndStatus,
 }
 
 pub async fn launch(
     mut sd: Receiver<Shutdown>,
-    state: Arc<DiscordState>,
     webhooks: Webhooks,
     pool: Pool<DieselConnectionManager>,
 ) {
     let mut intv = tokio::time::interval(Duration::from_secs(CONFIG.race_event_worker_tick_secs));
-    let bot = Arc::new(HelperBot::new(webhooks, pool));
+    let bot = Arc::new(HelperBot::new(webhooks, pool.clone()));
     tokio::spawn(HelperBot::run(bot.clone(), sd.resubscribe()));
 
     loop {
@@ -106,7 +102,7 @@ pub async fn launch(
             _ = intv.tick() => {
 
                 let t = tokio::time::Instant::now();
-                if let Err(e) = sync_race_status(&state, &bot).await {
+                if let Err(e) = sync_race_status(&pool, &bot).await {
                     warn!("Error syncing race events: {e}");
                 }
                 let t2 = tokio::time::Instant::now() - t;
@@ -118,14 +114,14 @@ pub async fn launch(
 }
 
 async fn sync_race_status(
-    state: &Arc<DiscordState>,
+    pool: &Pool<DieselConnectionManager>,
     helper_bot: &Arc<HelperBot>,
 ) -> Result<(), NMGLeagueBotError> {
-    let mut conn_o = state.diesel_cxn().await?;
+    let mut conn_o = pool.get().await?;
     let conn = conn_o.deref_mut();
     // grab the current state of races: this is the scheduled races + the status of what their events
     // should look like. this will be the same across guilds, so we grab it up front
-    let race_infos = get_season_race_info(state, conn).await?;
+    let race_infos = get_season_race_info(helper_bot, conn).await?;
     let bri_ids = race_infos
         .iter()
         .map(|bundle| bundle.bri.get_id())
@@ -189,7 +185,11 @@ async fn sync_events_in_a_guild(
     for bundle in race_infos {
         // just hardcode that main guild must sync everything
         let interesting = guild_filters.guild_id() == CONFIG.guild_id
-            || guild_filters.race_is_interesting(&bundle.race, &bundle.bri);
+            || guild_filters.race_is_interesting(
+                &bundle.race,
+                &bundle.bri,
+                &bundle.commentator_ids,
+            );
 
         let race_event = race_events_by_bri_id.remove(&bundle.bri.id);
         let existing_event = if let Some(gse_id) = race_event
@@ -363,18 +363,18 @@ fn multistream_link(p1: &Player, p2: &Player) -> String {
     )
 }
 
-/// very unfortunate but this seems to need the discord state in order to get comm names
-/// from the main discord for comms who aren't also signed up as players
-async fn get_event_content<D: DiscordOperations>(
+/// Uses persisted player names for commentators. During the one-time migration window, it falls
+/// back to Discord for older commentator signups that have not been hydrated yet.
+async fn get_event_content(
     race: &BracketRace,
     bri: &BracketRaceInfo,
     bracket: &Bracket,
     players: &HashMap<i32, Player>,
-    state: &Arc<D>,
+    helper_bot: &HelperBot,
     conn: &mut SqliteConnection,
-) -> Result<RaceEventContentAndStatus, NMGLeagueBotError> {
+) -> Result<(RaceEventContentAndStatus, Vec<Id<UserMarker>>), NMGLeagueBotError> {
     if race.state()? != BracketRaceState::Scheduled {
-        return Ok(RaceEventContentAndStatus::NoEvent);
+        return Ok((RaceEventContentAndStatus::NoEvent, vec![]));
     }
     let when = bri.scheduled().ok_or(NMGLeagueBotError::MissingTimestamp)?;
 
@@ -396,14 +396,44 @@ async fn get_event_content<D: DiscordOperations>(
     // races that have not had commentators decided yet!
     //
     // but see https://github.com/FoxLisk/NMG-League-Bot/issues/152
+    let hydrated_commentators = bri
+        .commentators(conn)?
+        .into_iter()
+        .filter_map(|player| {
+            player
+                .discord_id()
+                .ok()
+                .map(|discord_id| (discord_id, player.name))
+        })
+        .collect::<HashMap<_, _>>();
+    let mut commentators = vec![];
+    for signup in bri.commentator_signups(conn)? {
+        let Ok(discord_id) = signup.discord_id() else {
+            warn!(
+                "Ignoring invalid commentator Discord ID {}",
+                signup.discord_id
+            );
+            continue;
+        };
+        let name = match hydrated_commentators.get(&discord_id) {
+            Some(name) => name.clone(),
+            None => match helper_bot.user_name(discord_id).await {
+                Ok(name) => name,
+                Err(error) => {
+                    warn!("Could not resolve commentator {discord_id}: {error}");
+                    "unknown".to_string()
+                }
+            },
+        };
+        commentators.push((discord_id, name));
+    }
     let description = {
-        let comm_info = comm_ids_and_names(&bri, state, conn).await?;
-        if comm_info.is_empty() {
+        if commentators.is_empty() {
             None
         } else {
             Some(format!(
                 "with comms by {}",
-                comm_info.iter().map(|(_, n)| n).join(" and ")
+                commentators.iter().map(|(_, name)| name).join(" and ")
             ))
         }
     };
@@ -411,20 +441,25 @@ async fn get_event_content<D: DiscordOperations>(
     let start = when.timestamp();
     let end = (when.clone() + chrono::Duration::minutes(100)).timestamp();
 
-    Ok(RaceEventContentAndStatus::Event(RaceEventContent {
-        name: event_name,
-        location: event_location,
-        description,
-        start,
-        end,
-    }))
+    let commentator_ids = commentators.into_iter().map(|(id, _)| id).collect();
+
+    Ok((
+        RaceEventContentAndStatus::Event(RaceEventContent {
+            name: event_name,
+            location: event_location,
+            description,
+            start,
+            end,
+        }),
+        commentator_ids,
+    ))
 }
 
 /// retrieves every race that has a BRI in the current season (i.e. every race that has been scheduled)
 ///
 /// This includes completed races and races from completed rounds.
 async fn get_season_race_info(
-    state: &Arc<DiscordState>,
+    helper_bot: &HelperBot,
     conn: &mut SqliteConnection,
 ) -> Result<Vec<RaceInfoBundle>, NMGLeagueBotError> {
     use diesel::prelude::*;
@@ -463,8 +498,14 @@ async fn get_season_race_info(
 
     let mut infos = Vec::with_capacity(races.len());
     for (race, bri, bracket) in races {
-        let status = get_event_content(&race, &bri, &bracket, &players, state, conn).await?;
-        infos.push(RaceInfoBundle { race, bri, status });
+        let (status, commentator_ids) =
+            get_event_content(&race, &bri, &bracket, &players, helper_bot, conn).await?;
+        infos.push(RaceInfoBundle {
+            race,
+            bri,
+            commentator_ids,
+            status,
+        });
     }
 
     Ok(infos)

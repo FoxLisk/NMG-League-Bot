@@ -28,8 +28,9 @@
                 <img src="/static/images/helper_bot/criteria_add.png">
             </div>
             <div>
-                The other type of criteria besides "player" is "restream," and the two can be combined. For example,
-                maybe you want races that feature a certain player, but only if there is a restream:
+                Criteria can select a player, a commentator, and a restream status, and those choices can be combined.
+                Commentator suggestions include registered players and people who have previously commentated.
+                For example, maybe you want races that feature a certain player, but only if there is a restream:
                 <img src="/static/images/helper_bot/criteria_add_2.png">
             </div>
             <div>

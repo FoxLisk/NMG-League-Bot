@@ -73,6 +73,7 @@ diesel::table! {
         guild_id -> Text,
         player_id -> Nullable<Integer>,
         restream_status -> Nullable<Bool>,
+        commentator_discord_id -> Nullable<Text>,
     }
 }
 

@@ -17,6 +17,7 @@ use crate::discord::{
     clear_commportunities_message, clear_tentative_commentary_assignment_message,
 };
 use nmg_league_bot::models::bracket_race_infos::BracketRaceInfo;
+use nmg_league_bot::models::player::Player;
 use nmg_league_bot::utils::race_to_nice_embeds;
 
 use super::{comm_ids_and_names, embed_with_title};
@@ -237,12 +238,25 @@ async fn handle_commentary_signup(
     reaction: Box<ReactionAdd>,
     state: &Arc<DiscordState>,
 ) -> anyhow::Result<()> {
+    let discord_user = match state.get_user(reaction.user_id) {
+        Some(user) => user,
+        None => {
+            state
+                .discord_client
+                .user(reaction.user_id)
+                .await?
+                .model()
+                .await?
+        }
+    };
     let mut cxn = state
         .diesel_cxn()
         .await
         .context("getting a database connection to add a commentator")?;
 
-    if info.new_commentator_signup(reaction.user_id, cxn.deref_mut())? {
+    let (player, _) = Player::get_or_create_from_discord_user(discord_user, cxn.deref_mut())?;
+    let added = info.new_commentator_signup(&player, cxn.deref_mut())?;
+    if added {
         let commentators = info.commentator_signups(cxn.deref_mut())?;
         let ids = commentators
             .into_iter()
