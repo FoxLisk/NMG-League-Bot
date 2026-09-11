@@ -1,5 +1,6 @@
 use crate::models::bracket_races::BracketRace;
-use crate::schema::{bracket_race_infos, commentator_signups};
+use crate::models::player::Player;
+use crate::schema::{bracket_race_infos, commentator_signups, players};
 use std::num::ParseIntError;
 use std::str::FromStr;
 
@@ -170,12 +171,15 @@ impl BracketRaceInfo {
     /// * true if the save succeed,
     /// * false if it failed for unique constraint violation,
     /// * err if any other error occurred
+    ///
+    /// Requiring a Player keeps the invariant that every commentator signup has a corresponding
+    /// League identity row.
     pub fn new_commentator_signup(
         &mut self,
-        user_id: Id<UserMarker>,
+        player: &Player,
         conn: &mut SqliteConnection,
     ) -> Result<bool, diesel::result::Error> {
-        let nsi = NewCommentatorSignup::new(self, user_id);
+        let nsi = NewCommentatorSignup::new(self, player);
         match nsi.save(conn) {
             Ok(_) => Ok(true),
             Err(diesel::result::Error::DatabaseError(
@@ -205,6 +209,17 @@ impl BracketRaceInfo {
     ) -> Result<Vec<CommentatorSignup>, diesel::result::Error> {
         commentator_signups::table
             .filter(commentator_signups::bracket_race_info_id.eq(self.id))
+            .load(conn)
+    }
+
+    pub fn commentators(
+        &self,
+        conn: &mut SqliteConnection,
+    ) -> Result<Vec<Player>, diesel::result::Error> {
+        commentator_signups::table
+            .inner_join(players::table.on(players::discord_id.eq(commentator_signups::discord_id)))
+            .filter(commentator_signups::bracket_race_info_id.eq(self.id))
+            .select(players::all_columns)
             .load(conn)
     }
 
@@ -268,10 +283,10 @@ pub struct NewCommentatorSignup {
 }
 
 impl NewCommentatorSignup {
-    fn new(bri: &BracketRaceInfo, discord_id: Id<UserMarker>) -> Self {
+    fn new(bri: &BracketRaceInfo, player: &Player) -> Self {
         Self {
             bracket_race_info_id: bri.id,
-            discord_id: discord_id.to_string(),
+            discord_id: player.discord_id.clone(),
         }
     }
 

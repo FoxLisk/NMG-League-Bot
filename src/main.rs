@@ -120,7 +120,6 @@ async fn main() {
     #[cfg(feature = "helper_bot")]
     tokio::spawn(helper_bot::launch(
         shutdown_send.subscribe(),
-        state.clone(),
         webhooks.clone(),
         diesel_pool.clone(),
     ));

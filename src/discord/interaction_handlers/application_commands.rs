@@ -695,21 +695,28 @@ async fn handle_commentator_command(
         "remove" => Cmd::Remove,
         _ => bail!("unknown commentator command `{cmd_s}`"),
     };
-    let user = get_opt!("commentator", &mut subcommand_opts, User)?;
+    let user_id = get_opt!("commentator", &mut subcommand_opts, User)?;
     let race_id = get_opt!("race", &mut subcommand_opts, Integer)?;
     let mut conn = state.diesel_cxn().await?;
     let race = BracketRace::get_by_id(race_id as i32, &mut conn)?;
     let mut info = race.info(&mut conn)?;
     match cmd {
-        Cmd::Add => match info.new_commentator_signup(user, &mut conn)? {
-            true => {}
-            false => {
+        Cmd::Add => {
+            let discord_user = ac
+                .resolved
+                .as_mut()
+                .and_then(|resolved| resolved.users.remove(&user_id))
+                .or_else(|| state.get_user(user_id))
+                .ok_or_else(|| anyhow!("Discord user {user_id} was not found"))?;
+            let (player, _) = Player::get_or_create_from_discord_user(discord_user, &mut conn)?;
+            let added = info.new_commentator_signup(&player, &mut conn)?;
+            if !added {
                 return Ok(plain_interaction_response(
                     "That person is already signed up.",
                 ));
             }
-        },
-        Cmd::Remove => match info.remove_commentator(user, &mut conn)? {
+        }
+        Cmd::Remove => match info.remove_commentator(user_id, &mut conn)? {
             0 => {
                 return Ok(plain_interaction_response("That person was not signed up."));
             }

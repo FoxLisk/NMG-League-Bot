@@ -392,7 +392,6 @@ mod tests {
         schema::players,
     };
     use rocket::local::asynchronous::Client;
-    use twilight_model::id::Id;
 
     use crate::web::api::ApiBracket;
     use crate::web::api::ApiCommentatorSignup;
@@ -647,11 +646,21 @@ mod tests {
             assert_eq!(2, races.len());
             let race1 = races.pop().unwrap();
             let race2 = races.pop().unwrap();
+            let comm1 = NewPlayer::new("comm1", "11111", None, None, None).save(db)?;
+            let comm2 = NewPlayer::new("comm2", "22222", None, None, None).save(db)?;
+            let comm3 = NewPlayer::new("comm3", "33333", None, None, None).save(db)?;
             let mut info1 = race1.info(db)?;
-            info1.new_commentator_signup(Id::new(11111), db)?;
-            info1.new_commentator_signup(Id::new(22222), db)?;
+            info1.new_commentator_signup(&comm1, db)?;
+            info1.new_commentator_signup(&comm2, db)?;
+            let mut commentator_names = info1
+                .commentators(db)?
+                .into_iter()
+                .map(|player| player.name)
+                .collect::<Vec<_>>();
+            commentator_names.sort();
+            assert_eq!(vec!["comm1", "comm2"], commentator_names);
             let mut info2 = race2.info(db)?;
-            info2.new_commentator_signup(Id::new(33333), db)?;
+            info2.new_commentator_signup(&comm3, db)?;
             Ok((race1, race2))
         })
         .await?;

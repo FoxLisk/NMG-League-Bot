@@ -30,7 +30,7 @@ use twilight_model::{
             CommandOptionType, CommandType,
         },
         interaction::{
-            application_command::{CommandData, CommandDataOption},
+            application_command::{CommandData, CommandDataOption, CommandOptionValue},
             Interaction, InteractionData, InteractionType,
         },
     },
@@ -42,7 +42,7 @@ use twilight_model::{
     },
     http::interaction::{InteractionResponse, InteractionResponseData},
     id::{
-        marker::{GuildMarker, ScheduledEventMarker},
+        marker::{GuildMarker, ScheduledEventMarker, UserMarker},
         Id,
     },
 };
@@ -56,7 +56,7 @@ use crate::{
         },
         Webhooks,
     },
-    get_focused_opt, get_opt,
+    find_opt, get_focused_opt, get_opt,
     shutdown::Shutdown,
 };
 
@@ -88,6 +88,17 @@ impl HelperBot {
 
         let data = resp.models().await?;
         Ok(data)
+    }
+
+    pub(super) async fn user_name(
+        &self,
+        user_id: Id<UserMarker>,
+    ) -> Result<String, NMGLeagueBotError> {
+        let user = match self.cache.user(user_id) {
+            Some(user) => user.value().clone(),
+            None => self.client.user(user_id).await?.model().await?,
+        };
+        Ok(user.global_name.unwrap_or(user.name))
     }
 
     pub(super) fn update_scheduled_event(
@@ -397,30 +408,64 @@ fn handle_add_criteria_autocomplete(
     use diesel::prelude::*;
     use schema::players;
 
-    let partial_name = get_focused_opt!("player", &mut opts, String)?;
-    let players: Vec<(i32, String)> = if partial_name.is_empty() {
-        Player::table()
-            .select((players::id, players::name))
-            .limit(25)
-            .load(conn)?
-    } else {
-        schema::players::table
-            .filter(players::dsl::name.like(format!("%{partial_name}%")))
-            .select((players::id, players::name))
-            .limit(25)
-            .load(conn)?
+    let focused_name = opts.iter().find_map(|option| match &option.value {
+        CommandOptionValue::Focused(_, _) => Some(option.name.clone()),
+        _ => None,
+    });
+    let choices = match focused_name.as_deref() {
+        Some("player") => {
+            let partial_name = get_focused_opt!("player", &mut opts, String)?;
+            let players: Vec<(i32, String)> = if partial_name.is_empty() {
+                Player::table()
+                    .select((players::id, players::name))
+                    .limit(25)
+                    .load(conn)?
+            } else {
+                schema::players::table
+                    .filter(players::dsl::name.like(format!("%{partial_name}%")))
+                    .select((players::id, players::name))
+                    .limit(25)
+                    .load(conn)?
+            };
+
+            players
+                .into_iter()
+                .map(|(id, name)| CommandOptionChoice {
+                    name,
+                    name_localizations: None,
+                    value: CommandOptionChoiceValue::String(id.to_string()),
+                })
+                .collect()
+        }
+        Some("commentator") => {
+            let partial_name = get_focused_opt!("commentator", &mut opts, String)?;
+            let partial_name = partial_name.to_lowercase();
+            let mut commentators = commentator_names(conn)?
+                .into_iter()
+                .filter(|(id, name)| {
+                    partial_name.is_empty()
+                        || name.to_lowercase().contains(&partial_name)
+                        || id.to_string().contains(&partial_name)
+                })
+                .collect::<Vec<_>>();
+            commentators.sort_by_cached_key(|(id, name)| (name.to_lowercase(), id.get()));
+            commentators
+                .into_iter()
+                .take(25)
+                .map(|(id, name)| CommandOptionChoice {
+                    name,
+                    name_localizations: None,
+                    value: CommandOptionChoiceValue::String(id.to_string()),
+                })
+                .collect()
+        }
+        _ => {
+            warn!("No recognized focused option in criteria autocomplete: {opts:?}");
+            vec![]
+        }
     };
 
-    let opts = players
-        .into_iter()
-        .map(|(id, name)| CommandOptionChoice {
-            name: name,
-            name_localizations: None,
-            value: CommandOptionChoiceValue::String(id.to_string()),
-        })
-        .collect::<Vec<_>>();
-
-    Ok(autocomplete_result(opts))
+    Ok(autocomplete_result(choices))
 }
 
 fn handle_remove_criteria_autocomplete(
@@ -453,14 +498,36 @@ fn grfs_with_display(
         .filter_map(|i| i)
         .collect::<Vec<_>>();
     let players = Player::by_id(Some(all_player_ids), conn)?;
+    let commentators = commentator_names(conn)?;
 
     Ok(grfs
         .into_iter()
         .map(|grf| {
-            let text = grf.display(grf.player_id.and_then(|pid| players.get(&pid)));
+            let commentator_name = grf
+                .commentator_discord_id()
+                .and_then(|id| commentators.get(&id))
+                .map(String::as_str);
+            let text = grf.display(
+                grf.player_id.and_then(|pid| players.get(&pid)),
+                commentator_name,
+            );
             (grf, text)
         })
         .collect::<Vec<_>>())
+}
+
+fn commentator_names(
+    conn: &mut SqliteConnection,
+) -> Result<HashMap<Id<UserMarker>, String>, diesel::result::Error> {
+    use diesel::prelude::*;
+
+    let players = schema::players::table
+        .select((schema::players::discord_id, schema::players::name))
+        .load::<(String, String)>(conn)?;
+    Ok(players
+        .into_iter()
+        .filter_map(|(id, name)| id.parse::<Id<UserMarker>>().ok().map(|id| (id, name)))
+        .collect())
 }
 
 fn handle_remove_criteria(
@@ -534,7 +601,18 @@ fn handle_add_criteria(
             ));
         }
     };
-    NewGuildRaceCriteria::new(guild_id, player, restream_status).save(conn)?;
+    let commentator = match find_opt!("commentator", &mut opts, String)? {
+        Some(id) => match id.parse::<Id<UserMarker>>() {
+            Ok(id) if commentator_names(conn)?.contains_key(&id) => Some(id),
+            _ => {
+                return Ok(plain_ephemeral_response(
+                    "No commentator by that name was found. Please try again.",
+                ));
+            }
+        },
+        None => None,
+    };
+    NewGuildRaceCriteria::new(guild_id, player, restream_status, commentator).save(conn)?;
 
     Ok(plain_ephemeral_response("Criteria added! You'll see relevant races now. If such races already exist, they will sync in the next few minutes."))
 }
@@ -684,6 +762,16 @@ fn application_command_definitions() -> Vec<Command> {
                         autocomplete: Some(true),
                         ..command_option_default()
                     },
+                    CommandOption {
+                        description:
+                            "commentator you're interested in (omit if any commentator is fine)"
+                                .to_string(),
+                        kind: CommandOptionType::String,
+                        name: "commentator".to_string(),
+                        required: Some(false),
+                        autocomplete: Some(true),
+                        ..command_option_default()
+                    },
                 ]),
                 ..command_option_default()
             })
@@ -714,4 +802,31 @@ fn application_command_definitions() -> Vec<Command> {
     #[cfg(not(feature = "testing"))]
     let cmds = vec![criteria_commands];
     cmds
+}
+
+#[cfg(test)]
+mod tests {
+    use super::commentator_names;
+    use diesel::prelude::*;
+    use nmg_league_bot::{db::run_migrations, models::player::NewPlayer};
+    use twilight_model::id::Id;
+
+    #[test]
+    fn commentator_names_include_hydrated_players() -> anyhow::Result<()> {
+        let mut conn = SqliteConnection::establish(":memory:")?;
+        run_migrations(&mut conn)?;
+        NewPlayer::new("Registered Player", "100", None, None, None).save(&mut conn)?;
+        NewPlayer::new("Hydrated Commentator", "200", None, None, None).save(&mut conn)?;
+
+        let names = commentator_names(&mut conn)?;
+        assert_eq!(
+            Some(&"Registered Player".to_string()),
+            names.get(&Id::new(100))
+        );
+        assert_eq!(
+            Some(&"Hydrated Commentator".to_string()),
+            names.get(&Id::new(200))
+        );
+        Ok(())
+    }
 }
