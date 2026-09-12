@@ -21,7 +21,7 @@ Values given as `Enum` are internally defined Enums. The possible values of thes
 
 These Enums are just direct serializations of [Rust Enums](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html), in case that information is useful to you.
 
-## Paramaters Gotcha
+## Parameters Gotcha
 
 Query parameters given as `Enum` will have to be serialized to JSON in your query string. This means that to filter for races in the format "new", you'd have to pass `?state="New"`. 
 
@@ -33,7 +33,7 @@ Season endpoints use the season's ordinal. This is the order that the season occ
 
 URL: `/players`
 
-This returns a list of all players. 
+The name "players" is somewhat of a misnomer: this returns a list of all people who have participated in a race **or** manually set their info in the League server, such as ZSR staff and potentially commentators or anyone else who felt like it.
 
 ## Parameters
 
@@ -41,9 +41,9 @@ You may specify the query parameter `player_id` zero or more times. If at least 
 
 
 
-| Parameter Name    | Type  | Number          | Description                                      | Example         |
-| ----------        | ----  | ------          | -----------                                      | -------         |
-| player_id         | i32   | 0 or more       | Filters returned races to ones in this state     | 3               |
+| Parameter Name    | Type  | Number          | Description                                          | Example |
+| ----------        | ----  | ------          | -----------                                          | ------- |
+| player_id         | i32   | 0 or more       | Filters returned players to those with the given IDs | 3       |
 
 ## Player Data
 
@@ -54,11 +54,9 @@ The returned data has the following fields:
 | id                | i32             | id                                               | 3                     |
 | name              | String          | player's current display name                    | "FoxLisk"             |
 | discord_id        | String          | user's Discord ID                                | "255676979460702210"  |
-| racetime_username | optional String | user's RTgg full name, if known                  | "FoxLisk#8582"        |
-| racetime_user_id  | optional String | user's RTgg username, if known                   | "RbOXG3ydNJBZVKq1"    |
-| twitch_user_login | optional String | user's twitch login (not display name), if known | "foxlisk"             |
-
-Note: the racetime username & user ID are either both present or neither. If you find this isn't the case, let me know.
+| racetime_username | optional String | user's RaceTime.gg full name, if known           | "FoxLisk#8582"        |
+| racetime_user_id  | optional String | user's RaceTime.gg user ID, if known             | "RbOXG3ydNJBZVKq1"    |
+| twitch_user_login | optional String | user's Twitch login (not display name), if known | "foxlisk"             |
 
 Note: Discord IDs are bigints serialized as strings. [Read their docs here](https://discord.com/developers/docs/reference#snowflakes).
 
@@ -175,7 +173,7 @@ $ curl https://nmg-league.foxlisk.com/api/v1/season/9/qualifiers
 
 URL: `/season/<ordinal>/brackets`
 
-This API is mostly intended for users of the [Races endpoint](#races) to be able to look up the bracket info
+This API is mostly intended for users of the [Races endpoint](#races) to be able to look up bracket information.
 
 ## Bracket Data
 
@@ -183,6 +181,7 @@ This API is mostly intended for users of the [Races endpoint](#races) to be able
 | ----------        | ----            | -----------                                      | -------         |
 | id                | i32             | id                                               | 27              |
 | name              | String          | name                                             | "Gold Sword"    |
+| season_id         | i32             | internal season database ID (not its ordinal)    | 9               |
 | state             | Enum            | current state                                    | "Started"       |
 | bracket_type      | Enum            | bracket type (Swiss or Round Robin)              | "Swiss"         |
 
@@ -209,7 +208,7 @@ This API is mostly intended for users of the [Races endpoint](#races) to be able
 ## Example:
 
 ```
-$ curl https://nmg-league.foxlisk.com/api/v1/seasion/9/brackets
+$ curl https://nmg-league.foxlisk.com/api/v1/season/9/brackets
 {
   "Ok": [
     {
@@ -244,7 +243,7 @@ Returns races in the specified season.
 | ----------        | ----  | ------          | -----------                                      | -------         |
 | state             | Enum  | 0 or 1          | Filters returned races to ones in this state     | "Scheduled"     |
 
-Remember that [Enum query parameters must be JSON encoded](#paramaters-gotcha)
+Remember that [Enum query parameters must be JSON encoded](#parameters-gotcha)
 
 `state` enum definition: 
 
@@ -269,8 +268,8 @@ Remember that [Enum query parameters must be JSON encoded](#paramaters-gotcha)
 | player_1_result   | optional Enum   | player 1's result, if race is done                           | {"Finish":5025}     |
 | player_2_result   | optional Enum   | player 2's result, if race is done                           | {"Finish":4869}     |
 | outcome           | optional Enum   | result of the race, if done                                  | "P2Win"             |
-| scheduled_for     | optional i64    | UTC timestamp of race time, if scheduled (or complete)       | 1743274860          |
-| racetime_gg_url   | optional String | RTgg room URL, if any**                                      | "https://racetime.gg/alttp/witty-robin-9761" |
+| scheduled_for     | optional i64    | Unix timestamp in seconds, if scheduled (or complete)        | 1743274860          |
+| racetime_gg_url   | optional String | RaceTime.gg room URL, if any**                               | "https://racetime.gg/alttp/witty-robin-9761" |
 | restream_channel  | optional String | URL of a restream channel, if any***                         | "https://twitch.tv/zeldaspeedruns" |
 
 \* Currently, all Round Robin bracket races have round "1". This is subject to change at any time.
@@ -300,7 +299,7 @@ Remember that [Enum query parameters must be JSON encoded](#paramaters-gotcha)
 
 ## Examples
 
-If you do not [JSON encode the value of an enum parameter](#paramaters-gotcha), you will get an opaque error response. Sorry! Maybe someday I'll clean this up.
+If you do not [JSON encode the value of an enum parameter](#parameters-gotcha), you will get an opaque error response. Sorry! Maybe someday I'll clean this up.
 
 ```
 $ curl https://nmg-league.foxlisk.com/api/v1/season/9/races?state=new
@@ -407,8 +406,8 @@ And an unfiltered response with some representative values:
 
 URL: `/season/<ordinal>/commentator_signups`
 
-Returns commentator signups in the specified season. These are collected by people using discord reactions,
-and at the moment the only data I store about them is the user's discord ID. If you have a use case that would
+Returns commentator signups in the specified season. These are collected from people using Discord reactions,
+and at the moment the only data stored about them is the user's Discord ID. If you have a use case that would
 benefit from a richer API here, please let me know so I can see about prioritizing it.
 
 ## Parameters
@@ -433,7 +432,7 @@ Note: Discord IDs are bigints serialized as strings. [Read their docs here](http
 ## Example
 
 ```
-$ curl https://nmg-league.foxlisk.com/api/v1/season/9/commentator_signups?race_id=315
+$ curl https://nmg-league.foxlisk.com/api/v1/season/9/commentator_signups?bracket_race_id=315
 {
   "Ok": [
     {

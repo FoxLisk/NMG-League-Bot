@@ -23,6 +23,7 @@
     <a id="previous-seasons-link" class="nav-item nav-generic-item" href="/seasons">
         <span>Previous Seasons</span>
     </a>
+
     {% if base_context.admin %}
     <a id="asyncs-link" class="nav-item nav-generic-item" href="/asyncs">
         <span>Asyncs</span>
@@ -34,6 +35,10 @@
     {% endif %}
     <a id="#" class="nav-item nav-generic-item last-item" href="/helper_bot">
         <span>Helper Bot</span>
+    </a>
+    <a id="api-docs-link" class="nav-item nav-generic-item external-link"
+        href="https://github.com/FoxLisk/NMG-League-Bot/blob/master/api_docs/README.md">
+        <span>API Docs</span>
     </a>
 </nav>
 {% block body %}
